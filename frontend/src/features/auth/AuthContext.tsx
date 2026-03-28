@@ -21,7 +21,7 @@ export const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
 
-  function login(token: string) {
+  function login(_token: string) {
     // TODO: decode JWT, set user, store token via lib/auth.ts
   }
 

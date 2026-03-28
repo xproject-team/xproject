@@ -1,7 +1,7 @@
 /**
  * TypeScript interfaces that MUST mirror the Pydantic schemas in the backend.
  * Rules: snake_case, datetime → string (ISO), Optional[X] → X | undefined.
- * Keep in sync with backend/app/modules/*/schemas.py.
+ * Keep in sync with backend/app/modules/<module>/schemas.py.
  */
 
 // --- Auth ---
