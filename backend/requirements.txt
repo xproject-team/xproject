@@ -1,0 +1,40 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+
+# Database
+sqlalchemy[asyncio]==2.0.30
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Caching / pub-sub / task queue
+redis[hiredis]==5.0.4
+arq==0.26.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+
+# Config / validation
+pydantic[email]==2.7.1
+pydantic-settings==2.3.0
+
+# ML
+scikit-learn==1.5.0
+numpy==1.26.4
+joblib==1.4.2
+
+# Reports
+weasyprint==62.3
+
+# AI (narrative generation + chat)
+anthropic==0.28.0
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.6
+httpx==0.27.0
+
+# Linting
+ruff==0.4.4
