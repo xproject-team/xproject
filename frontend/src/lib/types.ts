@@ -2,15 +2,21 @@
  * TypeScript interfaces that MUST mirror the Pydantic schemas in the backend.
  * Rules: snake_case, datetime → string (ISO), Optional[X] → X | undefined.
  * Keep in sync with backend/app/modules/<module>/schemas.py.
+ *
+ * Field names match the Backend Bible database schema exactly.
  */
 
-// --- Auth ---
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
 export interface UserResponse {
   id: number
   email: string
   full_name: string
-  role: 'owner' | 'manager' | 'bartender' | 'warehouse'
+  /** Backend ENUM: owner / manager / staff / bartender  (NOT 'warehouse') */
+  role: 'owner' | 'manager' | 'staff' | 'bartender'
+  phone?: string
   is_active: boolean
+  created_at?: string
 }
 
 export interface TokenResponse {
@@ -18,74 +24,100 @@ export interface TokenResponse {
   token_type: string
 }
 
-// --- Events ---
+// ─── Events ───────────────────────────────────────────────────────────────────
+
 export interface EventResponse {
   id: number
   name: string
-  venue: string
-  status: 'pending' | 'active' | 'ended'
+  /** ISO date string e.g. "2026-06-15" */
+  date: string
+  /** Venue / address — backend column is `location` */
+  location: string
+  expected_guest_count: number
+  /** Backend ENUM: draft / active / live / completed */
+  status: 'draft' | 'active' | 'live' | 'completed'
   created_at?: string
-  started_at?: string
-  ended_at?: string
+  updated_at?: string
 }
 
-// --- Inventory ---
+// ─── Bar Inventory (BAR_INVENTORY table) ─────────────────────────────────────
+
 export interface InventoryItemResponse {
   id: number
   event_id: number
   bar_id: number
-  sku: string
-  name: string
-  quantity: number
-  unit: string
-  low_stock_threshold: number
+  product_name: string
+  initial_stock: number
+  current_stock: number
+  last_updated?: string
 }
 
-// --- Alerts ---
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
 export interface AlertResponse {
   id: number
   event_id: number
-  rule_name: string
+  bar_id?: number
+  product_name?: string
+  /** Backend ENUM: depletion / anomaly / discrepancy / system */
+  alert_type: 'depletion' | 'anomaly' | 'discrepancy' | 'system'
+  /** Backend ENUM: info / warning / critical */
   severity: 'info' | 'warning' | 'critical'
   message: string
-  acknowledged: boolean
+  /** Arbitrary JSON payload attached by the alert engine */
+  data?: Record<string, unknown>
+  time_to_depletion_min?: number
+  is_acknowledged: boolean
+  acknowledged_by?: number
+  acknowledged_at?: string
   created_at?: string
 }
 
-// --- Predictions ---
+// ─── Predictions ──────────────────────────────────────────────────────────────
+
 export interface PredictionResponse {
   id: number
   event_id: number
-  sku: string
-  predicted_demand: number
-  confidence: number
-  horizon_hours: number
-  created_at?: string
+  /** Backend ENUM: pre_event / live */
+  model_type: 'pre_event' | 'live'
+  /** Raw JSONB from the ML model — shape varies by model version */
+  prediction_data: unknown
+  confidence_score: number
+  generated_at: string
+  is_override: boolean
+  override_by?: number
 }
 
-// --- Anomaly ---
+// ─── Anomaly ──────────────────────────────────────────────────────────────────
+
 export interface AnomalyEventResponse {
   id: number
   event_id: number
   detector: string
-  sku?: string
+  product_name?: string
   score: number
   description: string
   detected_at?: string
 }
 
-// --- Warehouse ---
+// ─── Warehouse Scans (WAREHOUSE_SCANS table) ─────────────────────────────────
+
 export interface ScanEventResponse {
   id: number
   event_id: number
-  barcode: string
-  sku?: string
-  action: string
+  barcode_raw: string
+  resolved_product_name?: string
+  /** Backend ENUM: intake / dispatch */
+  scan_type: 'intake' | 'dispatch'
   quantity: number
-  scanned_at?: string
+  destination_bar_id?: number
+  scanned_by?: number
+  notes?: string
+  created_at?: string
 }
 
-// --- Reports ---
+// ─── Reports ──────────────────────────────────────────────────────────────────
+
 export interface ReportResponse {
   id: number
   event_id: number
@@ -95,7 +127,8 @@ export interface ReportResponse {
   generated_at?: string
 }
 
-// --- Chat ---
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+
 export interface ChatMessageResponse {
   id: number
   event_id: number

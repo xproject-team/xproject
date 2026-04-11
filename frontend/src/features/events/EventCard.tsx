@@ -17,7 +17,7 @@ export function EventCard({ event }: EventCardProps) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-[#1A202C]">{event.name}</h3>
-          <p className="text-sm text-[#4A5568]">{event.venue}</p>
+          <p className="text-sm text-[#4A5568]">{event.location}</p>
         </div>
         <span className="text-xs font-medium px-2 py-1 rounded-full bg-[#F7FAFC] border border-[#E2E8F0]">
           {event.status}

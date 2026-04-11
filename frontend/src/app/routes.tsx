@@ -1,25 +1,259 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { type ReactNode } from 'react'
 import { AppShell } from '@/shared/layout/AppShell'
-import LoginPage from '@/pages/auth/LoginPage'
-import DashboardPage from '@/pages/dashboard/DashboardPage'
+import { useAuth } from '@/features/auth/useAuth'
+import { usePermissions, type Permissions } from '@/features/auth/usePermissions'
+import { getHomeRoute } from '@/lib/mockUsers'
+
+import LoginPage             from '@/pages/auth/LoginPage'
+import DashboardPage         from '@/pages/dashboard/DashboardPage'
+import EventListPage         from '@/pages/events/EventListPage'
+import EventCreatePage       from '@/pages/events/EventCreatePage'
+import EventDetailPage       from '@/pages/events/EventDetailPage'
+import InventoryPage         from '@/pages/inventory/InventoryPage'
+import AlertsPage            from '@/pages/alerts/AlertsPage'
+import WarehousePage          from '@/pages/warehouse/WarehousePage'
+import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
+import WarehouseInventoryPage from '@/pages/warehouse/WarehouseInventoryPage'
+import PredictionPage        from '@/pages/predictions/PredictionPage'
+import ReportPage            from '@/pages/reports/ReportPage'
+
+// ─── Permission flag type ─────────────────────────────────────────────────────
+// Extracts only the boolean keys from Permissions so RequirePermission is type-safe.
+
+type BooleanPermissionFlag = {
+  [K in keyof Permissions]: Permissions[K] extends boolean ? K : never
+}[keyof Permissions]
+
+// ─── Guards ───────────────────────────────────────────────────────────────────
+
+/** Redirects unauthenticated visitors to /login. */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  const location = useLocation()
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />
+  return <>{children}</>
+}
+
+/**
+ * RequirePermission — checks one or more boolean permission flags.
+ * • Single flag:  flag="canCreateEvent"
+ * • OR logic:     flag={["canGenerateReport", "canGenerateBarReport"]}
+ * If every listed flag is false, redirects to the role's home page.
+ */
+function RequirePermission({
+  flag,
+  children,
+}: {
+  flag: BooleanPermissionFlag | BooleanPermissionFlag[]
+  children: ReactNode
+}) {
+  const { user } = useAuth()
+  const perms   = usePermissions()
+  const home    = getHomeRoute(user?.role ?? 'owner')
+
+  const flags     = Array.isArray(flag) ? flag : [flag]
+  const permitted = flags.some((f) => perms[f])
+
+  if (!permitted) return <Navigate to={home} replace />
+  return <>{children}</>
+}
+
+// ─── Placeholder for routes whose pages are not built yet ─────────────────────
+
+function ComingSoon({ title }: { title: string }) {
+  return (
+    <div className="p-6 max-w-3xl mx-auto">
+      <h1 className="text-2xl font-bold text-[#1A202C]">{title}</h1>
+      <p className="text-sm text-[#4A5568] mt-2">This page is coming soon.</p>
+    </div>
+  )
+}
+
+// ─── App router ───────────────────────────────────────────────────────────────
 
 export function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+
+        {/* All authenticated routes wrapped in AppShell */}
         <Route
           path="/*"
           element={
-            <AppShell>
-              <Routes>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-              </Routes>
-            </AppShell>
+            <RequireAuth>
+              <AppShell>
+                <AuthenticatedRoutes />
+              </AppShell>
+            </RequireAuth>
           }
         />
       </Routes>
     </BrowserRouter>
+  )
+}
+
+// ─── Authenticated route tree ─────────────────────────────────────────────────
+
+function AuthenticatedRoutes() {
+  const { user } = useAuth()
+  const home = getHomeRoute(user?.role ?? 'owner')
+
+  return (
+    <Routes>
+      {/* Root redirect → role home */}
+      <Route path="/" element={<Navigate to={home} replace />} />
+
+      {/*
+       * /dashboard
+       * Owner (canViewAllBars) · Manager · Bartender (canViewOwnBar) → allowed
+       * Warehouse → neither flag is true → redirects to /warehouse
+       */}
+      <Route
+        path="/dashboard"
+        element={
+          <RequirePermission flag={['canViewAllBars', 'canViewOwnBar']}>
+            <DashboardPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /events — Owner only
+       * /events/create must be declared before /events/:id so the static
+       * segment "create" is not swallowed by the dynamic :id param.
+       */}
+      <Route
+        path="/events"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventListPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/events/create"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventCreatePage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/events/:id"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventDetailPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /inventory — Owner only (canViewAllBars)
+       */}
+      <Route
+        path="/inventory"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <InventoryPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /alerts — Owner + Manager (canSeeOperationalAlerts)
+       * Bartender + Warehouse → redirect to home
+       */}
+      <Route
+        path="/alerts"
+        element={
+          <RequirePermission flag="canSeeOperationalAlerts">
+            <AlertsPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /warehouse — Owner + Warehouse Staff (canViewWarehouseStock)
+       * Manager + Bartender → redirect to home
+       */}
+      <Route
+        path="/warehouse"
+        element={
+          <RequirePermission flag="canViewWarehouseStock">
+            <WarehousePage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /warehouse/inventory — Owner + Warehouse Staff
+       * Must be declared before the /warehouse catch-all above would swallow it.
+       */}
+      <Route
+        path="/warehouse/inventory"
+        element={
+          <RequirePermission flag="canViewWarehouseStock">
+            <WarehouseInventoryPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /predictions — Owner only
+       */}
+      <Route
+        path="/predictions"
+        element={
+          <RequirePermission flag="canViewPredictions">
+            <PredictionPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /reports — Owner (canGenerateReport) OR Manager (canGenerateBarReport)
+       * Bartender + Warehouse → redirect
+       */}
+      <Route
+        path="/reports"
+        element={
+          <RequirePermission flag={['canGenerateReport', 'canGenerateBarReport']}>
+            <ReportPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /chat — Owner + Manager + Bartender (canChat)
+       * Warehouse → redirect to /warehouse
+       */}
+      <Route
+        path="/chat"
+        element={
+          <RequirePermission flag="canChat">
+            <ComingSoon title="Chat" />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /scan — Bartender only (canScanBottleAtBar)
+       * All others → redirect to home
+       */}
+      <Route
+        path="/scan"
+        element={
+          <RequirePermission flag="canScanBottleAtBar">
+            <ComingSoon title="Scan Bottle" />
+          </RequirePermission>
+        }
+      />
+
+      {/* Fallback — any unknown path → role home */}
+      <Route path="*" element={<Navigate to={home} replace />} />
+    </Routes>
   )
 }
