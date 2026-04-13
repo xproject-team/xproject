@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User
 from app.modules.chat.models import Channel, ChannelMember, ChatMessage
+import json
 
 
 class ChatService:
@@ -165,6 +166,36 @@ class ChatService:
         self.db.add(message)
         await self.db.commit()
         await self.db.refresh(message)
+
+        # Broadcast to all WebSocket subscribers of this channel.
+        # Failures in broadcast must NEVER fail the REST request.
+        try:
+            # Lazy import breaks circular dependency (websocket.py imports ChatService)
+            from app.realtime.websocket import manager as ws_manager
+
+            # Resolve sender's display name for the payload
+            sender_name = None
+            if message.sender_id:
+                sender_stmt = select(User.full_name).where(User.id == message.sender_id)
+                sender_name = (await self.db.execute(sender_stmt)).scalar_one_or_none()
+
+            payload = {
+                "type": "message",
+                "channel_id": str(message.channel_id),
+                "message": {
+                    "id":          str(message.id),
+                    "channel_id":  str(message.channel_id),
+                    "sender_id":   str(message.sender_id) if message.sender_id else None,
+                    "sender_name": sender_name,
+                    "body":        message.body,
+                    "created_at":  message.created_at.isoformat(),
+                    "edited_at":   message.edited_at.isoformat() if message.edited_at else None,
+                },
+            }
+            await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
+        except Exception:
+            pass  # broadcast is best-effort; DB is source of truth
+
         return message
 
     async def mark_channel_read(
