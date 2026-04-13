@@ -67,15 +67,18 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
           <p className="text-2xl font-bold text-[#1A202C] leading-none">{totalDrinks}</p>
         </div>
         <div className="flex flex-col gap-1">
-          <div className="flex gap-1">
-            {(['B', 'S', 'P', 'U'] as const).map((t) => (
-              <span
-                key={t}
-                className="text-[10px] font-bold bg-[#F7FAFC] border border-[#E2E8F0] text-[#4A5568] px-1.5 py-0.5 rounded whitespace-nowrap"
-              >
-                {t}:{tierTotals[t]}
-              </span>
-            ))}
+          <div className="flex gap-1.5">
+            {(['B', 'S', 'P', 'U'] as const).map((t) => {
+              const TIER_LABELS = { B: 'Basic', S: 'Standard', P: 'Premium', U: 'Ultra' } as const
+              return (
+                <span
+                  key={t}
+                  className="text-[10px] font-bold bg-[#F7FAFC] border border-[#E2E8F0] text-[#4A5568] px-2 py-0.5 rounded whitespace-nowrap"
+                >
+                  {TIER_LABELS[t]} {tierTotals[t]}
+                </span>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -113,23 +116,6 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
         </div>
       </div>
 
-      {/* Warehouse Stock */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="min-w-[130px]">
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Warehouse Stock
-          </p>
-          <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold text-[#38A169] leading-none">78%</p>
-            <div className="flex-1">
-              <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden w-20">
-                <div className="h-full bg-[#38A169] rounded-full" style={{ width: '78%' }} />
-              </div>
-              <p className="text-[10px] text-[#4A5568] mt-0.5">195 / 250 units</p>
-            </div>
-          </div>
-        </div>
-      </div>
 
     </div>
   )

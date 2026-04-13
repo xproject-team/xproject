@@ -327,8 +327,16 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                       </thead>
                       <tbody>
                         {sortedProducts.map((p) => {
-                          const st     = PRODUCT_STATUS_CFG[p.status]
-                          const urgent = p.estimated_depletion_minutes < 45
+                          // Derive status from depletion time per MVP spec:
+                          //   Depleted (stock == 0) > Critical (<45m) > Warning (45-120m) > Healthy (>120m)
+                          const m = p.estimated_depletion_minutes
+                          const derivedStatus =
+                            p.current_stock === 0 ? 'depleted' :
+                            m < 45              ? 'critical' :
+                            m < 120             ? 'warning'  :
+                                                  'healthy'
+                          const st     = PRODUCT_STATUS_CFG[derivedStatus]
+                          const urgent = m < 45
                           return (
                             <tr
                               key={p.id}
@@ -341,9 +349,14 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                                 {p.product_name}
                               </td>
                               <td className="py-2.5 pr-3 text-[#4A5568]">{p.category}</td>
-                              <td className="py-2.5 pr-3 font-mono text-[#1A202C]">
-                                {p.current_stock}
-                                <span className="text-[#CBD5E0]">/{p.initial_stock}</span>
+                              <td
+                                className="py-2.5 pr-3 font-mono text-[#1A202C]"
+                                title={`Started with ${p.initial_stock} bottles`}
+                              >
+                                {p.current_stock} left
+                                <span className="text-[#4A5568] ml-1">
+                                  ({Math.round((p.current_stock / p.initial_stock) * 100)}%)
+                                </span>
                               </td>
                               <td className="py-2.5 pr-3">
                                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${st.cls}`}>
@@ -361,72 +374,6 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                         })}
                       </tbody>
                     </table>
-                  </div>
-                </section>
-
-                {/* ── 5. Consumption vs Expected ──────────────────────── */}
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
-                  <SectionHeader title="Consumption vs Expected" />
-                  <div className="space-y-3.5">
-                    {sortedProducts.map((p) => {
-                      const consumed = p.initial_stock - p.current_stock
-                      const expected = Math.round(p.consumption_rate * TIME_ELAPSED_H)
-                      const isAnomaly = consumed > expected * 1.15 && expected > 0
-                      // Scale bars to the larger of consumed/expected
-                      const maxVal      = Math.max(consumed, expected, 1)
-                      const actualPct   = Math.min((consumed / maxVal) * 100, 100)
-                      const expectedPct = Math.min((expected / maxVal) * 100, 100)
-                      const barColor    =
-                        isAnomaly          ? 'bg-[#E53E3E]' :
-                        p.status === 'healthy' ? 'bg-[#38A169]' :
-                        p.status === 'critical' ? 'bg-[#E53E3E]' :
-                        'bg-[#D69E2E]'
-
-                      return (
-                        <div key={p.id}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className={`text-xs font-medium ${isAnomaly ? 'text-[#E53E3E]' : 'text-[#1A202C]'}`}>
-                              {p.product_name}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {isAnomaly && (
-                                <span className="text-[10px] font-bold bg-red-50 text-[#E53E3E] border border-red-200 px-1.5 py-0.5 rounded">
-                                  Anomaly detected
-                                </span>
-                              )}
-                              <span className="text-[10px] text-[#4A5568]">
-                                {consumed} actual · {expected} expected
-                              </span>
-                            </div>
-                          </div>
-                          {/* Stacked ratio bar */}
-                          <div className="relative h-3 bg-[#E2E8F0] rounded-full overflow-hidden">
-                            {/* Expected (gray underlay) */}
-                            <div
-                              className="absolute inset-y-0 left-0 bg-[#CBD5E0] rounded-full"
-                              style={{ width: `${expectedPct}%` }}
-                            />
-                            {/* Actual (colored overlay, semi-transparent) */}
-                            <div
-                              className={`absolute inset-y-0 left-0 rounded-full ${barColor}`}
-                              style={{ width: `${actualPct}%`, opacity: 0.72 }}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  {/* Legend */}
-                  <div className="flex items-center gap-5 mt-3">
-                    <span className="flex items-center gap-1.5 text-[10px] text-[#4A5568]">
-                      <span className="inline-block w-4 h-2.5 rounded bg-[#CBD5E0]" />
-                      Expected
-                    </span>
-                    <span className="flex items-center gap-1.5 text-[10px] text-[#4A5568]">
-                      <span className="inline-block w-4 h-2.5 rounded bg-[#38A169] opacity-75" />
-                      Actual
-                    </span>
                   </div>
                 </section>
 

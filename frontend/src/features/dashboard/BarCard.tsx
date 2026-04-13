@@ -42,10 +42,10 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         onClick(bar.id)
       }}
       className={[
-        'rounded-xl p-5 shadow-sm hover:shadow-md transition-all text-left w-full',
-        critical
-          ? 'border border-[#E2E8F0] border-l-4 border-l-[#E53E3E] bg-red-50/40'
-          : 'border border-[#E2E8F0] bg-white',
+        'rounded-xl p-5 shadow-sm hover:shadow-md transition-all text-left w-full border',
+        bar.status === 'critical' ? 'bg-red-50 border-red-200' :
+        bar.status === 'warning'  ? 'bg-yellow-50 border-yellow-200' :
+                                    'bg-green-50/60 border-green-200',
       ].join(' ')}
     >
       {/* 1+3 — Bar name + status dot + revenue */}
