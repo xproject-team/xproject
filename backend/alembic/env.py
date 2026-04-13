@@ -20,7 +20,7 @@ from app.modules.events.models import Venue, Event  # noqa: F401
 # from app.modules.anomaly.models import AnomalyEvent  # noqa: F401
 # from app.modules.warehouse.models import ScanEvent  # noqa: F401
 # from app.modules.reports.models import Report  # noqa: F401
-# from app.modules.chat.models import ChatMessage  # noqa: F401
+from app.modules.chat.models import Channel, ChannelMember, ChatMessage  # noqa: F401
 
 config = context.config
 
