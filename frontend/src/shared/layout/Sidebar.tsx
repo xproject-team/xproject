@@ -148,7 +148,7 @@ function isActive(pathname: string, item: NavItem): boolean {
 
 // ─── Role nav maps ────────────────────────────────────────────────────────────
 
-function getNavItems(role: MockUser['role'], barName: string | undefined): NavItem[] {
+function getNavItems(role: MockUser['role']): NavItem[] {
   switch (role) {
     case 'owner':
       return [
@@ -159,18 +159,19 @@ function getNavItems(role: MockUser['role'], barName: string | undefined): NavIt
         { label: 'Warehouse',   path: '/warehouse',    icon: ICONS.warehouse },
         { label: 'Predictions', path: '/predictions',  icon: ICONS.trendingUp },
         { label: 'Reports',     path: '/reports',      icon: ICONS.fileText },
+        { label: 'Chat',        path: '/chat',         icon: ICONS.messageCircle },
       ]
 
     case 'manager':
       return [
-        { label: barName ?? 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
+        { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Bar Report',        path: '/reports',   icon: ICONS.fileText },
         { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
       ]
 
     case 'bartender':
       return [
-        { label: barName ?? 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
+        { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Scan Bottle',       path: '/scan',      icon: ICONS.scan },
         { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
       ]
@@ -192,7 +193,7 @@ export function Sidebar() {
   const perms = usePermissions()
 
   const role: MockUser['role'] = user?.role ?? 'owner'
-  const navItems = getNavItems(role, user?.assignedBarName)
+  const navItems = getNavItems(role)
 
   function handleSwitch() {
     logout()
@@ -246,11 +247,6 @@ export function Sidebar() {
               <p className="text-sm font-semibold text-white leading-tight">
                 {ROLE_LABEL[role]}
               </p>
-              {user.assignedBarName && (
-                <p className="text-[10px] text-blue-200 truncate mt-0.5">
-                  {user.assignedBarName}
-                </p>
-              )}
               <span
                 className={[
                   'inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border mt-1',

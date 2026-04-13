@@ -17,6 +17,7 @@ import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehouseInventoryPage from '@/pages/warehouse/WarehouseInventoryPage'
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
+import ChatPage              from '@/pages/chat/ChatPage'
 
 // ─── Permission flag type ─────────────────────────────────────────────────────
 // Extracts only the boolean keys from Permissions so RequirePermission is type-safe.
@@ -234,7 +235,7 @@ function AuthenticatedRoutes() {
         path="/chat"
         element={
           <RequirePermission flag="canChat">
-            <ComingSoon title="Chat" />
+            <ChatPage />
           </RequirePermission>
         }
       />

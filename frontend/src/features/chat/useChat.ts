@@ -1,27 +1,126 @@
 /**
- * useChat — TanStack Query + mutation hooks for the AI assistant chat interface.
+ * useChat — React Query hooks backed by real /chat/* endpoints.
+ *
+ * Hooks:
+ *   useChannels()                → GET /chat/channels
+ *   useChannelMessages(id)       → GET /chat/channels/{id}/messages (newest first)
+ *   usePostMessage(channelId)    → POST /chat/channels/{id}/messages (optimistic + invalidate)
+ *   useMarkChannelRead(channelId)→ POST /chat/channels/{id}/read     (clears unread)
  */
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryOptions,
+} from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useChatHistory(eventId: string | null) {
-  return useQuery({
-    queryKey: ['chat', eventId],
+// ─── Types ────────────────────────────────────────────────────────────
+
+export interface ChannelResponse {
+  id:              string
+  channel_type:    'bar' | 'dm' | 'general'
+  bar_id:          string | null
+  name:            string
+  unread_count:    number
+  last_message_at: string | null       // ISO datetime
+}
+
+export interface MessageResponse {
+  id:          string
+  channel_id:  string
+  sender_id:   string | null
+  sender_name: string | null
+  body:        string
+  created_at:  string                   // ISO datetime
+  edited_at:   string | null
+}
+
+// ─── Query keys ───────────────────────────────────────────────────────
+
+export const chatKeys = {
+  all:       ['chat'] as const,
+  channels:  () => [...chatKeys.all, 'channels'] as const,
+  messages:  (channelId: string) =>
+    [...chatKeys.all, 'channel', channelId, 'messages'] as const,
+}
+
+// ─── Hooks ────────────────────────────────────────────────────────────
+
+/** List all channels the current user is a member of. */
+export function useChannels(
+  options?: Omit<UseQueryOptions<ChannelResponse[]>, 'queryKey' | 'queryFn'>,
+) {
+  return useQuery<ChannelResponse[]>({
+    queryKey: chatKeys.channels(),
     queryFn: async () => {
-      const { data } = await api.get('/chat/messages', { params: { event_id: eventId } })
-      return data
+      const res = await api.get<ChannelResponse[]>('/chat/channels')
+      return res.data
     },
-    enabled: eventId !== null,
+    ...options,
   })
 }
 
-export function useSendMessage(eventId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (content: string) => {
-      const { data } = await api.post('/chat/messages', { content, event_id: eventId })
-      return data
+/** Fetch the latest messages for a channel (newest first). */
+export function useChannelMessages(
+  channelId: string | null,
+  limit: number = 50,
+) {
+  return useQuery<MessageResponse[]>({
+    queryKey: channelId ? chatKeys.messages(channelId) : ['chat', 'messages', 'disabled'],
+    queryFn: async () => {
+      if (!channelId) return []
+      const res = await api.get<MessageResponse[]>(
+        `/chat/channels/${channelId}/messages`,
+        { params: { limit } },
+      )
+      return res.data
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['chat', eventId] }),
+    enabled: channelId !== null,
+  })
+}
+
+/** Post a new message. Optimistically prepends to the cache, then refetches. */
+export function usePostMessage(channelId: string) {
+  const qc = useQueryClient()
+
+  return useMutation<MessageResponse, unknown, string>({
+    mutationFn: async (body: string) => {
+      const res = await api.post<MessageResponse>(
+        `/chat/channels/${channelId}/messages`,
+        { body },
+      )
+      return res.data
+    },
+    onSuccess: (newMsg) => {
+      // Append to message cache (newest-first order)
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(channelId),
+        (old) => (old ? [newMsg, ...old] : [newMsg]),
+      )
+      // Refresh channel list (last_message_at changed, unread is 0 for sender)
+      qc.invalidateQueries({ queryKey: chatKeys.channels() })
+    },
+  })
+}
+
+/** Mark channel as read: sets last_read_at=now and clears unread count. */
+export function useMarkChannelRead(channelId: string) {
+  const qc = useQueryClient()
+
+  return useMutation<void>({
+    mutationFn: async () => {
+      await api.post(`/chat/channels/${channelId}/read`)
+    },
+    onSuccess: () => {
+      // Zero out unread_count in the channel list cache immediately
+      qc.setQueryData<ChannelResponse[]>(
+        chatKeys.channels(),
+        (old) =>
+          old?.map((ch) =>
+            ch.id === channelId ? { ...ch, unread_count: 0 } : ch,
+          ) ?? [],
+      )
+    },
   })
 }

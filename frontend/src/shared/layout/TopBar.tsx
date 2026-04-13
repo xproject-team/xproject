@@ -41,21 +41,8 @@ export function TopBar() {
       </div>
 
       {/* Middle — manager: bar name + stock/alerts; bartender: bar name + bottles */}
-      {role === 'manager' && user?.assignedBarName && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full font-semibold text-[#1A202C]">
-            {user.assignedBarName}
-          </span>
-        </div>
-      )}
-
       {role === 'bartender' && (
         <div className="flex items-center gap-2 text-xs">
-          {user?.assignedBarName && (
-            <span className="bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full font-semibold text-[#1A202C]">
-              {user.assignedBarName}
-            </span>
-          )}
           <span className="flex items-center gap-1.5 bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full text-[#4A5568]">
             Bottles opened today:
             <span className="font-bold text-[#1A202C]">12</span>
