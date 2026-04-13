@@ -1,127 +1,123 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './useAuth'
-import { MOCK_USERS, getHomeRoute, type MockUser } from '@/lib/mockUsers'
 
-const ROLE_COLORS: Record<MockUser['role'], string> = {
-  owner:     'bg-[#E6FBF6] text-[#1ABC9C] border-[#1ABC9C]/30',
-  manager:   'bg-[#EBF5FB] text-[#3498DB] border-[#3498DB]/30',
-  warehouse: 'bg-[#FEF9E7] text-[#D69E2E] border-[#D69E2E]/30',
-  bartender: 'bg-[#FDEDEC] text-[#E74C3C] border-[#E74C3C]/30',
-}
+// ─── Quick-login accounts (dev shortcut — real prod would remove this) ──
 
-const ROLE_LABELS: Record<MockUser['role'], string> = {
-  owner:     'Owner',
-  manager:   'Manager',
-  warehouse: 'Warehouse Staff',
-  bartender: 'Bartender',
-}
+const DEV_ACCOUNTS = [
+  { email: 'omar@nomagroup.it',                 password: 'owner123',   label: 'Omar',       role: 'Owner',   color: '#1ABC9C' },
+  { email: 'manager.cocktail@nomagroup.it',     password: 'manager123', label: 'M. Cocktail', role: 'Manager', color: '#3498DB' },
+  { email: 'manager.focacceria@nomagroup.it',   password: 'manager123', label: 'M. Focacc.', role: 'Manager', color: '#3498DB' },
+  { email: 'manager.malandrino@nomagroup.it',   password: 'manager123', label: 'M. Malandr.', role: 'Manager', color: '#3498DB' },
+]
+
+// ─── Component ──────────────────────────────────────────────────────────
 
 export function LoginForm() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const [selectedId, setSelectedId] = useState<string>(MOCK_USERS[0].id)
-  const [loading, setLoading] = useState(false)
 
-  const selectedUser = MOCK_USERS.find((u) => u.id === selectedId)!
+  const [email,    setEmail]    = useState('omar@nomagroup.it')
+  const [password, setPassword] = useState('owner123')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError(null)
     setLoading(true)
-    await new Promise((r) => setTimeout(r, 400))
-    login(selectedId)
-    setLoading(false)
-    navigate(getHomeRoute(selectedUser.role))
+    try {
+      await login(email, password)
+      // Owner → /dashboard, Managers also land on /dashboard for the MVP.
+      // Later we can branch by role here.
+      navigate('/dashboard')
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail ?? 'Sign in failed. Check your credentials and try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function applyQuickLogin(acc: (typeof DEV_ACCOUNTS)[number]) {
+    setEmail(acc.email)
+    setPassword(acc.password)
+    setError(null)
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Email */}
       <div>
-        <label className="block text-sm font-medium text-[#4A5568] mb-1.5">
-          Login as
+        <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-email">
+          Email
         </label>
-        <div className="space-y-2">
-          {MOCK_USERS.map((user) => {
-            const selected = user.id === selectedId
-            return (
-              <label
-                key={user.id}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all ${
-                  selected
-                    ? 'border-[#1E5A8D] bg-blue-50'
-                    : 'border-[#E2E8F0] hover:border-[#CBD5E0] bg-white'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="user"
-                  value={user.id}
-                  checked={selected}
-                  onChange={() => setSelectedId(user.id)}
-                  className="sr-only"
-                />
-                {/* Avatar */}
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                  style={{ backgroundColor: roleColor(user.role) }}
-                >
-                  {initials(user.name)}
-                </div>
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-[#1A202C]">{user.name}</span>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${ROLE_COLORS[user.role]}`}>
-                      {ROLE_LABELS[user.role]}
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#4A5568] truncate">{user.email}</p>
-                  {user.assignedBarName && (
-                    <p className="text-[10px] text-[#4A5568] mt-0.5">
-                      Assigned to: <span className="font-medium">{user.assignedBarName}</span>
-                    </p>
-                  )}
-                </div>
-                {/* Selection indicator */}
-                <div className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${selected ? 'border-[#1E5A8D] bg-[#1E5A8D]' : 'border-[#CBD5E0]'}`}>
-                  {selected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                </div>
-              </label>
-            )
-          })}
-        </div>
+        <input
+          id="login-email"
+          type="email"
+          required
+          autoComplete="username"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
+          placeholder="you@nomagroup.it"
+        />
       </div>
 
+      {/* Password */}
+      <div>
+        <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-password">
+          Password
+        </label>
+        <input
+          id="login-password"
+          type="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
+          placeholder="••••••••"
+        />
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5">
+          {error}
+        </div>
+      )}
+
+      {/* Submit */}
       <button
         type="submit"
         disabled={loading}
         className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
       >
-        {loading ? 'Signing in…' : `Sign in as ${selectedUser.name}`}
+        {loading ? 'Signing in…' : 'Sign in'}
       </button>
 
-      <p className="text-xs text-center text-[#4A5568]">
-        Development mode — select any user to continue
-      </p>
+      {/* Dev quick-login shortcuts */}
+      <div className="pt-2 border-t border-[#E2E8F0]">
+        <p className="text-[10px] font-semibold text-[#718096] uppercase tracking-wide mb-2">
+          Quick login (dev)
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {DEV_ACCOUNTS.map((acc) => (
+            <button
+              key={acc.email}
+              type="button"
+              onClick={() => applyQuickLogin(acc)}
+              className="text-[11px] px-2.5 py-1 rounded-full border bg-white hover:bg-[#F7FAFC] transition-colors"
+              style={{ borderColor: `${acc.color}55`, color: acc.color }}
+              title={acc.email}
+            >
+              {acc.label}
+            </button>
+          ))}
+        </div>
+      </div>
     </form>
   )
-}
-
-function initials(name: string): string {
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
-
-function roleColor(role: MockUser['role']): string {
-  const map: Record<MockUser['role'], string> = {
-    owner:     '#1ABC9C',
-    manager:   '#3498DB',
-    warehouse: '#D69E2E',
-    bartender: '#E74C3C',
-  }
-  return map[role]
 }
