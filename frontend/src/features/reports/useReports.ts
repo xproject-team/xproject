@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useReport(eventId: number | null) {
+export function useReport(eventId: string | null) {
   return useQuery({
     queryKey: ['report', eventId],
     queryFn: async () => {
@@ -15,7 +15,7 @@ export function useReport(eventId: number | null) {
   })
 }
 
-export function useGenerateReport(eventId: number) {
+export function useGenerateReport(eventId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {

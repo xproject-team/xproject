@@ -79,10 +79,10 @@ export default function EventDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const event = MOCK_EVENTS.find((e) => e.id === Number(id)) ?? MOCK_EVENTS[0]
+  const event = MOCK_EVENTS.find((e) => e.id === id) ?? MOCK_EVENTS[0]
 
-  // For Sundance 2026 (id=1) pull live bar + product data; others use event fields
-  const isLive    = event.id === 1
+  // For live events, pull live bar + product data; otherwise use event fields
+  const isLive    = event.status === 'live'
   const barsCount = isLive ? MOCK_BARS.length : event.bars_count
   const products  = isLive ? MOCK_PRODUCTS : []
 

@@ -34,10 +34,10 @@ const SEVERITY_CFG: Record<AlertSeverity, {
 
 // ─── Possible causes map for anomaly alerts ───────────────────────────────────
 
-const ANOMALY_CAUSES: Record<number, string[]> = {
-  3:  ['Unreported promotions', 'Miscounted opening stock', 'Staff consumption'],
-  7:  ['Pricing discrepancy', 'POS sync delay', 'Promotional discount not logged'],
-  10: ['VIP guest spike', 'Unlogged bottle service', 'Pouring over-measure'],
+const ANOMALY_CAUSES: Record<string, string[]> = {
+  'alrt-3':  ['Unreported promotions', 'Miscounted opening stock', 'Staff consumption'],
+  'alrt-7':  ['Pricing discrepancy', 'POS sync delay', 'Promotional discount not logged'],
+  'alrt-10': ['VIP guest spike', 'Unlogged bottle service', 'Pouring over-measure'],
 }
 const DEFAULT_CAUSES = ['Unusual demand pattern', 'Possible miscounting', 'Staff or promotional factor']
 
@@ -62,7 +62,7 @@ function AlertCard({
 }: {
   alert: Alert
   acked: boolean
-  onAcknowledge: (id: number) => void
+  onAcknowledge: (id: string) => void
 }) {
   const navigate = useNavigate()
   const cfg = SEVERITY_CFG[alert.severity]
@@ -133,12 +133,12 @@ function AlertCard({
 export default function AlertsPage() {
   const perms = usePermissions()
 
-  const [acknowledged, setAcknowledged] = useState<Set<number>>(
+  const [acknowledged, setAcknowledged] = useState<Set<string>>(
     () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
   )
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
 
-  const handleAcknowledge = useCallback((id: number) => {
+  const handleAcknowledge = useCallback((id: string) => {
     setAcknowledged((prev) => new Set(prev).add(id))
   }, [])
 
@@ -294,7 +294,7 @@ export default function AlertsPage() {
                       Possible Causes
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {causes.map((cause) => (
+                      {causes.map((cause: string) => (
                         <span
                           key={cause}
                           className="text-[11px] bg-orange-100 text-[#E67E22] border border-orange-200 px-2 py-0.5 rounded-full"

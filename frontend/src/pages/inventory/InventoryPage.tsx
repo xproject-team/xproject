@@ -87,7 +87,7 @@ function Toast({ visible }: { visible: boolean }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const [selectedBarId, setSelectedBarId]   = useState<number | null>(null)
+  const [selectedBarId, setSelectedBarId]   = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all')
   const [toastVisible, setToastVisible]     = useState(false)
 

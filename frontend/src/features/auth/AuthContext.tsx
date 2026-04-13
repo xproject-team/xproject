@@ -9,7 +9,7 @@ const STORAGE_KEY = 'xproject_user_id'
 
 interface AuthContextValue {
   user: MockUser | null
-  login: (userId: number) => void
+  login: (userId: string) => void
   logout: () => void
 }
 
@@ -19,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MockUser | null>(() => {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (stored) {
-      const found = getMockUser(Number(stored))
+      const found = getMockUser(stored)
       return found ?? null
     }
     return null
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user])
 
-  function login(userId: number) {
+  function login(userId: string) {
     const found = getMockUser(userId)
     if (found) setUser(found)
   }

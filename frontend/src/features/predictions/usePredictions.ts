@@ -4,7 +4,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function usePredictions(eventId: number | null) {
+export function usePredictions(eventId: string | null) {
   return useQuery({
     queryKey: ['predictions', eventId],
     queryFn: async () => {

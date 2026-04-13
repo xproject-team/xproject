@@ -38,7 +38,7 @@ export interface Permissions {
   /** Owner only — all bars, all severities including anomaly */
   canViewAllAlerts: boolean
   /** Manager + Bartender: their bar id; Owner + Warehouse: null */
-  assignedBarId: number | null
+  assignedBarId: string | null
 }
 
 export function usePermissions(): Permissions {

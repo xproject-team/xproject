@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useScanHistory(eventId: number | null) {
+export function useScanHistory(eventId: string | null) {
   return useQuery({
     queryKey: ['scan-history', eventId],
     queryFn: async () => {
@@ -15,7 +15,7 @@ export function useScanHistory(eventId: number | null) {
   })
 }
 
-export function useSubmitScan(eventId: number) {
+export function useSubmitScan(eventId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { barcode: string; action: string; quantity: number }) => {

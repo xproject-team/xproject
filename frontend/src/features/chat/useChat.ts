@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useChatHistory(eventId: number | null) {
+export function useChatHistory(eventId: string | null) {
   return useQuery({
     queryKey: ['chat', eventId],
     queryFn: async () => {
@@ -15,7 +15,7 @@ export function useChatHistory(eventId: number | null) {
   })
 }
 
-export function useSendMessage(eventId: number) {
+export function useSendMessage(eventId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (content: string) => {

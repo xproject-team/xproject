@@ -9,7 +9,7 @@
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 export interface UserResponse {
-  id: number
+  id: string
   email: string
   full_name: string
   /** Backend ENUM: owner / manager / staff / bartender  (NOT 'warehouse') */
@@ -27,7 +27,7 @@ export interface TokenResponse {
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 export interface EventResponse {
-  id: number
+  id: string
   name: string
   /** ISO date string e.g. "2026-06-15" */
   date: string
@@ -43,9 +43,9 @@ export interface EventResponse {
 // ─── Bar Inventory (BAR_INVENTORY table) ─────────────────────────────────────
 
 export interface InventoryItemResponse {
-  id: number
-  event_id: number
-  bar_id: number
+  id: string
+  event_id: string
+  bar_id: string
   product_name: string
   initial_stock: number
   current_stock: number
@@ -55,9 +55,9 @@ export interface InventoryItemResponse {
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 
 export interface AlertResponse {
-  id: number
-  event_id: number
-  bar_id?: number
+  id: string
+  event_id: string
+  bar_id?: string
   product_name?: string
   /** Backend ENUM: depletion / anomaly / discrepancy / system */
   alert_type: 'depletion' | 'anomaly' | 'discrepancy' | 'system'
@@ -68,7 +68,7 @@ export interface AlertResponse {
   data?: Record<string, unknown>
   time_to_depletion_min?: number
   is_acknowledged: boolean
-  acknowledged_by?: number
+  acknowledged_by?: string
   acknowledged_at?: string
   created_at?: string
 }
@@ -76,8 +76,8 @@ export interface AlertResponse {
 // ─── Predictions ──────────────────────────────────────────────────────────────
 
 export interface PredictionResponse {
-  id: number
-  event_id: number
+  id: string
+  event_id: string
   /** Backend ENUM: pre_event / live */
   model_type: 'pre_event' | 'live'
   /** Raw JSONB from the ML model — shape varies by model version */
@@ -85,14 +85,14 @@ export interface PredictionResponse {
   confidence_score: number
   generated_at: string
   is_override: boolean
-  override_by?: number
+  override_by?: string
 }
 
 // ─── Anomaly ──────────────────────────────────────────────────────────────────
 
 export interface AnomalyEventResponse {
-  id: number
-  event_id: number
+  id: string
+  event_id: string
   detector: string
   product_name?: string
   score: number
@@ -103,15 +103,15 @@ export interface AnomalyEventResponse {
 // ─── Warehouse Scans (WAREHOUSE_SCANS table) ─────────────────────────────────
 
 export interface ScanEventResponse {
-  id: number
-  event_id: number
+  id: string
+  event_id: string
   barcode_raw: string
   resolved_product_name?: string
   /** Backend ENUM: intake / dispatch */
   scan_type: 'intake' | 'dispatch'
   quantity: number
-  destination_bar_id?: number
-  scanned_by?: number
+  destination_bar_id?: string
+  scanned_by?: string
   notes?: string
   created_at?: string
 }
@@ -119,8 +119,8 @@ export interface ScanEventResponse {
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 export interface ReportResponse {
-  id: number
-  event_id: number
+  id: string
+  event_id: string
   title: string
   narrative?: string
   pdf_path?: string
@@ -130,9 +130,9 @@ export interface ReportResponse {
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
 export interface ChatMessageResponse {
-  id: number
-  event_id: number
-  user_id: number
+  id: string
+  event_id: string
+  user_id: string
   role: 'user' | 'assistant'
   content: string
   created_at?: string

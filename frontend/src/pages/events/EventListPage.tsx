@@ -5,7 +5,7 @@ import type { Event } from '@/lib/mockData'
 // ─── Local extension — completed past event ───────────────────────────────────
 
 const COMPLETED_EVENT: Event = {
-  id: 4,
+  id: 'evt-4',
   name: 'Spring Festival 2025',
   date: '2025-04-12',
   status: 'completed',

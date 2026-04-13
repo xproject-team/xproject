@@ -144,8 +144,8 @@ const SEVERITY_CFG = {
 interface AlertSidebarProps {
   open: boolean
   onToggle: () => void
-  acknowledged: Set<number>
-  onAcknowledge: (id: number) => void
+  acknowledged: Set<string>
+  onAcknowledge: (id: string) => void
 }
 
 function AlertSidebar({ open, onToggle, acknowledged, onAcknowledge }: AlertSidebarProps) {
@@ -271,7 +271,7 @@ export default function DashboardPage() {
   const [elapsed, setElapsed]           = useState(START_ELAPSED)
   const [sidebarOpen, setSidebarOpen]   = useState(true)
   const [selectedBar, setSelectedBar]   = useState<Bar | null>(null)
-  const [acknowledged, setAcknowledged] = useState<Set<number>>(
+  const [acknowledged, setAcknowledged] = useState<Set<string>>(
     () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
   )
 
@@ -286,7 +286,7 @@ export default function DashboardPage() {
     return () => clearInterval(id)
   }, [])
 
-  const handleAcknowledge = useCallback((id: number) => {
+  const handleAcknowledge = useCallback((id: string) => {
     setAcknowledged((prev) => new Set(prev).add(id))
   }, [])
 

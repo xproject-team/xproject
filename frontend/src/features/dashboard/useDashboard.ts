@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useDashboard(eventId: number | null) {
+export function useDashboard(eventId: string | null) {
   return useQuery({
     queryKey: ['dashboard', eventId],
     queryFn: async () => {

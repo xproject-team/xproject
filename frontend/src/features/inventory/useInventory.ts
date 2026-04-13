@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { InventoryItemResponse } from '@/lib/types'
 
-export function useInventory(eventId: number | null, barId?: number) {
+export function useInventory(eventId: string | null, barId?: string) {
   return useQuery<InventoryItemResponse[]>({
     queryKey: ['inventory', eventId, barId],
     queryFn: async () => {

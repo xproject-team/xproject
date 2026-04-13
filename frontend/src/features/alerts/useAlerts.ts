@@ -5,7 +5,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useAlerts(eventId: number | null) {
+export function useAlerts(eventId: string | null) {
   return useQuery({
     queryKey: ['alerts', eventId],
     queryFn: async () => {

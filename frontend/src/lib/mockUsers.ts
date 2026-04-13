@@ -10,39 +10,39 @@
 export type UserRole = 'owner' | 'manager' | 'bartender' | 'warehouse'
 
 export interface MockUser {
-  id: number
+  id: string
   /** Role label — used by Sidebar / TopBar for display. No personal names. */
   name: string
   role: UserRole
   color: string
-  assignedBarId?: number
+  assignedBarId?: string
   assignedBarName?: string
 }
 
 export const MOCK_USERS: MockUser[] = [
-  { id: 1, name: 'Owner',           role: 'owner',     color: '#1ABC9C' },
-  { id: 2, name: 'Manager',         role: 'manager',   color: '#3498DB' },
-  { id: 3, name: 'Warehouse Staff', role: 'warehouse', color: '#D69E2E' },
-  { id: 4, name: 'Bartender',       role: 'bartender', color: '#E74C3C' },
+  { id: 'usr-1', name: 'Owner',           role: 'owner',     color: '#1ABC9C' },
+  { id: 'usr-2', name: 'Manager',         role: 'manager',   color: '#3498DB' },
+  { id: 'usr-3', name: 'Warehouse Staff', role: 'warehouse', color: '#D69E2E' },
+  { id: 'usr-4', name: 'Bartender',       role: 'bartender', color: '#E74C3C' },
 ]
 
 export const BARS = [
-  { id: 1, name: 'Main Bar' },
-  { id: 2, name: 'VIP Lounge' },
-  { id: 3, name: 'Pool Bar' },
-  { id: 4, name: 'DJ Booth' },
+  { id: 'bar-1', name: 'Main Bar' },
+  { id: 'bar-2', name: 'VIP Lounge' },
+  { id: 'bar-3', name: 'Pool Bar' },
+  { id: 'bar-4', name: 'DJ Booth' },
 ] as const
 
 // ─── Pending bar assignment ───────────────────────────────────────────────────
 // LoginPage sets this before calling login(userId); getMockUser consumes it once.
 
-let _pendingBar: { barId: number; barName: string } | null = null
+let _pendingBar: { barId: string; barName: string } | null = null
 
-export function setPendingBar(barId: number, barName: string): void {
+export function setPendingBar(barId: string, barName: string): void {
   _pendingBar = { barId, barName }
 }
 
-export function getMockUser(id: number): MockUser | undefined {
+export function getMockUser(id: string): MockUser | undefined {
   const base = MOCK_USERS.find((u) => u.id === id)
   if (!base) return undefined
 

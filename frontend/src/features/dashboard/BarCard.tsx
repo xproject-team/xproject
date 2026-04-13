@@ -2,7 +2,7 @@ import type { Bar } from '@/lib/mockData'
 
 interface BarCardProps {
   bar: Bar
-  onClick: (barId: number) => void
+  onClick: (barId: string) => void
 }
 
 const STATUS_CFG: Record<Bar['status'], { dot: string; label: string; labelColor: string }> = {

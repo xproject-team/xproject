@@ -95,7 +95,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { login } = useAuth()
 
-  const [selectedId, setSelectedId] = useState<number>(1)
+  const [selectedId, setSelectedId] = useState<string>('usr-1')
   const [selectedBarId, setSelectedBarId] = useState<string>('')
   const [barError, setBarError] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -103,7 +103,7 @@ export default function LoginPage() {
   const selectedUser = MOCK_USERS.find((u) => u.id === selectedId)!
   const needsBar = selectedUser.role === 'manager' || selectedUser.role === 'bartender'
 
-  function handleRoleSelect(id: number) {
+  function handleRoleSelect(id: string) {
     setSelectedId(id)
     setSelectedBarId('')
     setBarError(false)
@@ -122,7 +122,7 @@ export default function LoginPage() {
     await new Promise((r) => setTimeout(r, 350))
 
     if (needsBar && selectedBarId) {
-      const bar = BARS.find((b) => b.id === Number(selectedBarId))
+      const bar = BARS.find((b) => b.id === selectedBarId)
       if (bar) setPendingBar(bar.id, bar.name)
     }
 

@@ -20,7 +20,7 @@ const ROLE_LABELS: Record<MockUser['role'], string> = {
 export function LoginForm() {
   const navigate = useNavigate()
   const { login } = useAuth()
-  const [selectedId, setSelectedId] = useState<number>(MOCK_USERS[0].id)
+  const [selectedId, setSelectedId] = useState<string>(MOCK_USERS[0].id)
   const [loading, setLoading] = useState(false)
 
   const selectedUser = MOCK_USERS.find((u) => u.id === selectedId)!
