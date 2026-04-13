@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.models import Tenant
+from app.modules.auth.models import User
+from app.modules.auth.router import get_current_user
 from app.modules.events.schemas import EventCreate, EventResponse
 from app.modules.events.service import EventService
 
@@ -16,17 +17,10 @@ from app.modules.events.service import EventService
 # TODO(auth): replace with Clerk-authenticated user → tenant_id lookup.
 # For Phase 5, every request is resolved as Noma Group by slug.
 async def get_current_tenant_id(
-    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> UUID:
-    """Resolve the current tenant. Hardcoded to 'noma-group' until auth ships."""
-    result = await db.execute(select(Tenant).where(Tenant.slug == "noma-group"))
-    tenant = result.scalar_one_or_none()
-    if tenant is None:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Seed tenant 'noma-group' not found. Run: python -m app.scripts.seed",
-        )
-    return tenant.id
+    """Return the authenticated user's tenant_id (from JWT claims)."""
+    return current_user.tenant_id
 
 
 # ─── Router ──────────────────────────────────────────────────────────────

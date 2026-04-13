@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from enum import Enum as PyEnum
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Enum, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -65,4 +65,11 @@ class User(TenantScopedModel):
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True,
+    )
+    # Bar assignment (Manager / Bartender belong to ONE bar; Owner / Warehouse have NULL)
+    bar_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("bars.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
