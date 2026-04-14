@@ -198,6 +198,115 @@ class ChatService:
 
         return message
 
+    async def edit_message(
+        self,
+        message_id: UUID,
+        user_id:    UUID,
+        tenant_id:  UUID,
+        new_body:   str,
+    ) -> ChatMessage:
+        """Edit a message. Only the original sender may edit."""
+        stmt = select(ChatMessage).where(
+            and_(
+                ChatMessage.id == message_id,
+                ChatMessage.tenant_id == tenant_id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        message = result.scalar_one_or_none()
+
+        if message is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found",
+            )
+        if message.sender_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only edit your own messages",
+            )
+
+        message.body = new_body
+        message.edited_at = datetime.now(timezone.utc)
+        await self.db.commit()
+        await self.db.refresh(message)
+
+        # Broadcast edit event
+        try:
+            from app.realtime.websocket import manager as ws_manager
+
+            sender_stmt = select(User.full_name).where(User.id == message.sender_id)
+            sender_name = (await self.db.execute(sender_stmt)).scalar_one_or_none()
+
+            payload = {
+                "type": "message_edited",
+                "channel_id": str(message.channel_id),
+                "message": {
+                    "id":          str(message.id),
+                    "channel_id":  str(message.channel_id),
+                    "sender_id":   str(message.sender_id) if message.sender_id else None,
+                    "sender_name": sender_name,
+                    "body":        message.body,
+                    "created_at":  message.created_at.isoformat(),
+                    "edited_at":   message.edited_at.isoformat() if message.edited_at else None,
+                },
+            }
+            await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
+        except Exception:
+            pass
+
+        return message
+
+    async def delete_message(
+        self,
+        message_id: UUID,
+        user_id:    UUID,
+        tenant_id:  UUID,
+    ) -> UUID:
+        """Delete a message. Only the original sender may delete.
+
+        Returns the channel_id of the deleted message.
+        """
+        stmt = select(ChatMessage).where(
+            and_(
+                ChatMessage.id == message_id,
+                ChatMessage.tenant_id == tenant_id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        message = result.scalar_one_or_none()
+
+        if message is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Message not found",
+            )
+        if message.sender_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only delete your own messages",
+            )
+
+        channel_id     = message.channel_id
+        message_id_str = str(message.id)
+
+        await self.db.delete(message)
+        await self.db.commit()
+
+        # Broadcast delete event
+        try:
+            from app.realtime.websocket import manager as ws_manager
+            payload = {
+                "type":       "message_deleted",
+                "channel_id": str(channel_id),
+                "message_id": message_id_str,
+            }
+            await ws_manager.broadcast(f"chat:{channel_id}", json.dumps(payload))
+        except Exception:
+            pass
+
+        return channel_id
+
     async def mark_channel_read(
         self,
         channel_id: UUID,

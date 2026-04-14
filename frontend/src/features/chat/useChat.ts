@@ -124,3 +124,80 @@ export function useMarkChannelRead(channelId: string) {
     },
   })
 }
+/** Edit an existing message (sender only). Optimistically updates cache. */
+export function useEditMessage(channelId: string) {
+  const qc = useQueryClient()
+
+  return useMutation<
+    MessageResponse,
+    unknown,
+    { messageId: string; body: string },
+    { previous?: MessageResponse[] }
+  >({
+    mutationFn: async ({ messageId, body }) => {
+      const res = await api.patch<MessageResponse>(
+        `/chat/messages/${messageId}`,
+        { body },
+      )
+      return res.data
+    },
+    // Optimistically update the cache BEFORE the request completes.
+    onMutate: async ({ messageId, body }) => {
+      await qc.cancelQueries({ queryKey: chatKeys.messages(channelId) })
+      const previous = qc.getQueryData<MessageResponse[]>(chatKeys.messages(channelId))
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(channelId),
+        (old) =>
+          old?.map((m) =>
+            m.id === messageId
+              ? { ...m, body, edited_at: new Date().toISOString() }
+              : m,
+          ) ?? [],
+      )
+      return { previous }
+    },
+    // On error: roll back to the snapshot
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        qc.setQueryData(chatKeys.messages(channelId), ctx.previous)
+      }
+    },
+    // On success: sync with server's authoritative response (fixes clock drift, etc.)
+    onSuccess: (updated) => {
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(channelId),
+        (old) => old?.map((m) => (m.id === updated.id ? updated : m)) ?? [],
+      )
+    },
+  })
+}
+
+/** Delete a message (sender only). Removes from cache. */
+export function useDeleteMessage(channelId: string) {
+  const qc = useQueryClient()
+
+  return useMutation<void, unknown, string, { previous?: MessageResponse[] }>({
+    mutationFn: async (messageId: string) => {
+      await api.delete(`/chat/messages/${messageId}`)
+    },
+    // Optimistically remove from cache immediately
+    onMutate: async (messageId) => {
+      await qc.cancelQueries({ queryKey: chatKeys.messages(channelId) })
+      const previous = qc.getQueryData<MessageResponse[]>(chatKeys.messages(channelId))
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(channelId),
+        (old) => old?.filter((m) => m.id !== messageId) ?? [],
+      )
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        qc.setQueryData(chatKeys.messages(channelId), ctx.previous)
+      }
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: chatKeys.channels() })
+    },
+  })
+}
+

@@ -8,7 +8,7 @@
  * Usage: call once on the Chat page, passing the active channel id. One hook,
  * one socket, handles all channel switches for the page's lifetime.
  */
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { getToken } from '@/lib/auth'
@@ -26,6 +26,7 @@ interface IncomingEnvelope {
   type:       string
   channel_id: string
   message?:   MessageResponse
+  message_id?: string            // only present on 'message_deleted'
 }
 
 
@@ -36,8 +37,14 @@ export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketA
   const token = getToken()
   const url   = token ? `/api/v1/ws/chat?token=${encodeURIComponent(token)}` : null
 
-  // Message handler — dispatches based on server envelope type
-  function handleMessage(raw: string) {
+  // Store the message handler in a ref so useWebSocket sees a stable
+  // reference and doesn't tear down+recreate the socket on every render.
+  // This is THE critical fix — without it, React re-renders spawn new
+  // WebSocket connections indefinitely, exhausting Chrome's socket pool
+  // and causing massive request delays.
+  const handlerRef = useRef<(raw: string) => void>(() => {})
+
+  handlerRef.current = function handleMessage(raw: string) {
     let env: IncomingEnvelope
     try {
       env = JSON.parse(raw)
@@ -45,13 +52,13 @@ export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketA
       return                                           // malformed — ignore
     }
 
+    // ─── New message ─────────────────────────────────────────────
     if (env.type === 'message' && env.message) {
       const msg = env.message
 
       // Skip if we sent it — usePostMessage already put it in the cache
       if (msg.sender_id === currentUserId) return
 
-      // Prepend to cache (newest-first ordering, same as REST)
       qc.setQueryData<MessageResponse[]>(
         chatKeys.messages(env.channel_id),
         (old) => {
@@ -60,13 +67,40 @@ export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketA
           return [msg, ...old]
         },
       )
-
-      // Refresh channel list so unread_count + last_message_at update
       qc.invalidateQueries({ queryKey: chatKeys.channels() })
+      return
+    }
+
+    // ─── Edit ────────────────────────────────────────────────────
+    if (env.type === 'message_edited' && env.message) {
+      const msg = env.message
+
+      // Skip our own edits — useEditMessage already updated the cache
+      if (msg.sender_id === currentUserId) return
+
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(env.channel_id),
+        (old) => old?.map((m) => (m.id === msg.id ? msg : m)) ?? [],
+      )
+      return
+    }
+
+    // ─── Delete ──────────────────────────────────────────────────
+    if (env.type === 'message_deleted' && env.message_id) {
+      // Remove from the cache for every client that sees the message.
+      // (No sender-skip: deletions are broadcast to all, including the
+      // deleter who already removed it — filter is idempotent either way.)
+      qc.setQueryData<MessageResponse[]>(
+        chatKeys.messages(env.channel_id),
+        (old) => old?.filter((m) => m.id !== env.message_id) ?? [],
+      )
+      qc.invalidateQueries({ queryKey: chatKeys.channels() })
+      return
     }
   }
 
-  const { isConnected, send } = useWebSocket(url, { onMessage: handleMessage })
+  const stableHandler = useCallback((raw: string) => handlerRef.current(raw), [])
+  const { isConnected, send } = useWebSocket(url, { onMessage: stableHandler })
 
   // Subscribe/unsubscribe loop when channel changes OR connection state changes
   // - On disconnect: reset the ref so we re-subscribe after reconnection

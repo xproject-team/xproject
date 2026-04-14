@@ -118,6 +118,56 @@ async def post_message(
     )
 
 
+# ─── Edit / Delete ────────────────────────────────────────────────────
+
+
+@router.patch(
+    "/messages/{message_id}",
+    response_model=MessageResponse,
+)
+async def edit_message(
+    message_id:   UUID,
+    payload:      MessageCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Edit a message. Only the original sender may edit their own messages."""
+    service = ChatService(db)
+    message = await service.edit_message(
+        message_id=message_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        new_body=payload.body,
+    )
+    return MessageResponse(
+        id=str(message.id),
+        channel_id=str(message.channel_id),
+        sender_id=str(message.sender_id) if message.sender_id else None,
+        sender_name=current_user.full_name,
+        body=message.body,
+        created_at=message.created_at,
+        edited_at=message.edited_at,
+    )
+
+
+@router.delete(
+    "/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_message(
+    message_id:   UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Delete a message. Only the original sender may delete their own messages."""
+    service = ChatService(db)
+    await service.delete_message(
+        message_id=message_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+    )
+
+
 # ─── Read state ───────────────────────────────────────────────────────
 
 
