@@ -15,6 +15,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     DateTime,
     ForeignKey,
     String,
@@ -141,4 +142,33 @@ class ChatMention(TenantScopedModel):
     read_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+
+class ChatAttachment(TenantScopedModel):
+    """File attachment metadata. Files live in S3/MinIO; this row is the link.
+
+    message_id is nullable so we can create the attachment row BEFORE the
+    message exists (presign-then-attach flow). Orphan attachments (still
+    null after some TTL) can be GC'd separately.
+    """
+
+    __tablename__ = "chat_attachments"
+    __table_args__ = (
+        UniqueConstraint("object_key", name="uq_chat_attachments_object_key"),
+    )
+
+    message_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("chat_messages.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    uploaded_by: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    object_key:        Mapped[str]   = mapped_column(String(512), nullable=False)
+    original_filename: Mapped[str]   = mapped_column(String(255), nullable=False)
+    content_type:      Mapped[str]   = mapped_column(String(127), nullable=False)
+    size_bytes:        Mapped[int]   = mapped_column(BigInteger,  nullable=False)
 

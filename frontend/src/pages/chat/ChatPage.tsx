@@ -24,6 +24,8 @@ import {
 } from '@/features/chat/useChat'
 import { useAuth } from '@/features/auth/useAuth'
 import { useChatSocket } from '@/features/chat/useChatSocket'
+import { AttachmentPicker } from '@/features/chat/AttachmentPicker'
+import { useAttachmentUpload } from '@/features/chat/useAttachments'
 
 
 /**
@@ -200,6 +202,7 @@ function ChannelView({
   const deleteMsg = useDeleteMessage(channelId)
   const markRead = useMarkChannelRead(channelId)
   useChatSocket({ activeChannelId: channelId, currentUserId, allChannelIds })
+  const attachments = useAttachmentUpload(channelId)
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -219,10 +222,12 @@ function ChannelView({
   async function handleSend(e: React.FormEvent) {
     e.preventDefault()
     const body = draft.trim()
-    if (!body) return
+    const att_ids = attachments.pending.map((a) => a.id)
+    if (!body && att_ids.length === 0) return
     setDraft('')
     try {
-      await postMsg.mutateAsync(body)
+      await postMsg.mutateAsync({ body: body || '(file)', attachment_ids: att_ids })
+      attachments.clear()
     } catch {
       // If it fails, restore the draft so the user can retry
       setDraft(body)
@@ -269,6 +274,14 @@ function ChannelView({
         onSubmit={handleSend}
         className="border-t border-[#E2E8F0] px-6 py-3 flex items-center gap-3 bg-white"
       >
+        <AttachmentPicker
+          channelId={channelId}
+          pending={attachments.pending}
+          uploading={attachments.uploading}
+          error={attachments.error}
+          onPick={attachments.upload}
+          onRemove={attachments.remove}
+        />
         <input
           type="text"
           value={draft}
@@ -279,7 +292,7 @@ function ChannelView({
         />
         <button
           type="submit"
-          disabled={!draft.trim() || postMsg.isPending}
+          disabled={(!draft.trim() && attachments.pending.length === 0) || postMsg.isPending}
           className="bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-50 text-white font-semibold px-5 py-2.5 rounded-xl text-sm shadow-sm transition-colors"
         >
           {postMsg.isPending ? 'Sending…' : 'Send'}
@@ -413,6 +426,47 @@ function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, edit
               ].join(' ')}
             >
               {renderBody(message.body, currentUserName)}
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {message.attachments.map((att) => (
+                    <a
+                      key={att.id}
+                      href={att.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download={att.original_filename}
+                      className={[
+                        'flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors no-underline',
+                        isOwn
+                          ? 'bg-[#174a78] hover:bg-[#143f66] text-white'
+                          : 'bg-white border border-[#E2E8F0] hover:bg-[#F7FAFC] text-[#1A202C]',
+                      ].join(' ')}
+                    >
+                      {att.content_type.startsWith('image/') ? (
+                        <img
+                          src={att.download_url}
+                          alt={att.original_filename}
+                          className="max-w-[200px] max-h-[200px] rounded"
+                        />
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span className="font-medium truncate max-w-[200px]">{att.original_filename}</span>
+                          <span className={isOwn ? 'opacity-70' : 'text-[#A0AEC0]'}>
+                            {att.size_bytes < 1024
+                              ? `${att.size_bytes} B`
+                              : att.size_bytes < 1024 * 1024
+                              ? `${(att.size_bytes / 1024).toFixed(1)} KB`
+                              : `${(att.size_bytes / (1024 * 1024)).toFixed(1)} MB`}
+                          </span>
+                        </>
+                      )}
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

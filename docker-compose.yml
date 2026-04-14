@@ -32,6 +32,38 @@ services:
       timeout: 3s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     xproject
+      MINIO_ROOT_PASSWORD: xproject-dev-secret
+    ports:
+      - "9000:9000"      # S3 API
+      - "9001:9001"      # MinIO web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    # One-shot job: creates the 'xproject-attachments' bucket on startup.
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 xproject xproject-dev-secret;
+      mc mb --ignore-existing local/xproject-attachments;
+      mc anonymous set download local/xproject-attachments;
+      echo 'Bucket ready';
+      "
+
   api:
     build:
       context: ./backend
@@ -92,3 +124,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

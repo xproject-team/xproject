@@ -26,6 +26,15 @@ export interface ChannelResponse {
   last_message_at: string | null       // ISO datetime
 }
 
+export interface AttachmentResponse {
+  id:                string
+  object_key:        string
+  download_url:      string
+  original_filename: string
+  content_type:      string
+  size_bytes:        number
+}
+
 export interface MessageResponse {
   id:          string
   channel_id:  string
@@ -34,6 +43,7 @@ export interface MessageResponse {
   body:        string
   created_at:  string                   // ISO datetime
   edited_at:   string | null
+  attachments: AttachmentResponse[]
 }
 
 // ─── Query keys ───────────────────────────────────────────────────────
@@ -83,22 +93,23 @@ export function useChannelMessages(
 /** Post a new message. Optimistically prepends to the cache, then refetches. */
 export function usePostMessage(channelId: string) {
   const qc = useQueryClient()
-
-  return useMutation<MessageResponse, unknown, string>({
-    mutationFn: async (body: string) => {
+  return useMutation<
+    MessageResponse,
+    unknown,
+    { body: string; attachment_ids?: string[] }
+  >({
+    mutationFn: async ({ body, attachment_ids = [] }) => {
       const res = await api.post<MessageResponse>(
         `/chat/channels/${channelId}/messages`,
-        { body },
+        { body, attachment_ids },
       )
       return res.data
     },
     onSuccess: (newMsg) => {
-      // Append to message cache (newest-first order)
       qc.setQueryData<MessageResponse[]>(
         chatKeys.messages(channelId),
         (old) => (old ? [newMsg, ...old] : [newMsg]),
       )
-      // Refresh channel list (last_message_at changed, unread is 0 for sender)
       qc.invalidateQueries({ queryKey: chatKeys.channels() })
     },
   })

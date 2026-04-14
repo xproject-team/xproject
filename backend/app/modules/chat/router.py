@@ -16,16 +16,39 @@ from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
 from app.modules.chat.schemas import (
+    AttachmentPresignRequest,
+    AttachmentPresignResponse,
+    AttachmentResponse,
     ChannelResponse,
     MentionResponse,
     MessageCreate,
     MessageResponse,
 )
+from app.core import storage as _storage
 from app.modules.chat.service import ChatService
 
 
 router = APIRouter()
 
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────
+
+
+def _hydrate_attachments(atts) -> list[AttachmentResponse]:
+    """Convert ChatAttachment ORM rows to AttachmentResponse with download URLs."""
+    from app.core import storage as _storage
+    return [
+        AttachmentResponse(
+            id=str(a.id),
+            object_key=a.object_key,
+            download_url=_storage.public_download_url(a.object_key),
+            original_filename=a.original_filename,
+            content_type=a.content_type,
+            size_bytes=a.size_bytes,
+        )
+        for a in atts
+    ]
 
 # ─── Channels ─────────────────────────────────────────────────────────
 
@@ -75,6 +98,19 @@ async def list_messages(
         tenant_id=current_user.tenant_id,
         limit=limit,
     )
+    # Hydrate attachments for all messages in one batched query
+    msg_ids = [row["message"].id for row in rows]
+    atts_by_msg: dict = {mid: [] for mid in msg_ids}
+    if msg_ids:
+        from app.modules.chat.models import ChatAttachment
+        from sqlalchemy import select as sa_select
+        atts_stmt = sa_select(ChatAttachment).where(
+            ChatAttachment.message_id.in_(msg_ids),
+            ChatAttachment.tenant_id == current_user.tenant_id,
+        )
+        for att in (await db.execute(atts_stmt)).scalars().all():
+            atts_by_msg.setdefault(att.message_id, []).append(att)
+
     return [
         MessageResponse(
             id=str(row["message"].id),
@@ -84,6 +120,7 @@ async def list_messages(
             body=row["message"].body,
             created_at=row["message"].created_at,
             edited_at=row["message"].edited_at,
+            attachments=_hydrate_attachments(atts_by_msg.get(row["message"].id, [])),
         )
         for row in rows
     ]
@@ -102,11 +139,17 @@ async def post_message(
 ) -> MessageResponse:
     """Post a new message to a channel. Returns the created message."""
     service = ChatService(db)
+    from uuid import UUID as _UUID
     message = await service.post_message(
         channel_id=channel_id,
         sender_id=current_user.id,
         tenant_id=current_user.tenant_id,
         body=payload.body,
+        attachment_ids=[_UUID(aid) for aid in payload.attachment_ids],
+    )
+    atts = await service.get_message_attachments(
+        message_id=message.id,
+        tenant_id=current_user.tenant_id,
     )
     return MessageResponse(
         id=str(message.id),
@@ -116,6 +159,7 @@ async def post_message(
         body=message.body,
         created_at=message.created_at,
         edited_at=message.edited_at,
+        attachments=_hydrate_attachments(atts),
     )
 
 
@@ -140,6 +184,10 @@ async def edit_message(
         tenant_id=current_user.tenant_id,
         new_body=payload.body,
     )
+    atts = await service.get_message_attachments(
+        message_id=message.id,
+        tenant_id=current_user.tenant_id,
+    )
     return MessageResponse(
         id=str(message.id),
         channel_id=str(message.channel_id),
@@ -148,6 +196,7 @@ async def edit_message(
         body=message.body,
         created_at=message.created_at,
         edited_at=message.edited_at,
+        attachments=_hydrate_attachments(atts),
     )
 
 
@@ -233,4 +282,36 @@ async def mark_mention_read(
         mention_id=mention_id,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
+    )
+# ─── Attachments ──────────────────────────────────────────────────────
+
+
+@router.post(
+    "/attachments/presign",
+    response_model=AttachmentPresignResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def presign_attachment(
+    payload:      AttachmentPresignRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+) -> AttachmentPresignResponse:
+    """Create an upload slot. Returns the URL the client uses to PUT the file
+    directly to MinIO/S3. After the upload completes, include the attachment_id
+    in the message body when posting via POST /chat/channels/{id}/messages.
+    """
+    service = ChatService(db)
+    attachment, upload_url = await service.create_attachment_slot(
+        channel_id   = UUID(payload.channel_id),
+        user_id      = current_user.id,
+        tenant_id    = current_user.tenant_id,
+        filename     = payload.filename,
+        content_type = payload.content_type,
+        size_bytes   = payload.size_bytes,
+    )
+    return AttachmentPresignResponse(
+        attachment_id      = str(attachment.id),
+        upload_url         = upload_url,
+        object_key         = attachment.object_key,
+        expires_in_seconds = _storage.PRESIGN_UPLOAD_EXPIRY_SEC,
     )

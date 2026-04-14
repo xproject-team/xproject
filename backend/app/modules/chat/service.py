@@ -8,8 +8,9 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User
-from app.modules.chat.models import Channel, ChannelMember, ChatMention, ChatMessage
+from app.modules.chat.models import ChatAttachment, Channel, ChannelMember, ChatMention, ChatMessage
 from app.modules.chat.mention_parser import parse_mentions
+from app.core import storage
 import json
 
 
@@ -151,6 +152,7 @@ class ChatService:
         sender_id: UUID,
         tenant_id: UUID,
         body: str,
+        attachment_ids: list[UUID] | None = None,
     ) -> ChatMessage:
         """Post a new message to a channel.
 
@@ -167,6 +169,27 @@ class ChatService:
         self.db.add(message)
         await self.db.commit()
         await self.db.refresh(message)
+
+        # Link attachments to this message (defense-in-depth: only the
+        # uploader can attach, only in the same tenant, only unlinked ones)
+        if attachment_ids:
+            from sqlalchemy import update as sa_update
+            atts_stmt = select(ChatAttachment).where(
+                and_(
+                    ChatAttachment.id.in_(attachment_ids),
+                    ChatAttachment.tenant_id == tenant_id,
+                    ChatAttachment.uploaded_by == sender_id,
+                    ChatAttachment.message_id.is_(None),
+                )
+            )
+            valid_atts = list((await self.db.execute(atts_stmt)).scalars().all())
+            if valid_atts:
+                await self.db.execute(
+                    sa_update(ChatAttachment)
+                    .where(ChatAttachment.id.in_([a.id for a in valid_atts]))
+                    .values(message_id=message.id)
+                )
+                await self.db.commit()
 
         # ─── Resolve @mentions ──────────────────────────────────────────
         # Fetch all users in the same tenant (candidate pool for the parser).
@@ -212,6 +235,24 @@ class ChatService:
                 sender_stmt = select(User.full_name).where(User.id == message.sender_id)
                 sender_name = (await self.db.execute(sender_stmt)).scalar_one_or_none()
 
+            # Build attachment payload
+            from app.core import storage as _storage
+            atts_for_payload = []
+            if attachment_ids:
+                atts_stmt = select(ChatAttachment).where(
+                    ChatAttachment.message_id == message.id,
+                    ChatAttachment.tenant_id == tenant_id,
+                )
+                for a in (await self.db.execute(atts_stmt)).scalars().all():
+                    atts_for_payload.append({
+                        "id":                str(a.id),
+                        "object_key":        a.object_key,
+                        "download_url":      _storage.public_download_url(a.object_key),
+                        "original_filename": a.original_filename,
+                        "content_type":      a.content_type,
+                        "size_bytes":        a.size_bytes,
+                    })
+
             payload = {
                 "type": "message",
                 "channel_id": str(message.channel_id),
@@ -223,6 +264,7 @@ class ChatService:
                     "body":        message.body,
                     "created_at":  message.created_at.isoformat(),
                     "edited_at":   message.edited_at.isoformat() if message.edited_at else None,
+                    "attachments": atts_for_payload,
                 },
             }
             await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
@@ -244,6 +286,75 @@ class ChatService:
             pass  # broadcast is best-effort; DB is source of truth
 
         return message
+
+    async def create_attachment_slot(
+        self,
+        channel_id:   UUID,
+        user_id:      UUID,
+        tenant_id:    UUID,
+        filename:     str,
+        content_type: str,
+        size_bytes:   int,
+    ) -> tuple[ChatAttachment, str]:
+        """Create an upload slot and return (attachment_row, presigned_upload_url).
+
+        Verifies the user is a member of the channel before issuing the URL.
+        The attachment row is created NOW (with message_id=None); the message
+        is created later when the user actually sends it.
+        """
+        # Membership check — only members of the channel can attach
+        await self._ensure_member(
+            channel_id=channel_id,
+            user_id=user_id,
+            tenant_id=tenant_id,
+        )
+
+        # Size cap — 25MB. Keeps storage costs sane and prevents silly abuse.
+        # Larger files would need chunked uploads (out of MVP scope).
+        MAX_SIZE_BYTES = 25 * 1024 * 1024
+        if size_bytes > MAX_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large. Max {MAX_SIZE_BYTES // (1024*1024)}MB.",
+            )
+
+        # Generate the object key + presigned URL
+        object_key = storage.make_object_key(
+            tenant_id=tenant_id,
+            channel_id=channel_id,
+            original_filename=filename,
+        )
+        upload_url = storage.presigned_upload_url(object_key, content_type)
+
+        # Persist the attachment row (no message_id yet)
+        att = ChatAttachment(
+            tenant_id=tenant_id,
+            uploaded_by=user_id,
+            object_key=object_key,
+            original_filename=filename,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            message_id=None,                     # set later by post_message
+        )
+        self.db.add(att)
+        await self.db.commit()
+        await self.db.refresh(att)
+
+        return att, upload_url
+
+    async def get_message_attachments(
+        self,
+        message_id: UUID,
+        tenant_id:  UUID,
+    ) -> list[ChatAttachment]:
+        """Fetch all attachments for a message."""
+        stmt = select(ChatAttachment).where(
+            and_(
+                ChatAttachment.message_id == message_id,
+                ChatAttachment.tenant_id == tenant_id,
+            )
+        )
+        return list((await self.db.execute(stmt)).scalars().all())
 
     async def edit_message(
         self,
@@ -285,6 +396,23 @@ class ChatService:
             sender_stmt = select(User.full_name).where(User.id == message.sender_id)
             sender_name = (await self.db.execute(sender_stmt)).scalar_one_or_none()
 
+            # Re-fetch attachments for the edited message
+            from app.core import storage as _storage_e
+            atts_e_stmt = select(ChatAttachment).where(
+                ChatAttachment.message_id == message.id,
+                ChatAttachment.tenant_id == tenant_id,
+            )
+            edit_atts = []
+            for a in (await self.db.execute(atts_e_stmt)).scalars().all():
+                edit_atts.append({
+                    "id":                str(a.id),
+                    "object_key":        a.object_key,
+                    "download_url":      _storage_e.public_download_url(a.object_key),
+                    "original_filename": a.original_filename,
+                    "content_type":      a.content_type,
+                    "size_bytes":        a.size_bytes,
+                })
+
             payload = {
                 "type": "message_edited",
                 "channel_id": str(message.channel_id),
@@ -296,6 +424,7 @@ class ChatService:
                     "body":        message.body,
                     "created_at":  message.created_at.isoformat(),
                     "edited_at":   message.edited_at.isoformat() if message.edited_at else None,
+                    "attachments": edit_atts,
                 },
             }
             await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
