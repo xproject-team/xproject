@@ -85,6 +85,14 @@ export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketA
       return
     }
 
+    // ─── Mention (user-scoped, fired regardless of channel) ─────
+    if (env.type === 'mention') {
+      // Drop both 'mentions' caches so the bell badge re-fetches fresh.
+      // Cheap (1 GET ~5KB), and the user expects an instant badge update.
+      qc.invalidateQueries({ queryKey: ['mentions'] })
+      return
+    }
+
     // ─── Delete ──────────────────────────────────────────────────
     if (env.type === 'message_deleted' && env.message_id) {
       // Remove from the cache for every client that sees the message.

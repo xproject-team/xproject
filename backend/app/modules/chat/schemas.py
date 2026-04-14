@@ -45,3 +45,17 @@ class ChannelResponse(BaseModel):
     name: str
     unread_count: int = 0
     last_message_at: datetime | None = None
+class MentionResponse(BaseModel):
+    """A single mention for the bell/notifications dropdown."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id:          str
+    channel_id:  str
+    channel_name: str
+    message_id:  str
+    sender_name: str | None
+    body:        str
+    created_at:  datetime
+    read_at:     datetime | None
+

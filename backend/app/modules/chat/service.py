@@ -8,7 +8,8 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User
-from app.modules.chat.models import Channel, ChannelMember, ChatMessage
+from app.modules.chat.models import Channel, ChannelMember, ChatMention, ChatMessage
+from app.modules.chat.mention_parser import parse_mentions
 import json
 
 
@@ -167,6 +168,38 @@ class ChatService:
         await self.db.commit()
         await self.db.refresh(message)
 
+        # ─── Resolve @mentions ──────────────────────────────────────────
+        # Fetch all users in the same tenant (candidate pool for the parser).
+        # Scales fine for MVP — Noma Group has ~4 users. For larger tenants
+        # we'd add a per-channel-members scoping instead.
+        mentioned_user_ids: list[UUID] = []
+        try:
+            users_stmt = select(User.id, User.full_name).where(
+                and_(User.tenant_id == tenant_id, User.is_active.is_(True))
+            )
+            users_result = await self.db.execute(users_stmt)
+            candidates = [(row.id, row.full_name) for row in users_result.all()]
+
+            mentioned_user_ids = parse_mentions(
+                body=body,
+                candidates=candidates,
+                author_id=sender_id,
+            )
+
+            # Persist ChatMention rows (one per mentioned user)
+            for uid in mentioned_user_ids:
+                self.db.add(ChatMention(
+                    tenant_id=tenant_id,
+                    message_id=message.id,
+                    user_id=uid,
+                ))
+            if mentioned_user_ids:
+                await self.db.commit()
+        except Exception:
+            # Mention parsing must never fail the message post.
+            # The message is already committed; mentions are a bonus.
+            pass
+
         # Broadcast to all WebSocket subscribers of this channel.
         # Failures in broadcast must NEVER fail the REST request.
         try:
@@ -193,6 +226,20 @@ class ChatService:
                 },
             }
             await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
+
+            # User-scoped mention broadcasts — hit each mentioned user's
+            # personal key, so they get notified regardless of what page
+            # they're on (vs channel broadcast which needs them subscribed).
+            for uid in mentioned_user_ids:
+                mention_payload = {
+                    "type": "mention",
+                    "channel_id": str(message.channel_id),
+                    "message_id": str(message.id),
+                    "sender_name": sender_name,
+                    "body": message.body,
+                    "created_at": message.created_at.isoformat(),
+                }
+                await ws_manager.broadcast(f"user:{uid}", json.dumps(mention_payload))
         except Exception:
             pass  # broadcast is best-effort; DB is source of truth
 
@@ -306,6 +353,80 @@ class ChatService:
             pass
 
         return channel_id
+
+    async def list_mentions(
+        self,
+        user_id:     UUID,
+        tenant_id:   UUID,
+        limit:       int = 50,
+        unread_only: bool = False,
+    ) -> list[dict]:
+        """Return this user\'s mentions (newest first), with channel + message context."""
+        stmt = (
+            select(
+                ChatMention,
+                ChatMessage.body,
+                ChatMessage.created_at,
+                ChatMessage.channel_id,
+                Channel.name.label("channel_name"),
+                User.full_name.label("sender_name"),
+            )
+            .join(ChatMessage, ChatMention.message_id == ChatMessage.id)
+            .join(Channel, Channel.id == ChatMessage.channel_id)
+            .outerjoin(User, User.id == ChatMessage.sender_id)
+            .where(
+                and_(
+                    ChatMention.user_id == user_id,
+                    ChatMention.tenant_id == tenant_id,
+                )
+            )
+            .order_by(ChatMention.read_at.is_(None).desc(), ChatMessage.created_at.desc())
+            .limit(limit)
+        )
+        if unread_only:
+            stmt = stmt.where(ChatMention.read_at.is_(None))
+
+        result = await self.db.execute(stmt)
+        rows = result.all()
+
+        return [
+            {
+                "mention":      row.ChatMention,
+                "body":         row.body,
+                "created_at":   row.created_at,
+                "channel_id":   row.channel_id,
+                "channel_name": row.channel_name,
+                "sender_name":  row.sender_name,
+            }
+            for row in rows
+        ]
+
+    async def mark_mention_read(
+        self,
+        mention_id: UUID,
+        user_id:    UUID,
+        tenant_id:  UUID,
+    ) -> None:
+        """Mark one mention as read. Idempotent — no-op if already read."""
+        stmt = select(ChatMention).where(
+            and_(
+                ChatMention.id == mention_id,
+                ChatMention.user_id == user_id,      # can only mark your own
+                ChatMention.tenant_id == tenant_id,
+            )
+        )
+        result = await self.db.execute(stmt)
+        mention = result.scalar_one_or_none()
+
+        if mention is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Mention not found",
+            )
+
+        if mention.read_at is None:
+            mention.read_at = datetime.now(timezone.utc)
+            await self.db.commit()
 
     async def mark_channel_read(
         self,

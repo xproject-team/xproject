@@ -113,3 +113,32 @@ class ChatMessage(TenantScopedModel):
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+class ChatMention(TenantScopedModel):
+    """A user mentioned in a chat message (e.g. '@Omar' → one row).
+
+    read_at:
+      - NULL   = unread, appears in the mention bell
+      - set    = user has dismissed it
+    """
+
+    __tablename__ = "chat_mentions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", name="uq_chat_mentions_message_user"),
+    )
+
+    message_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("chat_messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+

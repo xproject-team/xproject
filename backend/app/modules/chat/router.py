@@ -17,6 +17,7 @@ from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
 from app.modules.chat.schemas import (
     ChannelResponse,
+    MentionResponse,
     MessageCreate,
     MessageResponse,
 )
@@ -184,6 +185,52 @@ async def mark_channel_read(
     service = ChatService(db)
     await service.mark_channel_read(
         channel_id=channel_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+    )
+# ─── Mentions ─────────────────────────────────────────────────────────
+
+
+@router.get("/mentions", response_model=list[MentionResponse])
+async def list_mentions(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+    unread_only:  Annotated[bool, Query()] = False,
+    limit:        Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[MentionResponse]:
+    """Return recent mentions for the current user (newest first, unread prioritized)."""
+    service = ChatService(db)
+    rows = await service.list_mentions(
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        unread_only=unread_only,
+        limit=limit,
+    )
+    return [
+        MentionResponse(
+            id=str(r["mention"].id),
+            channel_id=str(r["channel_id"]),
+            channel_name=r["channel_name"],
+            message_id=str(r["mention"].message_id),
+            sender_name=r["sender_name"],
+            body=r["body"],
+            created_at=r["created_at"],
+            read_at=r["mention"].read_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/mentions/{mention_id}/read", status_code=status.HTTP_204_NO_CONTENT)
+async def mark_mention_read(
+    mention_id:   UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Mark one mention as read. Idempotent."""
+    service = ChatService(db)
+    await service.mark_mention_read(
+        mention_id=mention_id,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
     )

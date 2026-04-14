@@ -103,7 +103,16 @@ async def websocket_chat(
         return
 
     await websocket.accept()
-    subscribed_channels: set[str] = set()
+
+    # Auto-subscribe user to their own user-scoped key. This is how
+    # personal events (mentions, DMs, etc.) reach them regardless of
+    # which channel they happen to be subscribed to. Unlike channel
+    # subscriptions, this one is implicit and permanent for the lifetime
+    # of the connection — no action/payload required from the client.
+    user_key = f"user:{user.id}"
+    manager.subscribe(websocket, user_key)
+
+    subscribed_channels: set[str] = {user_key}
 
     try:
         while True:

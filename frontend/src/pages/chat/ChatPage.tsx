@@ -26,6 +26,50 @@ import { useAuth } from '@/features/auth/useAuth'
 import { useChatSocket } from '@/features/chat/useChatSocket'
 
 
+/**
+ * Render message body with @mentions highlighted as inline pills.
+ * Self-mentions are brighter (yellow) — "this one is for you".
+ */
+function renderBody(body: string, currentUserName: string | null) {
+  const MENTION_RE = /(?:^|(?<=\s))@([A-Za-z][A-Za-z0-9._-]{1,63})/g
+  const parts: (string | { mention: string; isSelf: boolean })[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  const myFirstName = currentUserName?.trim().split(/\s+/)[0]?.toLowerCase() ?? ''
+  const myFullNorm  = currentUserName?.trim().toLowerCase().replace(/\s+/g, '') ?? ''
+
+  while ((match = MENTION_RE.exec(body)) !== null) {
+    const start = match.index
+    if (start > lastIndex) parts.push(body.slice(lastIndex, start))
+
+    const token = match[1]
+    const tokenNorm = token.toLowerCase().replace(/[._-]/g, '')
+    const isSelf = !!myFirstName && (tokenNorm === myFirstName || tokenNorm === myFullNorm)
+
+    parts.push({ mention: token, isSelf })
+    lastIndex = start + match[0].length
+  }
+  if (lastIndex < body.length) parts.push(body.slice(lastIndex))
+
+  if (parts.length === 0) return body
+  return parts.map((part, i) => {
+    if (typeof part === 'string') return <span key={i}>{part}</span>
+    return (
+      <span
+        key={i}
+        className={[
+          'inline-block px-1.5 rounded font-semibold',
+          part.isSelf ? 'bg-[#FEF3C7] text-[#92400E]' : 'bg-[#E2E8F0] text-[#1A202C]',
+        ].join(' ')}
+      >
+        @{part.mention}
+      </span>
+    )
+  })
+}
+
+
 export default function ChatPage() {
   const { user } = useAuth()
   const channels = useChannels()
@@ -82,6 +126,7 @@ export default function ChatPage() {
               channels.data?.find((c) => c.id === activeChannelId)?.name ?? 'Chat'
             }
             currentUserId={user?.id ?? ''}
+            currentUserName={user?.full_name ?? null}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-[#718096]">
@@ -139,10 +184,12 @@ function ChannelView({
   channelId,
   channelName,
   currentUserId,
+  currentUserName,
 }: {
-  channelId:     string
-  channelName:   string
-  currentUserId: string
+  channelId:       string
+  channelName:     string
+  currentUserId:   string
+  currentUserName: string | null
 }) {
   const messages = useChannelMessages(channelId)
   const postMsg  = usePostMessage(channelId)
@@ -205,6 +252,7 @@ function ChannelView({
               key={m.id}
               message={m}
               isOwn={m.sender_id === currentUserId}
+              currentUserName={currentUserName}
               onEdit={(newBody) => editMsg.mutate({ messageId: m.id, body: newBody })}
               onDelete={() => deleteMsg.mutate(m.id)}
               editing={editMsg.isPending}
@@ -242,15 +290,16 @@ function ChannelView({
 // ─── Message bubble ───────────────────────────────────────────────────
 
 interface MessageBubbleProps {
-  message:  MessageResponse
-  isOwn:    boolean
-  onEdit:   (newBody: string) => void
-  onDelete: () => void
-  editing:  boolean
-  deleting: boolean
+  message:         MessageResponse
+  isOwn:           boolean
+  currentUserName: string | null
+  onEdit:          (newBody: string) => void
+  onDelete:        () => void
+  editing:         boolean
+  deleting:        boolean
 }
 
-function MessageBubble({ message, isOwn, onEdit, onDelete, editing, deleting }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, editing, deleting }: MessageBubbleProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(message.body)
   const [hovered, setHovered] = useState(false)
@@ -360,7 +409,7 @@ function MessageBubble({ message, isOwn, onEdit, onDelete, editing, deleting }: 
                 deleting ? 'opacity-40' : '',
               ].join(' ')}
             >
-              {message.body}
+              {renderBody(message.body, currentUserName)}
             </div>
           </div>
         )}

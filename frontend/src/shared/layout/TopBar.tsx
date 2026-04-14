@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import type { MockUser } from '@/lib/mockUsers'
+import { MentionBell } from '@/features/chat/MentionBell'
 
 const ROLE_BADGE: Record<
   MockUser['role'],
@@ -50,8 +51,9 @@ export function TopBar() {
         </div>
       )}
 
-      {/* Right — role badge + swap button */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      {/* Right — bell + role badge + swap button */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <MentionBell />
         {role !== 'owner' && (
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
             {badge.label}
