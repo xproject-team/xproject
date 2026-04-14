@@ -20,6 +20,7 @@ interface UseChatSocketArgs {
   activeChannelId: string | null
   currentUserId:   string        // so we skip cache-append for messages we
                                  // already inserted optimistically in usePostMessage
+  allChannelIds?:  string[]      // subscribe to all of these for sidebar badges
 }
 
 interface IncomingEnvelope {
@@ -30,9 +31,9 @@ interface IncomingEnvelope {
 }
 
 
-export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketArgs) {
+export function useChatSocket({ activeChannelId, currentUserId, allChannelIds }: UseChatSocketArgs) {
   const qc = useQueryClient()
-  const subscribedRef = useRef<string | null>(null)    // last channel we subscribed to
+  const subscribedChannelsRef = useRef<Set<string>>(new Set())
 
   const token = getToken()
   const url   = token ? `/api/v1/ws/chat?token=${encodeURIComponent(token)}` : null
@@ -110,35 +111,39 @@ export function useChatSocket({ activeChannelId, currentUserId }: UseChatSocketA
   const stableHandler = useCallback((raw: string) => handlerRef.current(raw), [])
   const { isConnected, send } = useWebSocket(url, { onMessage: stableHandler })
 
-  // Subscribe/unsubscribe loop when channel changes OR connection state changes
-  // - On disconnect: reset the ref so we re-subscribe after reconnection
-  // - On (re)connect: subscribe to the current channel fresh
-  // - On channel switch while connected: unsub old, sub new
+  // Subscription sync: subscribes to EVERY channel the user can see so
+  // sidebar badge updates work across the whole list, not just the active one.
+  // On reconnect, the ref resets and re-subscribes cleanly.
   useEffect(() => {
     if (!isConnected) {
-      // Connection dropped (or not yet open). Forget what we "think" we're
-      // subscribed to so the next connect will re-subscribe cleanly.
-      subscribedRef.current = null
+      subscribedChannelsRef.current = new Set()
       return
     }
 
-    const prev = subscribedRef.current
-    const next = activeChannelId
-    if (prev === next) return
+    const wanted = new Set(allChannelIds ?? [])
+    if (activeChannelId) wanted.add(activeChannelId)
+
+    const current = subscribedChannelsRef.current
 
     try {
-      if (prev) {
-        send(JSON.stringify({ action: 'unsubscribe', channel_id: prev }))
+      // Unsubscribe from channels no longer wanted
+      for (const id of current) {
+        if (!wanted.has(id)) {
+          send(JSON.stringify({ action: 'unsubscribe', channel_id: id }))
+          current.delete(id)
+        }
       }
-      if (next) {
-        send(JSON.stringify({ action: 'subscribe', channel_id: next }))
+      // Subscribe to new wanted channels
+      for (const id of wanted) {
+        if (!current.has(id)) {
+          send(JSON.stringify({ action: 'subscribe', channel_id: id }))
+          current.add(id)
+        }
       }
-      subscribedRef.current = next
     } catch {
-      // Socket closed mid-effect (readyState not OPEN). Next isConnected
-      // cycle will retry. Don't update the ref.
+      // Socket closed mid-effect. Next isConnected cycle will retry.
     }
-  }, [isConnected, activeChannelId, send])
+  }, [isConnected, activeChannelId, allChannelIds, send])
 
   return { isConnected }
 }

@@ -160,6 +160,58 @@ async def seed() -> None:
                     tenant_id=tenant_id,
                 ))
         await db.commit()
+
+        # ── 5. Direct Messages (1-on-1 channels) ──────────────────
+        # Creates 8 DM channels: Omar↔each Manager (3) + each
+        # Manager↔each of their Bartenders (5). Hierarchy is still
+        # enforced (no Owner↔Bartender DMs).
+        def dm_name(a: User, b: User) -> str:
+            # Canonical name — sorted emails so (A,B) and (B,A) produce
+            # the same channel name. Prevents duplicate DMs between same pair.
+            first, second = sorted([a, b], key=lambda u: u.email)
+            return f"DM: {first.full_name} ↔ {second.full_name}"
+
+        # Pair list: (user_a, user_b)
+        dm_pairs: list[tuple[User, User]] = []
+        for mgr in managers_by_bar.values():
+            dm_pairs.append((omar, mgr))
+        for bar_name, mgr in managers_by_bar.items():
+            for bt in bartenders_by_bar[bar_name]:
+                dm_pairs.append((mgr, bt))
+
+        for user_a, user_b in dm_pairs:
+            name = dm_name(user_a, user_b)
+            chan = (await db.execute(
+                select(Channel).where(Channel.name == name)
+            )).scalar_one_or_none()
+
+            if chan is None:
+                chan = Channel(
+                    name=name,
+                    channel_type="direct",
+                    tenant_id=tenant_id,
+                    created_by=omar.id,
+                )
+                db.add(chan)
+                await db.flush()
+                print(f"  + DM: {name}")
+
+            # Ensure both members present (idempotent)
+            existing_ids = {
+                row.user_id for row in (await db.execute(
+                    select(ChannelMember).where(ChannelMember.channel_id == chan.id)
+                )).scalars().all()
+            }
+            for u in (user_a, user_b):
+                if u.id in existing_ids:
+                    continue
+                db.add(ChannelMember(
+                    channel_id=chan.id,
+                    user_id=u.id,
+                    tenant_id=tenant_id,
+                ))
+        await db.commit()
+
         print("Communication tree seeded successfully.")
 
 

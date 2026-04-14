@@ -127,6 +127,7 @@ export default function ChatPage() {
             }
             currentUserId={user?.id ?? ''}
             currentUserName={user?.full_name ?? null}
+            allChannelIds={channels.data?.map((c) => c.id) ?? []}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-[#718096]">
@@ -185,18 +186,20 @@ function ChannelView({
   channelName,
   currentUserId,
   currentUserName,
+  allChannelIds,
 }: {
   channelId:       string
   channelName:     string
   currentUserId:   string
   currentUserName: string | null
+  allChannelIds:   string[]
 }) {
   const messages = useChannelMessages(channelId)
   const postMsg  = usePostMessage(channelId)
   const editMsg  = useEditMessage(channelId)
   const deleteMsg = useDeleteMessage(channelId)
   const markRead = useMarkChannelRead(channelId)
-  useChatSocket({ activeChannelId: channelId, currentUserId })
+  useChatSocket({ activeChannelId: channelId, currentUserId, allChannelIds })
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
