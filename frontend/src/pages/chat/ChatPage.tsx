@@ -21,6 +21,7 @@ import {
   type MessageResponse,
 } from '@/features/chat/useChat'
 import { useAuth } from '@/features/auth/useAuth'
+import { useChatSocket } from '@/features/chat/useChatSocket'
 
 
 export default function ChatPage() {
@@ -144,6 +145,7 @@ function ChannelView({
   const messages = useChannelMessages(channelId)
   const postMsg  = usePostMessage(channelId)
   const markRead = useMarkChannelRead(channelId)
+  useChatSocket({ activeChannelId: channelId, currentUserId })
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
