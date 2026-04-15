@@ -9,6 +9,7 @@ Endpoints (all require valid JWT):
 from typing import Annotated
 from uuid import UUID
 
+from app.core.config import settings
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from app.modules.chat.schemas import (
     MentionResponse,
     MessageCreate,
     MessageResponse,
+    SearchResultItem,
 )
 from app.core import storage as _storage
 from app.modules.chat.service import ChatService
@@ -315,3 +317,41 @@ async def presign_attachment(
         object_key         = attachment.object_key,
         expires_in_seconds = _storage.PRESIGN_UPLOAD_EXPIRY_SEC,
     )
+# ─── Search ───────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/search",
+    response_model=list[SearchResultItem],
+)
+async def search_messages_endpoint(
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+    q:            Annotated[str, Query(min_length=1, max_length=200)],
+    limit:        Annotated[int, Query(ge=1, le=100)] = 30,
+) -> list[SearchResultItem]:
+    """Full-text search across channels the current user is a member of.
+
+    Results ranked by relevance (ts_rank), ties broken by recency.
+    Empty/blank queries return [].
+    """
+    service = ChatService(db)
+    rows = await service.search_messages(
+        query=q,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+        limit=limit,
+    )
+    return [
+        SearchResultItem(
+            message_id   = str(r["message"].id),
+            channel_id   = str(r["message"].channel_id),
+            channel_name = r["channel_name"],
+            sender_id    = str(r["message"].sender_id) if r["message"].sender_id else None,
+            sender_name  = r["sender_name"],
+            body         = r["message"].body,
+            created_at   = r["message"].created_at,
+            rank         = r["rank"],
+        )
+        for r in rows
+    ]

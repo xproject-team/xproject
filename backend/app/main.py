@@ -1,11 +1,41 @@
 """FastAPI application factory with health check endpoint at /api/v1/health."""
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.realtime.publisher import start_subscriber
+from app.realtime.websocket import manager as _ws_manager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start the Redis pub/sub subscriber as a background task.
+
+    On shutdown, the task is cancelled cleanly. The subscriber survives
+    Redis reconnections internally (redis-py auto-reconnects).
+    """
+    sub_task = asyncio.create_task(start_subscriber(_ws_manager))
+    try:
+        yield
+    finally:
+        sub_task.cancel()
+        try:
+            await sub_task
+        except asyncio.CancelledError:
+            pass
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+    # Configure logging FIRST — anything that imports/runs after this
+    # will use our settings (level, format, library suppression).
+    from app.core.logging_config import configure_logging
+    configure_logging()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="XProject API",
         description="AI-powered operational intelligence platform for hospitality events",
         version="0.1.0",

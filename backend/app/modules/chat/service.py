@@ -227,7 +227,7 @@ class ChatService:
         # Failures in broadcast must NEVER fail the REST request.
         try:
             # Lazy import breaks circular dependency (websocket.py imports ChatService)
-            from app.realtime.websocket import manager as ws_manager
+            from app.core.redis_client import publish as _ws_publish
 
             # Resolve sender's display name for the payload
             sender_name = None
@@ -267,7 +267,7 @@ class ChatService:
                     "attachments": atts_for_payload,
                 },
             }
-            await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
+            await _ws_publish(f"chat:{message.channel_id}", json.dumps(payload))
 
             # User-scoped mention broadcasts — hit each mentioned user's
             # personal key, so they get notified regardless of what page
@@ -281,7 +281,7 @@ class ChatService:
                     "body": message.body,
                     "created_at": message.created_at.isoformat(),
                 }
-                await ws_manager.broadcast(f"user:{uid}", json.dumps(mention_payload))
+                await _ws_publish(f"user:{uid}", json.dumps(mention_payload))
         except Exception:
             pass  # broadcast is best-effort; DB is source of truth
 
@@ -356,6 +356,82 @@ class ChatService:
         )
         return list((await self.db.execute(stmt)).scalars().all())
 
+    async def search_messages(
+        self,
+        query:      str,
+        user_id:    UUID,
+        tenant_id:  UUID,
+        limit:      int = 30,
+    ) -> list[dict]:
+        """Full-text search across all channels the user is a member of.
+
+        Returns list of dicts:
+            { "message": ChatMessage, "channel_name": str, "sender_name": str, "rank": float }
+
+        Uses Postgres' ts_rank for relevance ordering. Results scoped to:
+        - Same tenant as the searcher
+        - Only channels where user is an active member
+        - Not soft-deleted
+        """
+        # Empty query short-circuits to empty results (avoid expensive wildcard)
+        q = query.strip()
+        if not q:
+            return []
+
+        from sqlalchemy import func, literal
+
+        # plainto_tsquery: escapes user input safely. Stemming applied.
+        from sqlalchemy import cast
+        from sqlalchemy.dialects.postgresql import REGCONFIG
+        tsq = func.plainto_tsquery(cast(literal("english"), REGCONFIG), q)
+
+        # Subquery: channels where this user is an active member (not removed)
+        members_subq = (
+            select(ChannelMember.channel_id)
+            .where(
+                and_(
+                    ChannelMember.user_id == user_id,
+                    ChannelMember.tenant_id == tenant_id,
+                )
+            )
+            .scalar_subquery()
+        )
+
+        # Main query: join messages + channel + sender for display data
+        # ts_rank as the score; order newest-within-rank for ties
+        stmt = (
+            select(
+                ChatMessage,
+                Channel.name.label("channel_name"),
+                User.full_name.label("sender_name"),
+                func.ts_rank(ChatMessage.search_vector, tsq).label("rank"),
+            )
+            .join(Channel, Channel.id == ChatMessage.channel_id)
+            .outerjoin(User, User.id == ChatMessage.sender_id)
+            .where(
+                and_(
+                    ChatMessage.tenant_id == tenant_id,
+                    ChatMessage.channel_id.in_(members_subq),
+                    ChatMessage.search_vector.op("@@")(tsq),     # FTS match
+                )
+            )
+            .order_by(func.ts_rank(ChatMessage.search_vector, tsq).desc(),
+                      ChatMessage.created_at.desc())
+            .limit(limit)
+        )
+
+        rows = (await self.db.execute(stmt)).all()
+
+        return [
+            {
+                "message":      row[0],
+                "channel_name": row[1],
+                "sender_name":  row[2],
+                "rank":         float(row[3]) if row[3] is not None else 0.0,
+            }
+            for row in rows
+        ]
+
     async def edit_message(
         self,
         message_id: UUID,
@@ -391,7 +467,7 @@ class ChatService:
 
         # Broadcast edit event
         try:
-            from app.realtime.websocket import manager as ws_manager
+            from app.core.redis_client import publish as _ws_publish
 
             sender_stmt = select(User.full_name).where(User.id == message.sender_id)
             sender_name = (await self.db.execute(sender_stmt)).scalar_one_or_none()
@@ -427,7 +503,7 @@ class ChatService:
                     "attachments": edit_atts,
                 },
             }
-            await ws_manager.broadcast(f"chat:{message.channel_id}", json.dumps(payload))
+            await _ws_publish(f"chat:{message.channel_id}", json.dumps(payload))
         except Exception:
             pass
 
@@ -471,13 +547,13 @@ class ChatService:
 
         # Broadcast delete event
         try:
-            from app.realtime.websocket import manager as ws_manager
+            from app.core.redis_client import publish as _ws_publish
             payload = {
                 "type":       "message_deleted",
                 "channel_id": str(channel_id),
                 "message_id": message_id_str,
             }
-            await ws_manager.broadcast(f"chat:{channel_id}", json.dumps(payload))
+            await _ws_publish(f"chat:{channel_id}", json.dumps(payload))
         except Exception:
             pass
 

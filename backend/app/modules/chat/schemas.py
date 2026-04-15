@@ -93,3 +93,15 @@ class AttachmentResponse(BaseModel):
 
 # Resolve forward references (AttachmentResponse defined above)
 MessageResponse.model_rebuild()
+class SearchResultItem(BaseModel):
+    """One result in a chat search response."""
+
+    message_id:   str
+    channel_id:   str
+    channel_name: str
+    sender_id:    str | None
+    sender_name:  str | None
+    body:         str
+    created_at:   datetime
+    rank:         float
+

@@ -22,7 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.tenancy import TenantScopedModel, _utcnow
@@ -113,6 +113,10 @@ class ChatMessage(TenantScopedModel):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     edited_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
+    )
+    search_vector: Mapped[str | None] = mapped_column(
+        TSVECTOR,
+        nullable=True,
     )
 class ChatMention(TenantScopedModel):
     """A user mentioned in a chat message (e.g. '@Omar' → one row).

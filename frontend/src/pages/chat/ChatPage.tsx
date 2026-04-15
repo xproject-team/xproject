@@ -25,6 +25,7 @@ import {
 import { useAuth } from '@/features/auth/useAuth'
 import { useChatSocket } from '@/features/chat/useChatSocket'
 import { AttachmentPicker } from '@/features/chat/AttachmentPicker'
+import { ChatSearchPanel } from '@/features/chat/ChatSearchPanel'
 import { useAttachmentUpload } from '@/features/chat/useAttachments'
 
 
@@ -75,6 +76,8 @@ function renderBody(body: string, currentUserName: string | null) {
 export default function ChatPage() {
   const { user } = useAuth()
   const channels = useChannels()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null)
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null)
 
   // Auto-select first channel once loaded
@@ -88,10 +91,25 @@ export default function ChatPage() {
     <div className="h-[calc(100vh-64px)] flex bg-white">
       {/* ─── Channel list ─────────────────────────────────────── */}
       <aside className="w-64 border-r border-[#E2E8F0] flex flex-col bg-[#F7FAFC]">
-        <div className="px-4 py-3 border-b border-[#E2E8F0]">
-          <h2 className="text-xs font-bold text-[#1A202C] uppercase tracking-wider">
+        <div className="px-4 py-3 border-b border-[#E2E8F0] relative">
+          <h2 className="text-xs font-bold text-[#1A202C] uppercase tracking-wider mb-2">
             Channels
           </h2>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search messages…"
+            className="w-full text-xs px-2.5 py-1.5 border border-[#E2E8F0] rounded-lg bg-white focus:outline-none focus:border-[#1E5A8D]"
+          />
+          <ChatSearchPanel
+            query={searchQuery}
+            onResultClick={(channelId, messageId) => {
+              setActiveChannelId(channelId)
+              setHighlightedMessageId(messageId)
+              setSearchQuery('')
+            }}
+          />
         </div>
 
         {channels.isLoading && (
@@ -130,6 +148,8 @@ export default function ChatPage() {
             currentUserId={user?.id ?? ''}
             currentUserName={user?.full_name ?? null}
             allChannelIds={channels.data?.map((c) => c.id) ?? []}
+        highlightedMessageId={highlightedMessageId}
+        onHighlightConsumed={() => setHighlightedMessageId(null)}
           />
         ) : (
           <div className="flex-1 flex items-center justify-center text-sm text-[#718096]">
@@ -189,12 +209,16 @@ function ChannelView({
   currentUserId,
   currentUserName,
   allChannelIds,
+  highlightedMessageId,
+  onHighlightConsumed,
 }: {
-  channelId:       string
-  channelName:     string
-  currentUserId:   string
-  currentUserName: string | null
-  allChannelIds:   string[]
+  channelId:            string
+  channelName:          string
+  currentUserId:        string
+  currentUserName:      string | null
+  allChannelIds:        string[]
+  highlightedMessageId: string | null
+  onHighlightConsumed:  () => void
 }) {
   const messages = useChannelMessages(channelId)
   const postMsg  = usePostMessage(channelId)
@@ -265,6 +289,8 @@ function ChannelView({
               onDelete={() => deleteMsg.mutate(m.id)}
               editing={editMsg.isPending}
               deleting={deleteMsg.isPending}
+              highlighted={m.id === highlightedMessageId}
+              onHighlightConsumed={onHighlightConsumed}
             />
           ))}
       </div>
@@ -306,19 +332,32 @@ function ChannelView({
 // ─── Message bubble ───────────────────────────────────────────────────
 
 interface MessageBubbleProps {
-  message:         MessageResponse
-  isOwn:           boolean
-  currentUserName: string | null
-  onEdit:          (newBody: string) => void
-  onDelete:        () => void
-  editing:         boolean
-  deleting:        boolean
+  message:              MessageResponse
+  isOwn:                boolean
+  currentUserName:      string | null
+  onEdit:               (newBody: string) => void
+  onDelete:             () => void
+  editing:              boolean
+  deleting:             boolean
+  highlighted:          boolean
+  onHighlightConsumed:  () => void
 }
 
-function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, editing, deleting }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, editing, deleting, highlighted, onHighlightConsumed }: MessageBubbleProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(message.body)
   const [hovered, setHovered] = useState(false)
+
+  // Highlight flash when this bubble is the search target
+  const bubbleRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!highlighted) return
+    // Scroll into view centered
+    bubbleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Clear highlight after 3s so a future search can re-target
+    const t = setTimeout(onHighlightConsumed, 3000)
+    return () => clearTimeout(t)
+  }, [highlighted, onHighlightConsumed])
 
   function startEdit() {
     setDraft(message.body)
@@ -349,6 +388,7 @@ function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, edit
   return (
     <div
       className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group`}
+      ref={bubbleRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -418,6 +458,7 @@ function MessageBubble({ message, isOwn, currentUserName, onEdit, onDelete, edit
             )}
             <div
               className={[
+                highlighted ? 'ring-4 ring-yellow-300 ring-opacity-80 shadow-lg transition-shadow' : '',
                 'px-4 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words',
                 isOwn
                   ? 'bg-[#1E5A8D] text-white rounded-br-md'
