@@ -1,8 +1,10 @@
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_EVENTS } from '@/lib/mockData'
 import type { Event } from '@/lib/mockData'
 
-// ─── Local extension — completed past event ───────────────────────────────────
+// ─── Local extension — completed past event (mock only; remove when backend wired) ───
+// NOTE: ended_at is included so getEffectiveStatus() works identically on mock + real data.
 
 const COMPLETED_EVENT: Event = {
   id: 'evt-4',
@@ -13,9 +15,38 @@ const COMPLETED_EVENT: Event = {
   bars_count: 3,
   location: 'Garden Terrace',
   created_at: '2025-01-10',
+  ended_at: '2025-04-12T23:00:00Z',
 }
 
+// ─── DATA SOURCE ──────────────────────────────────────────────────────────────
+// TODO(backend): replace this with `const { data: ALL_EVENTS = [] } = useEvents()`
+// when /api/v1/events is wired. Render code below is data-source-agnostic.
+
 const ALL_EVENTS: Event[] = [...MOCK_EVENTS, COMPLETED_EVENT]
+
+// ─── Effective status (auto Live → Completed by ended_at) ─────────────────────
+// Pure function. Works on any Event shape. Backend will eventually compute this
+// server-side and we can remove it — but having it client-side is safe.
+
+function getEffectiveStatus(event: Event): Event['status'] {
+  if (event.status === 'live' && event.ended_at) {
+    const ended = new Date(event.ended_at).getTime()
+    if (Number.isFinite(ended) && ended < Date.now()) return 'completed'
+  }
+  return event.status
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
+type TabKey = 'all' | 'draft' | 'active' | 'live' | 'completed'
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'all',       label: 'All'       },
+  { key: 'draft',     label: 'Draft'     },
+  { key: 'active',    label: 'Active'    },
+  { key: 'live',      label: 'Live'      },
+  { key: 'completed', label: 'Completed' },
+]
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -45,6 +76,28 @@ function formatDate(iso: string) {
 
 export default function EventListPage() {
   const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<TabKey>('all')
+
+  // Compute effective status once per event, then filter by active tab.
+  const decoratedEvents = useMemo(
+    () => ALL_EVENTS.map((e) => ({ ...e, _effectiveStatus: getEffectiveStatus(e) })),
+    []
+  )
+
+  const visibleEvents = useMemo(
+    () =>
+      activeTab === 'all'
+        ? decoratedEvents
+        : decoratedEvents.filter((e) => e._effectiveStatus === activeTab),
+    [activeTab, decoratedEvents]
+  )
+
+  // Per-tab count badges (always reflect totals, not filtered view).
+  const counts = useMemo(() => {
+    const c: Record<TabKey, number> = { all: decoratedEvents.length, draft: 0, active: 0, live: 0, completed: 0 }
+    decoratedEvents.forEach((e) => { c[e._effectiveStatus] += 1 })
+    return c
+  }, [decoratedEvents])
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -69,6 +122,35 @@ export default function EventListPage() {
         </button>
       </div>
 
+      {/* Status Tabs */}
+      <div className="flex items-center gap-1 mb-4 border-b border-[#E2E8F0]">
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={[
+                'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px',
+                isActive
+                  ? 'text-[#1E5A8D] border-[#1E5A8D]'
+                  : 'text-[#718096] border-transparent hover:text-[#4A5568] hover:border-[#CBD5E0]',
+              ].join(' ')}
+            >
+              {tab.label}
+              <span
+                className={[
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums',
+                  isActive ? 'bg-[#EBF5FB] text-[#1E5A8D]' : 'bg-[#F7FAFC] text-[#718096]',
+                ].join(' ')}
+              >
+                {counts[tab.key]}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Table */}
       <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-sm">
@@ -84,9 +166,17 @@ export default function EventListPage() {
             </tr>
           </thead>
           <tbody>
-            {ALL_EVENTS.map((event) => {
-              const isPast = event.status === 'completed'
-              const textCls = isPast ? 'text-[#A0AEC0]' : 'text-[#4A5568]'
+            {visibleEvents.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-5 py-12 text-center text-sm text-[#A0AEC0]">
+                  No events in this view.
+                </td>
+              </tr>
+            )}
+            {visibleEvents.map((event) => {
+              const effective = event._effectiveStatus
+              const isPast    = effective === 'completed'
+              const textCls   = isPast ? 'text-[#A0AEC0]' : 'text-[#4A5568]'
 
               return (
                 <tr
@@ -103,7 +193,7 @@ export default function EventListPage() {
                   </td>
                   <td className={`px-5 py-4 ${textCls}`}>{formatDate(event.date)}</td>
                   <td className="px-5 py-4">
-                    <StatusBadge status={event.status} />
+                    <StatusBadge status={effective} />
                   </td>
                   <td className={`px-5 py-4 text-right tabular-nums ${textCls}`}>
                     {event.expected_guest_count.toLocaleString()}
@@ -113,8 +203,8 @@ export default function EventListPage() {
                   </td>
                   <td className={`px-5 py-4 ${textCls}`}>{event.location}</td>
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-2 justify-end">
-                      {/* View — always shown */}
+                    <div className="flex items-center justify-end">
+                      {/* View only — all edit/end/dashboard actions live in Detail page (standard pattern) */}
                       <button
                         onClick={() => navigate(`/events/${event.id}`)}
                         className={[
@@ -126,16 +216,6 @@ export default function EventListPage() {
                       >
                         View
                       </button>
-
-                      {/* Edit — hidden for completed events */}
-                      {!isPast && (
-                        <button
-                          onClick={() => navigate('/events/create')}
-                          className="text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] px-3 py-1.5 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-                        >
-                          Edit
-                        </button>
-                      )}
                     </div>
                   </td>
                 </tr>
