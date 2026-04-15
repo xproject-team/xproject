@@ -3,26 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { MOCK_EVENTS } from '@/lib/mockData'
 import type { Event } from '@/lib/mockData'
 
-// ─── Local extension — completed past event (mock only; remove when backend wired) ───
-// NOTE: ended_at is included so getEffectiveStatus() works identically on mock + real data.
-
-const COMPLETED_EVENT: Event = {
-  id: 'evt-4',
-  name: 'Spring Festival 2025',
-  date: '2025-04-12',
-  status: 'completed',
-  expected_guest_count: 280,
-  bars_count: 3,
-  location: 'Garden Terrace',
-  created_at: '2025-01-10',
-  ended_at: '2025-04-12T23:00:00Z',
-}
-
 // ─── DATA SOURCE ──────────────────────────────────────────────────────────────
-// TODO(backend): replace this with `const { data: ALL_EVENTS = [] } = useEvents()`
+// Single source of truth: MOCK_EVENTS in lib/mockData.ts.
+// TODO(backend): replace with `const { data: ALL_EVENTS = [] } = useEvents()`
 // when /api/v1/events is wired. Render code below is data-source-agnostic.
 
-const ALL_EVENTS: Event[] = [...MOCK_EVENTS, COMPLETED_EVENT]
+const ALL_EVENTS: Event[] = MOCK_EVENTS
 
 // ─── Effective status (auto Live → Completed by ended_at) ─────────────────────
 // Pure function. Works on any Event shape. Backend will eventually compute this

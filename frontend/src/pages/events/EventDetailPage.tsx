@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MOCK_EVENTS, MOCK_BARS, MOCK_PRODUCTS } from '@/lib/mockData'
 import type { Event } from '@/lib/mockData'
@@ -46,6 +47,22 @@ function StatCard({ icon, label, value, sub }: {
   )
 }
 
+// ─── FieldDisplay (B2) ────────────────────────────────────────────────────────
+
+function FieldDisplay({ locked, children }: { locked: boolean; children: React.ReactNode }) {
+  if (!locked) {
+    return <p className="text-[#1A202C] font-medium">{children}</p>
+  }
+  return (
+    <div className="relative group inline-flex items-center gap-1.5 text-[#A0AEC0] font-medium" title="Locked while event is live">
+      <span>{children}</span>
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+      </svg>
+    </div>
+  )
+}
+
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
 const Icons = {
@@ -81,13 +98,105 @@ export default function EventDetailPage() {
 
   const event = MOCK_EVENTS.find((e) => e.id === id) ?? MOCK_EVENTS[0]
 
-  // For live events, pull live bar + product data; otherwise use event fields
-  const isLive    = event.status === 'live'
-  const barsCount = isLive ? MOCK_BARS.length : event.bars_count
-  const products  = isLive ? MOCK_PRODUCTS : []
+  // ─── Local override (B2.5) — saved-but-not-persisted edits + status promos ──
+  // TODO(backend): replace with TanStack Query mutation cache when PATCH /events/{id} lands.
+  type EventOverride = Partial<Pick<Event, 'name' | 'date' | 'location' | 'expected_guest_count' | 'bars_count' | 'status'>>
+  const [override, setOverride] = useState<EventOverride>({})
+  const effective = { ...event, ...override }
 
-  const canStart = event.status === 'draft' || event.status === 'active'
-  const canEnd   = event.status === 'live'
+  const effectiveCanEdit          = effective.status !== 'completed'
+  const effectiveCanStart         = effective.status === 'draft' || effective.status === 'active'
+  const effectiveCanEnd           = effective.status === 'live'
+  const effectiveCanViewDashboard = effective.status === 'active' || effective.status === 'live'
+  const effectiveCanViewReport    = effective.status === 'completed'
+  const effectiveIsLive           = effective.status === 'live'
+  const products  = effectiveIsLive ? MOCK_PRODUCTS : []
+
+  // ─── Inline edit draft (B2) ─────────────────────────────────────────────────
+  type Draft = {
+    name: string
+    expected_guest_count: number
+    date: string
+    location: string
+    bars_count: number
+  }
+  const [isEditing, setIsEditing] = useState(false)
+  const [draft, setDraft] = useState<Draft>({
+    name: effective.name,
+    expected_guest_count: effective.expected_guest_count,
+    date: effective.date,
+    location: effective.location,
+    bars_count: effective.bars_count,
+  })
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraft({
+        name: effective.name,
+        expected_guest_count: effective.expected_guest_count,
+        date: effective.date,
+        location: effective.location,
+        bars_count: effective.bars_count,
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effective.id, effective.name, effective.expected_guest_count, effective.date, effective.location, effective.bars_count, isEditing])
+
+  // ─── Lock matrix per effective status ───────────────────────────────────────
+  const isLiveEdit = effective.status === 'live'
+  const lockMatrix = {
+    name:      false,
+    guests:    false,
+    date:      isLiveEdit,
+    venue:     isLiveEdit,
+    barsCount: isLiveEdit,
+  }
+
+  // ─── End-event modal (B3) ───────────────────────────────────────────────────
+  const [showEndConfirm, setShowEndConfirm] = useState(false)
+
+  // ─── Go-Live dialogs (gap closure: confirm + destination choice) ────────────
+  const [showGoLiveConfirm, setShowGoLiveConfirm]         = useState(false)
+  const [showGoLiveDestination, setShowGoLiveDestination] = useState(false)
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+  function handleSave() {
+    if (!draft.name.trim()) { alert('Event name cannot be empty.'); return }
+    if (draft.expected_guest_count < 0) { alert('Expected guests cannot be negative.'); return }
+    if (draft.bars_count < 1) { alert('Event must have at least 1 bar.'); return }
+    setOverride((prev) => ({ ...prev, ...draft }))
+    setIsEditing(false)
+    console.log('[B2.5] Would PATCH /api/v1/events/' + event.id, draft)
+  }
+  function handleCancel() {
+    setDraft({
+      name: effective.name,
+      expected_guest_count: effective.expected_guest_count,
+      date: effective.date,
+      location: effective.location,
+      bars_count: effective.bars_count,
+    })
+    setIsEditing(false)
+  }
+  function handleActivate() { setOverride((p) => ({ ...p, status: 'active' })) }
+  function handleGoLive() {
+    // Step 1: open confirmation dialog (does NOT change status yet).
+    setShowGoLiveConfirm(true)
+  }
+  function handleGoLiveConfirmed() {
+    // Step 2: confirmed → flip status → open destination-choice dialog.
+    setOverride((p) => ({ ...p, status: 'live' }))
+    setShowGoLiveConfirm(false)
+    setShowGoLiveDestination(true)
+  }
+  function handleGoToDashboard() {
+    setShowGoLiveDestination(false)
+    navigate('/dashboard')
+  }
+  function handleEndConfirmed() {
+    setOverride((p) => ({ ...p, status: 'completed' }))
+    setShowEndConfirm(false)
+  }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -107,22 +216,44 @@ export default function EventDetailPage() {
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#1A202C]">{event.name}</h1>
-            <StatusBadge status={event.status} />
+            <h1 className="text-2xl font-bold text-[#1A202C]">{effective.name}</h1>
+            <StatusBadge status={effective.status} />
           </div>
           <p className="text-sm text-[#4A5568] mt-1">
-            {formatDate(event.date)} · {event.location}
+            {formatDate(effective.date)} · {effective.location}
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <button
-            onClick={() => navigate('/events/create')}
-            className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-          >
-            Edit Event
-          </button>
-          {isLive && (
+          {effectiveCanEdit && !isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
+            >
+              Edit Event
+            </button>
+          )}
+          {isEditing && (
+            <>
+              <button
+                onClick={handleCancel}
+                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
+                style={{ backgroundColor: '#38A169' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
+              >
+                Save Changes
+              </button>
+            </>
+          )}
+
+          {effectiveCanViewDashboard && !isEditing && (
             <button
               onClick={() => navigate('/dashboard')}
               className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-4 py-2 rounded-lg transition-colors"
@@ -130,18 +261,43 @@ export default function EventDetailPage() {
               View Dashboard
             </button>
           )}
-          {canStart && (
+
+          {effectiveCanViewReport && (
             <button
+              onClick={() => navigate(`/reports/${effective.id}`)}
+              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-4 py-2 rounded-lg transition-colors"
+            >
+              View Report
+            </button>
+          )}
+
+          {effectiveCanStart && effective.status === 'draft' && !isEditing && (
+            <button
+              onClick={handleActivate}
               className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
               style={{ backgroundColor: '#38A169' }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
               onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
             >
-              Start Event
+              Activate Event
             </button>
           )}
-          {canEnd && (
+
+          {effectiveCanStart && effective.status === 'active' && !isEditing && (
             <button
+              onClick={handleGoLive}
+              className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
+              style={{ backgroundColor: '#38A169' }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
+            >
+              Go Live
+            </button>
+          )}
+
+          {effectiveCanEnd && !isEditing && (
+            <button
+              onClick={() => setShowEndConfirm(true)}
               className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
               style={{ backgroundColor: '#E53E3E' }}
               onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')}
@@ -158,25 +314,25 @@ export default function EventDetailPage() {
         <StatCard
           icon={Icons.bars}
           label="Bars"
-          value={barsCount}
+          value={effectiveIsLive ? MOCK_BARS.length : effective.bars_count}
           sub="configured"
         />
         <StatCard
           icon={Icons.guests}
           label="Expected Guests"
-          value={event.expected_guest_count.toLocaleString()}
+          value={effective.expected_guest_count.toLocaleString()}
           sub="registered"
         />
         <StatCard
           icon={Icons.products}
           label="Products"
-          value={isLive ? products.length : '—'}
+          value={effectiveIsLive ? products.length : '—'}
           sub="configured"
         />
         <StatCard
           icon={Icons.venue}
           label="Venue"
-          value={event.location}
+          value={effective.location}
         />
       </div>
 
@@ -186,35 +342,117 @@ export default function EventDetailPage() {
           <h2 className="text-xs font-bold text-[#4A5568] uppercase tracking-widest">Event Details</h2>
         </div>
         <div className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+
+          {/* Event Name */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Event Name</p>
-            <p className="text-[#1A202C] font-medium">{event.name}</p>
+            {isEditing && !lockMatrix.name ? (
+              <>
+                <input
+                  type="text"
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
+                />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.name}</p>
+              </>
+            ) : (
+              <FieldDisplay locked={isEditing && lockMatrix.name}>{effective.name}</FieldDisplay>
+            )}
           </div>
+
+          {/* Date */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Date</p>
-            <p className="text-[#1A202C] font-medium">{formatDate(event.date)}</p>
+            {isEditing && !lockMatrix.date ? (
+              <>
+                <input
+                  type="date"
+                  value={draft.date}
+                  onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
+                />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.date)}</p>
+              </>
+            ) : (
+              <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.date)}</FieldDisplay>
+            )}
           </div>
+
+          {/* Venue */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Venue</p>
-            <p className="text-[#1A202C] font-medium">{event.location}</p>
+            {isEditing && !lockMatrix.venue ? (
+              <>
+                <input
+                  type="text"
+                  value={draft.location}
+                  onChange={(e) => setDraft({ ...draft, location: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
+                />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.location}</p>
+              </>
+            ) : (
+              <FieldDisplay locked={isEditing && lockMatrix.venue}>{effective.location}</FieldDisplay>
+            )}
           </div>
+
+          {/* Bars Count */}
+          <div>
+            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Number of Bars</p>
+            {isEditing && !lockMatrix.barsCount ? (
+              <>
+                <input
+                  type="number"
+                  min={1}
+                  value={draft.bars_count}
+                  onChange={(e) => setDraft({ ...draft, bars_count: Number(e.target.value) || 1 })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums"
+                />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.bars_count}</p>
+              </>
+            ) : (
+              <FieldDisplay locked={isEditing && lockMatrix.barsCount}>{effective.bars_count}</FieldDisplay>
+            )}
+          </div>
+
+          {/* Status */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Status</p>
-            <StatusBadge status={event.status} />
+            <StatusBadge status={effective.status} />
           </div>
+
+          {/* Expected Guests */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Expected Guests</p>
-            <p className="text-[#1A202C] font-medium">{event.expected_guest_count.toLocaleString()}</p>
+            {isEditing && !lockMatrix.guests ? (
+              <>
+                <input
+                  type="number"
+                  min={0}
+                  value={draft.expected_guest_count}
+                  onChange={(e) => setDraft({ ...draft, expected_guest_count: Number(e.target.value) || 0 })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums"
+                />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.expected_guest_count.toLocaleString()}</p>
+              </>
+            ) : (
+              <FieldDisplay locked={isEditing && lockMatrix.guests}>
+                {effective.expected_guest_count.toLocaleString()}
+              </FieldDisplay>
+            )}
           </div>
+
+          {/* Created (read-only fact) */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Created</p>
-            <p className="text-[#1A202C] font-medium">{formatDate(event.created_at)}</p>
+            <p className="text-[#1A202C] font-medium">{formatDate(effective.created_at)}</p>
           </div>
         </div>
       </div>
 
       {/* Bar list (live event only) */}
-      {isLive && (
+      {effectiveIsLive && (
         <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm overflow-hidden">
           <div className="bg-[#F7FAFC] border-b border-[#E2E8F0] px-5 py-3 flex items-center justify-between">
             <h2 className="text-xs font-bold text-[#4A5568] uppercase tracking-widest">Bars</h2>
@@ -262,6 +500,135 @@ export default function EventDetailPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Go Live Confirmation Modal (gap closure) */}
+      {showGoLiveConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowGoLiveConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#38A169]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A202C]">Go Live with {effective.name}?</h3>
+                <p className="text-sm text-[#4A5568] mt-1">
+                  This opens the POS, activates dashboards, and begins live data collection. The event configuration becomes locked.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowGoLiveConfirm(false)}
+                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGoLiveConfirmed}
+                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
+                style={{ backgroundColor: '#38A169' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
+              >
+                Yes, Go Live
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Go Live Destination Choice Modal (gap closure) */}
+      {showGoLiveDestination && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowGoLiveDestination(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#1E5A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A202C]">{effective.name} is now live</h3>
+                <p className="text-sm text-[#4A5568] mt-1">
+                  Where do you want to go next?
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowGoLiveDestination(false)}
+                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
+              >
+                Stay on Detail
+              </button>
+              <button
+                onClick={handleGoToDashboard}
+                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors bg-[#1E5A8D] hover:bg-[#174a78]"
+              >
+                Open Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* End Event Confirmation Modal (B3) */}
+      {showEndConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShowEndConfirm(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-[#E53E3E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1A202C]">End {effective.name}?</h3>
+                <p className="text-sm text-[#4A5568] mt-1">
+                  This will lock the event, freeze all sales data, and start generating the post-event report. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowEndConfirm(false)}
+                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleEndConfirmed}
+                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
+                style={{ backgroundColor: '#E53E3E' }}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#E53E3E')}
+              >
+                Yes, End Event
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

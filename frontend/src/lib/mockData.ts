@@ -191,6 +191,17 @@ export const MOCK_EVENTS: Event[] = [
     location: 'Grand Ballroom',
     created_at: '2026-03-20',
   },
+  {
+    id: 'evt-4',
+    name: 'Spring Festival 2025',
+    date: '2025-04-12',
+    status: 'completed',
+    expected_guest_count: 280,
+    bars_count: 3,
+    location: 'Garden Terrace',
+    created_at: '2025-01-10',
+    ended_at: '2025-04-12T23:00:00Z',
+  },
 ]
 
 // ─── 2. MOCK_BARS ─────────────────────────────────────────────────────────────
