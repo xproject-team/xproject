@@ -24,16 +24,6 @@ class EventStatus(str, PyEnum):
     CANCELLED = "cancelled"   # Called off
 
 
-class Venue(TenantScopedModel):
-    """A physical location where events happen.
-
-    Examples: 'Sundance Venue', 'Latteria Garbatella', 'EUR Spa'.
-    """
-    __tablename__ = "venues"
-
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Event(TenantScopedModel):

@@ -16,15 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.modules.events.models import EventStatus
 
 
-# ─── Venue (read-only shape; full CRUD in a later phase) ──────────────────────
-
-class VenueResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
-    address: str | None = None
-    capacity: int | None = None
+# ─── Venue re-export ──────────────────────────────────────────────────────────
+from app.modules.venues.schemas import VenueResponse as VenueResponse  # noqa: F401
 
 
 # ─── Event — Create ───────────────────────────────────────────────────────────

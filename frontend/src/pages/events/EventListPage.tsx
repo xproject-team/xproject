@@ -1,22 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MOCK_EVENTS } from '@/lib/mockData'
+import { useEvents } from '@/features/events/hooks'
 import type { Event } from '@/lib/mockData'
 
 // ─── DATA SOURCE ──────────────────────────────────────────────────────────────
-// Combines MOCK_EVENTS (hardcoded samples) with user-created draft events from localStorage.
-// TODO(backend): replace with `const { data: ALL_EVENTS = [] } = useEvents()`
-// when /api/v1/events is wired. Render code below is data-source-agnostic.
-
-function loadDraftEvents(): Event[] {
-  try {
-    return JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
-  } catch {
-    return []
-  }
-}
-
-// Moved inside component — see EventListPage below
+// Events are fetched via useEvents() hook (TanStack Query → /api/v1/events).
+// The hook auto-refetches after any mutation (create/activate/start/end) in
+// other pages — no manual reload needed. See features/events/hooks.ts.
 
 // ─── Effective status (auto Live → Completed by ended_at) ─────────────────────
 // Pure function. Works on any Event shape. Backend will eventually compute this
@@ -72,13 +62,14 @@ export default function EventListPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabKey>('all')
 
-  // Re-read draft events from localStorage on every render (picks up newly created events)
-  const ALL_EVENTS: Event[] = [...MOCK_EVENTS, ...loadDraftEvents()]
+  // Fetch events from backend (hierarchical cache key ['events']).
+  // isLoading is true on first fetch; isError true on network/auth failure.
+  const { data: events = [], isLoading, isError, error } = useEvents()
 
   // Compute effective status once per event, then filter by active tab.
   const decoratedEvents = useMemo(
-    () => ALL_EVENTS.map((e) => ({ ...e, _effectiveStatus: getEffectiveStatus(e) })),
-    []
+    () => events.map((e) => ({ ...e, _effectiveStatus: getEffectiveStatus(e) })),
+    [events]
   )
 
   const visibleEvents = useMemo(
@@ -163,7 +154,37 @@ export default function EventListPage() {
             </tr>
           </thead>
           <tbody>
-            {visibleEvents.length === 0 && (
+            {/* Loading state — skeleton row */}
+            {isLoading && (
+              <tr>
+                <td colSpan={7} className="px-5 py-12 text-center text-sm text-[#A0AEC0]">
+                  <div className="inline-flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-[#CBD5E0] border-t-[#1E5A8D] rounded-full animate-spin" />
+                    Loading events…
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {/* Error state — red banner */}
+            {isError && !isLoading && (
+              <tr>
+                <td colSpan={7} className="px-5 py-8 text-center">
+                  <div className="inline-flex items-start gap-2 text-sm text-[#E53E3E]">
+                    <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span>
+                      Failed to load events.
+                      {error instanceof Error && <span className="block text-xs text-[#A0AEC0] mt-1">{error.message}</span>}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            )}
+
+            {/* Empty state — only when not loading and not errored */}
+            {!isLoading && !isError && visibleEvents.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-5 py-12 text-center text-sm text-[#A0AEC0]">
                   No events in this view.

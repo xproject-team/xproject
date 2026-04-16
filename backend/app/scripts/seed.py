@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.modules.auth.models import Tenant, User, UserRole
-from app.modules.events.models import Venue
+from app.modules.venues.models import Venue
 
 
 async def seed() -> None:

@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.events.models import Event, EventStatus, Venue
+from app.modules.events.models import Event, EventStatus
+from app.modules.venues.models import Venue
 from app.modules.events.schemas import EventCreate
 
 
