@@ -16,6 +16,7 @@ from app.modules.events.models import Event  # noqa: F401
 from app.modules.products.models import Product  # noqa: F401
 from app.modules.event_products.models import EventProduct  # noqa: F401
 from app.modules.bar_stock.models import BarStock  # noqa: F401
+from app.modules.recipes.models import Recipe, RecipeItem  # noqa: F401
 
 # TODO: re-enable as each module's models are written in future phases.
 # from app.modules.inventory.models import InventoryItem  # noqa: F401
