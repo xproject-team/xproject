@@ -4,11 +4,11 @@ Contains:
   - Venue: a physical location (belongs to a tenant)
   - Event: an event held at a venue (belongs to a tenant and a venue)
 """
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -54,6 +54,12 @@ class Event(TenantScopedModel):
     )
     expected_guest_count: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
+    )
+    scheduled_date: Mapped[date] = mapped_column(
+        Date, nullable=False,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
