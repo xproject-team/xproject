@@ -1,5 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { useCreateEvent, getApiError } from '@/features/events/hooks'
+import { useVenues } from '@/features/venues/hooks'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,21 +79,6 @@ const selectCls =
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
-function Toast({ visible }: { visible: boolean }) {
-  return (
-    <div
-      className={[
-        'fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-[#1A202C] text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg transition-all duration-300',
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none',
-      ].join(' ')}
-    >
-      <svg className="w-4 h-4 text-[#38A169] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-      </svg>
-      Event saved as draft
-    </div>
-  )
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -105,7 +93,7 @@ export default function EventCreatePage() {
   const [eventName,   setEventName]   = useState('')
   const [eventDate,   setEventDate]   = useState('')
   const [guests,      setGuests]      = useState('')
-  const [venue,       setVenue]       = useState('')
+  const [venueId,     setVenueId]     = useState('')
 
   // Section 2 — Bar Configuration
   const [bars,    setBars]    = useState<BarRow[]>(SEED_BARS)
@@ -200,19 +188,13 @@ export default function EventCreatePage() {
   }
   const [errors, setErrors] = useState<Errors>({})
 
-  // Toast
-  const [toastVisible, setToastVisible] = useState(false)
-  const showToast = useCallback(() => {
-    setToastVisible(true)
-    setTimeout(() => setToastVisible(false), 3000)
-  }, [])
 
   // Validation logic — returns Errors object (empty = valid)
   function validate(): Errors {
     const errs: Errors = {}
     if (!eventName.trim()) errs.name  = 'Event name is required'
     if (!eventDate.trim()) errs.date  = 'Date is required'
-    if (!venue.trim())     errs.venue = 'Venue is required'
+    if (!venueId)          errs.venue = 'Venue is required'
     const namedBars = bars.filter((b) => b.name.trim() !== '')
     if (namedBars.length === 0) errs.bars = 'Add at least one bar with a name'
     const namedDrinks = menu.filter((m) => m.product_name.trim() !== '')
@@ -223,12 +205,21 @@ export default function EventCreatePage() {
     return errs
   }
 
-  // Save handler — runs validation, opens sections with errors, shows toast on success
+  // Venues dropdown data (used by Section 1 venue select)
+  const { data: venues = [] } = useVenues()
+
+  // Create mutation — POST /api/v1/events
+  const createMutation = useCreateEvent()
+
+  // Save handler — validates locally, then POSTs to backend via useCreateEvent.
+  // Note: bars/menu/recipes/stock sections collect UI state but the backend
+  // POST /events endpoint only accepts name/venue_id/scheduled_date/expected_guest_count.
+  // Sub-entities will be wired to their own endpoints (/bars, /products, etc.)
+  // in a follow-up sprint.
   function handleSaveDraft() {
     const errs = validate()
     setErrors(errs)
     if (Object.keys(errs).length > 0) {
-      // Auto-open any section that has an error
       setOpen((prev) => ({
         ...prev,
         1: !!(errs.name || errs.date || errs.venue) || prev[1],
@@ -238,29 +229,28 @@ export default function EventCreatePage() {
       }))
       return
     }
-    // Validation passed — persist to localStorage + navigate to /events (C4)
-    const newEvent = {
-      id: 'evt-' + Date.now(),
-      name: eventName.trim(),
-      date: eventDate,
-      status: 'draft' as const,
-      expected_guest_count: Number(guests) || 0,
-      bars_count: bars.filter((b) => b.name.trim()).length,
-      location: venue.trim(),
-      created_at: new Date().toISOString().slice(0, 10),
-    }
-
-    // Read existing draft events, append new one, save back
-    try {
-      const existing = JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
-      existing.push(newEvent)
-      localStorage.setItem('xproject_draft_events', JSON.stringify(existing))
-    } catch {
-      localStorage.setItem('xproject_draft_events', JSON.stringify([newEvent]))
-    }
-
-    console.log('[C4] Event saved to localStorage:', newEvent)
-    navigate('/events')
+    createMutation.mutate(
+      {
+        name: eventName.trim(),
+        venue_id: venueId,
+        scheduled_date: eventDate,
+        expected_guest_count: Number(guests) || null,
+      },
+      {
+        onSuccess: () => {
+          navigate('/events')
+        },
+        onError: (err) => {
+          const api = getApiError(err)
+          if (api?.error === 'venue_not_found') {
+            setErrors({ ...errors, venue: 'Selected venue no longer exists. Please pick another.' })
+            setOpen((prev) => ({ ...prev, 1: true }))
+          } else {
+            alert(api?.message ?? 'Failed to create event.')
+          }
+        },
+      },
+    )
   }
 
   return (
@@ -335,13 +325,16 @@ export default function EventCreatePage() {
               </div>
               <div>
                 <Label>Venue</Label>
-                <input
-                  type="text"
-                  value={venue}
-                  onChange={(e) => { setVenue(e.target.value); if (errors.venue) setErrors({ ...errors, venue: undefined }) }}
-                  placeholder="e.g. Villa Roma"
-                  className={errors.venue ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
-                />
+                <select
+                  value={venueId}
+                  onChange={(e) => { setVenueId(e.target.value); if (errors.venue) setErrors({ ...errors, venue: undefined }) }}
+                  className={errors.venue ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100 bg-white` : `${inputCls} bg-white`}
+                >
+                  <option value="">Select a venue\u2026</option>
+                  {venues.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
                 {errors.venue && <p className="text-xs text-[#E53E3E] mt-1">{errors.venue}</p>}
               </div>
             </div>
@@ -728,7 +721,6 @@ export default function EventCreatePage() {
 
       </div>{/* /accordion */}
 
-      <Toast visible={toastVisible} />
     </div>
   )
 }

@@ -1,7 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { MOCK_EVENTS, MOCK_BARS, MOCK_PRODUCTS } from '@/lib/mockData'
+import { MOCK_BARS, MOCK_PRODUCTS } from '@/lib/mockData'
 import type { Event } from '@/lib/mockData'
+import {
+  useEvent,
+  useUpdateEvent,
+  useActivateEvent,
+  useStartEvent,
+  useEndEvent,
+  getApiError,
+} from '@/features/events/hooks'
+import { useVenues } from '@/features/venues/hooks'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -92,42 +101,15 @@ const Icons = {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function EventDetailPage() {
-  const { id }   = useParams<{ id: string }>()
+/**
+ * EventDetailContent — renders the page body when an `event` is available.
+ * Lifted from EventDetailPage so that hooks that depend on `event` can use it
+ * without TypeScript complaints about `event` being possibly undefined.
+ */
+function EventDetailContent({ event }: { event: Event }) {
   const navigate = useNavigate()
-
-  // ─── Data source: MOCK_EVENTS + localStorage draft events ───────────────────
-  function loadDraftEvents(): Event[] {
-    try {
-      return JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
-    } catch {
-      return []
-    }
-  }
-  const allEvents = [...MOCK_EVENTS, ...loadDraftEvents()]
-  const event = allEvents.find((e) => e.id === id) ?? allEvents[0]
-
-  // ─── localStorage persistence helper ────────────────────────────────────────
-  // Single function for ALL mutations (save, activate, go live, end).
-  // Finds the event by ID in localStorage and merges the updates.
-  // TODO(backend): replace each call site with the appropriate API mutation.
-  function persistDraftUpdate(updates: Record<string, unknown>) {
-    try {
-      const stored = JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
-      const idx = stored.findIndex((e: any) => e.id === event.id)
-      if (idx !== -1) {
-        stored[idx] = { ...stored[idx], ...updates }
-        localStorage.setItem('xproject_draft_events', JSON.stringify(stored))
-      }
-    } catch { /* mock-only persistence */ }
-  }
-
-  // ─── Local override state ───────────────────────────────────────────────────
-  // Holds saved-but-not-persisted-to-backend edits + status promotions.
-  // Merges with the base event for all rendering.
-  type EventOverride = Partial<Pick<Event, 'name' | 'scheduled_date' | 'venue' | 'expected_guest_count' | 'bars_count' | 'status'>>
-  const [override, setOverride] = useState<EventOverride>({})
-  const effective = { ...event, ...override }
+  // Backend event is the single source of truth — no local override layer.
+  const effective = event
 
   // ─── Status-driven flags ────────────────────────────────────────────────────
   const effectiveCanEdit          = effective.status !== 'completed'
@@ -143,7 +125,7 @@ export default function EventDetailPage() {
     name: string
     expected_guest_count: number
     scheduled_date: string
-    venue_name: string
+    venue_id: string
     bars_count: number
   }
   const [isEditing, setIsEditing] = useState(false)
@@ -151,21 +133,9 @@ export default function EventDetailPage() {
     name: effective.name,
     expected_guest_count: effective.expected_guest_count ?? 0,
     scheduled_date: effective.scheduled_date,
-    venue_name: effective.venue.name,
+    venue_id: effective.venue.id,
     bars_count: effective.bars_count,
   })
-
-  useEffect(() => {
-    if (!isEditing) {
-      setDraft({
-        name: effective.name,
-        expected_guest_count: effective.expected_guest_count ?? 0,
-        scheduled_date: effective.scheduled_date,
-        venue_name: effective.venue.name,
-        bars_count: effective.bars_count,
-      })
-    }
-  }, [effective.id, effective.name, effective.expected_guest_count, effective.scheduled_date, effective.venue.name, effective.bars_count, isEditing])
 
   // ─── Lock matrix ────────────────────────────────────────────────────────────
   const isLiveEdit = effective.status === 'live'
@@ -182,14 +152,53 @@ export default function EventDetailPage() {
   const [showGoLiveConfirm, setShowGoLiveConfirm]       = useState(false)
   const [showGoLiveDestination, setShowGoLiveDestination] = useState(false)
 
+  // ─── Mutations (TanStack Query) ─────────────────────────────────────────────
+  const updateMutation   = useUpdateEvent()
+  const activateMutation = useActivateEvent()
+  const startMutation    = useStartEvent()
+  const endMutation      = useEndEvent()
+
+  // Venues dropdown data
+  const { data: venues = [] } = useVenues()
+
+  // Toast state for non-blocking errors (e.g. field_locked)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  function showToast(message: string) {
+    setToastMessage(message)
+    setTimeout(() => setToastMessage(null), 5000)
+  }
+
   // ─── Handlers ───────────────────────────────────────────────────────────────
   function handleSave() {
     if (!draft.name.trim()) { alert('Event name cannot be empty.'); return }
     if (draft.expected_guest_count < 0) { alert('Expected guests cannot be negative.'); return }
-    if (draft.bars_count < 1) { alert('Event must have at least 1 bar.'); return }
-    setOverride((prev) => ({ ...prev, ...draft }))
-    setIsEditing(false)
-    persistDraftUpdate(draft)
+
+    updateMutation.mutate(
+      {
+        id: event.id,
+        payload: {
+          name: draft.name,
+          venue_id: draft.venue_id,
+          scheduled_date: draft.scheduled_date,
+          expected_guest_count: draft.expected_guest_count,
+          version: event.version,
+        },
+      },
+      {
+        onSuccess: () => setIsEditing(false),
+        onError: (err) => {
+          const api = getApiError(err)
+          if (api?.error === 'field_locked') {
+            showToast(api.message)
+          } else if (api?.error === 'stale_version') {
+            alert('This event was modified by someone else. Refreshing to show the latest version.')
+            setIsEditing(false)
+          } else {
+            alert(api?.message ?? 'Failed to save event.')
+          }
+        },
+      },
+    )
   }
 
   function handleCancel() {
@@ -197,15 +206,19 @@ export default function EventDetailPage() {
       name: effective.name,
       expected_guest_count: effective.expected_guest_count ?? 0,
       scheduled_date: effective.scheduled_date,
-      venue_name: effective.venue.name,
+      venue_id: effective.venue.id,
       bars_count: effective.bars_count,
     })
     setIsEditing(false)
   }
 
   function handleActivate() {
-    setOverride((p) => ({ ...p, status: 'active' as const }))
-    persistDraftUpdate({ status: 'active' })
+    activateMutation.mutate(event.id, {
+      onError: (err) => {
+        const api = getApiError(err)
+        alert(api?.message ?? 'Failed to activate event.')
+      },
+    })
   }
 
   function handleGoLive() {
@@ -213,10 +226,24 @@ export default function EventDetailPage() {
   }
 
   function handleGoLiveConfirmed() {
-    setOverride((p) => ({ ...p, status: 'live' as const }))
     setShowGoLiveConfirm(false)
-    setShowGoLiveDestination(true)
-    persistDraftUpdate({ status: 'live' })
+    startMutation.mutate(event.id, {
+      onSuccess: () => setShowGoLiveDestination(true),
+      onError: (err) => {
+        const api = getApiError(err)
+        if (api && api.error === 'event_already_live') {
+          // Type assertion — TS discriminated-union narrowing fails here because
+          // the fallback variant '{ error: string }' is a superset of the literal.
+          const conflict = api as Extract<typeof api, { error: 'event_already_live' }>
+          alert(
+            `${conflict.message}\n\n` +
+            `Go to "${conflict.conflicting_event.name}" and end it first, then try again.`
+          )
+        } else {
+          alert(api?.message ?? 'Failed to start event.')
+        }
+      },
+    })
   }
 
   function handleGoToDashboard() {
@@ -225,13 +252,23 @@ export default function EventDetailPage() {
   }
 
   function handleEndConfirmed() {
-    setOverride((p) => ({ ...p, status: 'completed' as const }))
     setShowEndConfirm(false)
-    persistDraftUpdate({ status: 'completed' })
+    endMutation.mutate(event.id, {
+      onError: (err) => {
+        const api = getApiError(err)
+        alert(api?.message ?? 'Failed to end event.')
+      },
+    })
   }
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
+      {/* Toast — bottom-right, auto-dismisses after 5s */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#1A202C] text-white text-sm px-4 py-3 rounded-lg shadow-lg max-w-sm">
+          {toastMessage}
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
@@ -395,8 +432,15 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Venue</p>
             {isEditing && !lockMatrix.venue ? (
               <>
-                <input type="text" value={draft.venue_name} onChange={(e) => setDraft({ ...draft, venue_name: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
+                <select
+                  value={draft.venue_id}
+                  onChange={(e) => setDraft({ ...draft, venue_id: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 bg-white"
+                >
+                  {venues.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.venue.name}</p>
               </>
             ) : (
@@ -563,4 +607,68 @@ export default function EventDetailPage() {
 
     </div>
   )
+}
+
+
+/**
+ * EventDetailPage — outer wrapper.
+ * Handles the useEvent(id) fetch lifecycle (loading / error / not-found).
+ * Only mounts EventDetailContent once `event` is guaranteed non-null, which
+ * means EventDetailContent's hooks can treat `event` as always defined.
+ */
+export default function EventDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const { data: event, isLoading, isError, error } = useEvent(id)
+
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="flex items-center gap-3 text-[#4A5568]">
+          <div className="w-4 h-4 border-2 border-[#CBD5E0] border-t-[#1E5A8D] rounded-full animate-spin" />
+          <span className="text-sm">Loading event\u2026</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+          <p className="text-sm font-semibold text-[#E53E3E]">Failed to load event.</p>
+          {error instanceof Error && (
+            <p className="text-xs text-[#A0AEC0] mt-1">{error.message}</p>
+          )}
+          <button
+            onClick={() => navigate('/events')}
+            className="mt-3 text-sm font-semibold text-[#1E5A8D] hover:underline"
+          >
+            \u2190 Back to Events
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!event) {
+    return (
+      <div className="p-6 max-w-5xl mx-auto">
+        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-5">
+          <p className="text-sm font-semibold text-[#1A202C]">Event not found.</p>
+          <p className="text-xs text-[#4A5568] mt-1">
+            The event may have been deleted or you do not have access.
+          </p>
+          <button
+            onClick={() => navigate('/events')}
+            className="mt-3 text-sm font-semibold text-[#1E5A8D] hover:underline"
+          >
+            \u2190 Back to Events
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return <EventDetailContent event={event} />
 }
