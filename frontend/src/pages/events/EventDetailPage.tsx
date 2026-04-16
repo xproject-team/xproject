@@ -47,7 +47,7 @@ function StatCard({ icon, label, value, sub }: {
   )
 }
 
-// ─── FieldDisplay (B2) ────────────────────────────────────────────────────────
+// ─── FieldDisplay (inline edit: plain text or locked with icon) ───────────────
 
 function FieldDisplay({ locked, children }: { locked: boolean; children: React.ReactNode }) {
   if (!locked) {
@@ -96,14 +96,40 @@ export default function EventDetailPage() {
   const { id }   = useParams<{ id: string }>()
   const navigate = useNavigate()
 
-  const event = MOCK_EVENTS.find((e) => e.id === id) ?? MOCK_EVENTS[0]
+  // ─── Data source: MOCK_EVENTS + localStorage draft events ───────────────────
+  function loadDraftEvents(): Event[] {
+    try {
+      return JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
+    } catch {
+      return []
+    }
+  }
+  const allEvents = [...MOCK_EVENTS, ...loadDraftEvents()]
+  const event = allEvents.find((e) => e.id === id) ?? allEvents[0]
 
-  // ─── Local override (B2.5) — saved-but-not-persisted edits + status promos ──
-  // TODO(backend): replace with TanStack Query mutation cache when PATCH /events/{id} lands.
+  // ─── localStorage persistence helper ────────────────────────────────────────
+  // Single function for ALL mutations (save, activate, go live, end).
+  // Finds the event by ID in localStorage and merges the updates.
+  // TODO(backend): replace each call site with the appropriate API mutation.
+  function persistDraftUpdate(updates: Record<string, unknown>) {
+    try {
+      const stored = JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
+      const idx = stored.findIndex((e: any) => e.id === event.id)
+      if (idx !== -1) {
+        stored[idx] = { ...stored[idx], ...updates }
+        localStorage.setItem('xproject_draft_events', JSON.stringify(stored))
+      }
+    } catch { /* mock-only persistence */ }
+  }
+
+  // ─── Local override state ───────────────────────────────────────────────────
+  // Holds saved-but-not-persisted-to-backend edits + status promotions.
+  // Merges with the base event for all rendering.
   type EventOverride = Partial<Pick<Event, 'name' | 'date' | 'location' | 'expected_guest_count' | 'bars_count' | 'status'>>
   const [override, setOverride] = useState<EventOverride>({})
   const effective = { ...event, ...override }
 
+  // ─── Status-driven flags ────────────────────────────────────────────────────
   const effectiveCanEdit          = effective.status !== 'completed'
   const effectiveCanStart         = effective.status === 'draft' || effective.status === 'active'
   const effectiveCanEnd           = effective.status === 'live'
@@ -112,7 +138,7 @@ export default function EventDetailPage() {
   const effectiveIsLive           = effective.status === 'live'
   const products  = effectiveIsLive ? MOCK_PRODUCTS : []
 
-  // ─── Inline edit draft (B2) ─────────────────────────────────────────────────
+  // ─── Inline edit draft ──────────────────────────────────────────────────────
   type Draft = {
     name: string
     expected_guest_count: number
@@ -139,10 +165,9 @@ export default function EventDetailPage() {
         bars_count: effective.bars_count,
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effective.id, effective.name, effective.expected_guest_count, effective.date, effective.location, effective.bars_count, isEditing])
 
-  // ─── Lock matrix per effective status ───────────────────────────────────────
+  // ─── Lock matrix ────────────────────────────────────────────────────────────
   const isLiveEdit = effective.status === 'live'
   const lockMatrix = {
     name:      false,
@@ -152,11 +177,9 @@ export default function EventDetailPage() {
     barsCount: isLiveEdit,
   }
 
-  // ─── End-event modal (B3) ───────────────────────────────────────────────────
-  const [showEndConfirm, setShowEndConfirm] = useState(false)
-
-  // ─── Go-Live dialogs (gap closure: confirm + destination choice) ────────────
-  const [showGoLiveConfirm, setShowGoLiveConfirm]         = useState(false)
+  // ─── Dialog states ──────────────────────────────────────────────────────────
+  const [showEndConfirm, setShowEndConfirm]             = useState(false)
+  const [showGoLiveConfirm, setShowGoLiveConfirm]       = useState(false)
   const [showGoLiveDestination, setShowGoLiveDestination] = useState(false)
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
@@ -166,8 +189,9 @@ export default function EventDetailPage() {
     if (draft.bars_count < 1) { alert('Event must have at least 1 bar.'); return }
     setOverride((prev) => ({ ...prev, ...draft }))
     setIsEditing(false)
-    console.log('[B2.5] Would PATCH /api/v1/events/' + event.id, draft)
+    persistDraftUpdate(draft)
   }
+
   function handleCancel() {
     setDraft({
       name: effective.name,
@@ -178,24 +202,32 @@ export default function EventDetailPage() {
     })
     setIsEditing(false)
   }
-  function handleActivate() { setOverride((p) => ({ ...p, status: 'active' })) }
+
+  function handleActivate() {
+    setOverride((p) => ({ ...p, status: 'active' as const }))
+    persistDraftUpdate({ status: 'active' })
+  }
+
   function handleGoLive() {
-    // Step 1: open confirmation dialog (does NOT change status yet).
     setShowGoLiveConfirm(true)
   }
+
   function handleGoLiveConfirmed() {
-    // Step 2: confirmed → flip status → open destination-choice dialog.
-    setOverride((p) => ({ ...p, status: 'live' }))
+    setOverride((p) => ({ ...p, status: 'live' as const }))
     setShowGoLiveConfirm(false)
     setShowGoLiveDestination(true)
+    persistDraftUpdate({ status: 'live' })
   }
+
   function handleGoToDashboard() {
     setShowGoLiveDestination(false)
     navigate('/dashboard')
   }
+
   function handleEndConfirmed() {
-    setOverride((p) => ({ ...p, status: 'completed' }))
+    setOverride((p) => ({ ...p, status: 'completed' as const }))
     setShowEndConfirm(false)
+    persistDraftUpdate({ status: 'completed' })
   }
 
   return (
@@ -220,11 +252,12 @@ export default function EventDetailPage() {
             <StatusBadge status={effective.status} />
           </div>
           <p className="text-sm text-[#4A5568] mt-1">
-            {formatDate(effective.date)} · {effective.location}
+            {formatDate(effective.date)} \u00b7 {effective.location}
           </p>
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Edit / Save / Cancel */}
           {effectiveCanEdit && !isEditing && (
             <button
               onClick={() => setIsEditing(true)}
@@ -253,6 +286,7 @@ export default function EventDetailPage() {
             </>
           )}
 
+          {/* View Dashboard — Active + Live */}
           {effectiveCanViewDashboard && !isEditing && (
             <button
               onClick={() => navigate('/dashboard')}
@@ -262,6 +296,7 @@ export default function EventDetailPage() {
             </button>
           )}
 
+          {/* View Report — Completed */}
           {effectiveCanViewReport && (
             <button
               onClick={() => navigate(`/reports/${effective.id}`)}
@@ -271,6 +306,7 @@ export default function EventDetailPage() {
             </button>
           )}
 
+          {/* Activate Event — Draft only */}
           {effectiveCanStart && effective.status === 'draft' && !isEditing && (
             <button
               onClick={handleActivate}
@@ -283,6 +319,7 @@ export default function EventDetailPage() {
             </button>
           )}
 
+          {/* Go Live — Active only */}
           {effectiveCanStart && effective.status === 'active' && !isEditing && (
             <button
               onClick={handleGoLive}
@@ -295,6 +332,7 @@ export default function EventDetailPage() {
             </button>
           )}
 
+          {/* End Event — Live only */}
           {effectiveCanEnd && !isEditing && (
             <button
               onClick={() => setShowEndConfirm(true)}
@@ -311,29 +349,10 @@ export default function EventDetailPage() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          icon={Icons.bars}
-          label="Bars"
-          value={effectiveIsLive ? MOCK_BARS.length : effective.bars_count}
-          sub="configured"
-        />
-        <StatCard
-          icon={Icons.guests}
-          label="Expected Guests"
-          value={effective.expected_guest_count.toLocaleString()}
-          sub="registered"
-        />
-        <StatCard
-          icon={Icons.products}
-          label="Products"
-          value={effectiveIsLive ? products.length : '—'}
-          sub="configured"
-        />
-        <StatCard
-          icon={Icons.venue}
-          label="Venue"
-          value={effective.location}
-        />
+        <StatCard icon={Icons.bars} label="Bars" value={effectiveIsLive ? MOCK_BARS.length : effective.bars_count} sub="configured" />
+        <StatCard icon={Icons.guests} label="Expected Guests" value={effective.expected_guest_count.toLocaleString()} sub="registered" />
+        <StatCard icon={Icons.products} label="Products" value={effectiveIsLive ? products.length : '\u2014'} sub="configured" />
+        <StatCard icon={Icons.venue} label="Venue" value={effective.location} />
       </div>
 
       {/* Event Info Card */}
@@ -348,12 +367,8 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Event Name</p>
             {isEditing && !lockMatrix.name ? (
               <>
-                <input
-                  type="text"
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
-                />
+                <input type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.name}</p>
               </>
             ) : (
@@ -366,12 +381,8 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Date</p>
             {isEditing && !lockMatrix.date ? (
               <>
-                <input
-                  type="date"
-                  value={draft.date}
-                  onChange={(e) => setDraft({ ...draft, date: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
-                />
+                <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.date)}</p>
               </>
             ) : (
@@ -384,12 +395,8 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Venue</p>
             {isEditing && !lockMatrix.venue ? (
               <>
-                <input
-                  type="text"
-                  value={draft.location}
-                  onChange={(e) => setDraft({ ...draft, location: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30"
-                />
+                <input type="text" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.location}</p>
               </>
             ) : (
@@ -402,13 +409,8 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Number of Bars</p>
             {isEditing && !lockMatrix.barsCount ? (
               <>
-                <input
-                  type="number"
-                  min={1}
-                  value={draft.bars_count}
-                  onChange={(e) => setDraft({ ...draft, bars_count: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums"
-                />
+                <input type="number" min={1} value={draft.bars_count} onChange={(e) => setDraft({ ...draft, bars_count: Number(e.target.value) || 1 })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums" />
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.bars_count}</p>
               </>
             ) : (
@@ -427,23 +429,16 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Expected Guests</p>
             {isEditing && !lockMatrix.guests ? (
               <>
-                <input
-                  type="number"
-                  min={0}
-                  value={draft.expected_guest_count}
-                  onChange={(e) => setDraft({ ...draft, expected_guest_count: Number(e.target.value) || 0 })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums"
-                />
+                <input type="number" min={0} value={draft.expected_guest_count} onChange={(e) => setDraft({ ...draft, expected_guest_count: Number(e.target.value) || 0 })}
+                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums" />
                 <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.expected_guest_count.toLocaleString()}</p>
               </>
             ) : (
-              <FieldDisplay locked={isEditing && lockMatrix.guests}>
-                {effective.expected_guest_count.toLocaleString()}
-              </FieldDisplay>
+              <FieldDisplay locked={isEditing && lockMatrix.guests}>{effective.expected_guest_count.toLocaleString()}</FieldDisplay>
             )}
           </div>
 
-          {/* Created (read-only fact) */}
+          {/* Created */}
           <div>
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Created</p>
             <p className="text-[#1A202C] font-medium">{formatDate(effective.created_at)}</p>
@@ -470,10 +465,7 @@ export default function EventDetailPage() {
             <tbody>
               {MOCK_BARS.map((bar) => {
                 const stockPct = Math.round((bar.current_stock / bar.initial_stock) * 100)
-                const dotCls =
-                  bar.status === 'healthy'  ? 'bg-[#38A169]' :
-                  bar.status === 'warning'  ? 'bg-[#D69E2E]' :
-                  'bg-[#E53E3E] animate-pulse'
+                const dotCls = bar.status === 'healthy' ? 'bg-[#38A169]' : bar.status === 'warning' ? 'bg-[#D69E2E]' : 'bg-[#E53E3E] animate-pulse'
                 return (
                   <tr key={bar.id} className="border-b border-[#E2E8F0] last:border-0 hover:bg-[#F7FAFC] transition-colors">
                     <td className="px-5 py-3 font-medium text-[#1A202C]">
@@ -487,10 +479,7 @@ export default function EventDetailPage() {
                     <td className="px-5 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-16 h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${stockPct > 60 ? 'bg-[#38A169]' : stockPct > 30 ? 'bg-[#D69E2E]' : 'bg-[#E53E3E]'}`}
-                            style={{ width: `${stockPct}%` }}
-                          />
+                          <div className={`h-full rounded-full ${stockPct > 60 ? 'bg-[#38A169]' : stockPct > 30 ? 'bg-[#D69E2E]' : 'bg-[#E53E3E]'}`} style={{ width: `${stockPct}%` }} />
                         </div>
                         <span className="text-xs text-[#4A5568] tabular-nums w-8 text-right">{stockPct}%</span>
                       </div>
@@ -503,16 +492,10 @@ export default function EventDetailPage() {
         </div>
       )}
 
-      {/* Go Live Confirmation Modal (gap closure) */}
+      {/* Go Live Confirmation Modal */}
       {showGoLiveConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowGoLiveConfirm(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowGoLiveConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5 text-[#38A169]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -521,42 +504,21 @@ export default function EventDetailPage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-[#1A202C]">Go Live with {effective.name}?</h3>
-                <p className="text-sm text-[#4A5568] mt-1">
-                  This opens the POS, activates dashboards, and begins live data collection. The event configuration becomes locked.
-                </p>
+                <p className="text-sm text-[#4A5568] mt-1">This opens the POS, activates dashboards, and begins live data collection. The event configuration becomes locked.</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowGoLiveConfirm(false)}
-                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleGoLiveConfirmed}
-                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-                style={{ backgroundColor: '#38A169' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
-              >
-                Yes, Go Live
-              </button>
+              <button onClick={() => setShowGoLiveConfirm(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Cancel</button>
+              <button onClick={handleGoLiveConfirmed} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors" style={{ backgroundColor: '#38A169' }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}>Yes, Go Live</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Go Live Destination Choice Modal (gap closure) */}
+      {/* Go Live Destination Choice Modal */}
       {showGoLiveDestination && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowGoLiveDestination(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowGoLiveDestination(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5 text-[#1E5A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -565,39 +527,21 @@ export default function EventDetailPage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-[#1A202C]">{effective.name} is now live</h3>
-                <p className="text-sm text-[#4A5568] mt-1">
-                  Where do you want to go next?
-                </p>
+                <p className="text-sm text-[#4A5568] mt-1">Where do you want to go next?</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowGoLiveDestination(false)}
-                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-              >
-                Stay on Detail
-              </button>
-              <button
-                onClick={handleGoToDashboard}
-                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors bg-[#1E5A8D] hover:bg-[#174a78]"
-              >
-                Open Dashboard
-              </button>
+              <button onClick={() => setShowGoLiveDestination(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Stay on Detail</button>
+              <button onClick={handleGoToDashboard} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors bg-[#1E5A8D] hover:bg-[#174a78]">Open Dashboard</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* End Event Confirmation Modal (B3) */}
+      {/* End Event Confirmation Modal */}
       {showEndConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowEndConfirm(false)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowEndConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5 text-[#E53E3E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -606,27 +550,12 @@ export default function EventDetailPage() {
               </div>
               <div>
                 <h3 className="text-lg font-bold text-[#1A202C]">End {effective.name}?</h3>
-                <p className="text-sm text-[#4A5568] mt-1">
-                  This will lock the event, freeze all sales data, and start generating the post-event report. This cannot be undone.
-                </p>
+                <p className="text-sm text-[#4A5568] mt-1">This will lock the event, freeze all sales data, and start generating the post-event report. This cannot be undone.</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => setShowEndConfirm(false)}
-                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleEndConfirmed}
-                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-                style={{ backgroundColor: '#E53E3E' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#E53E3E')}
-              >
-                Yes, End Event
-              </button>
+              <button onClick={() => setShowEndConfirm(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Cancel</button>
+              <button onClick={handleEndConfirmed} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors" style={{ backgroundColor: '#E53E3E' }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#E53E3E')}>Yes, End Event</button>
             </div>
           </div>
         </div>

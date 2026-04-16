@@ -4,11 +4,19 @@ import { MOCK_EVENTS } from '@/lib/mockData'
 import type { Event } from '@/lib/mockData'
 
 // ─── DATA SOURCE ──────────────────────────────────────────────────────────────
-// Single source of truth: MOCK_EVENTS in lib/mockData.ts.
+// Combines MOCK_EVENTS (hardcoded samples) with user-created draft events from localStorage.
 // TODO(backend): replace with `const { data: ALL_EVENTS = [] } = useEvents()`
 // when /api/v1/events is wired. Render code below is data-source-agnostic.
 
-const ALL_EVENTS: Event[] = MOCK_EVENTS
+function loadDraftEvents(): Event[] {
+  try {
+    return JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
+  } catch {
+    return []
+  }
+}
+
+// Moved inside component — see EventListPage below
 
 // ─── Effective status (auto Live → Completed by ended_at) ─────────────────────
 // Pure function. Works on any Event shape. Backend will eventually compute this
@@ -63,6 +71,9 @@ function formatDate(iso: string) {
 export default function EventListPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<TabKey>('all')
+
+  // Re-read draft events from localStorage on every render (picks up newly created events)
+  const ALL_EVENTS: Event[] = [...MOCK_EVENTS, ...loadDraftEvents()]
 
   // Compute effective status once per event, then filter by active tab.
   const decoratedEvents = useMemo(

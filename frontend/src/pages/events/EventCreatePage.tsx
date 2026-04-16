@@ -5,31 +5,19 @@ import { useNavigate } from 'react-router-dom'
 
 interface BarRow     { id: number; name: string }
 interface MenuRow    { id: number; product_name: string; category: string; tier: string; price: string }
+interface FoodRow    { id: number; product_name: string; category: string; price: string }
 interface RecipeRow  { id: number; drink_name: string; bottle_type: string; ml_per_serve: number; bottle_size_ml: number }
 interface StockCell  { bar_id: number; product_id: number; quantity: number }
 
 // ─── Seed data ────────────────────────────────────────────────────────────────
 
-const SEED_BARS: BarRow[] = [
-  { id: 1, name: 'Main Bar' },
-  { id: 2, name: 'VIP Lounge' },
-  { id: 3, name: 'Pool Bar' },
-  { id: 4, name: 'DJ Booth' },
-]
+const SEED_BARS: BarRow[] = []
 
-const SEED_MENU: MenuRow[] = [
-  { id: 1, product_name: 'Heineken',       category: 'Beer',    tier: 'B', price: '6.00' },
-  { id: 2, product_name: 'Absolut Vodka',  category: 'Spirits', tier: 'S', price: '9.50' },
-  { id: 3, product_name: 'Moët & Chandon', category: 'Wine',    tier: 'P', price: '45.00' },
-  { id: 4, product_name: 'Tonic Water',    category: 'Mixers',  tier: 'U', price: '3.00' },
-  { id: 5, product_name: 'Bacardi Rum',    category: 'Spirits', tier: 'S', price: '9.00' },
-]
+const SEED_MENU: MenuRow[] = []
 
-const SEED_RECIPES: RecipeRow[] = [
-  { id: 1, drink_name: 'G&T',        bottle_type: 'Gin',   ml_per_serve: 50,  bottle_size_ml: 700 },
-  { id: 2, drink_name: 'Vodka Soda', bottle_type: 'Vodka', ml_per_serve: 50,  bottle_size_ml: 700 },
-  { id: 3, drink_name: 'Mojito',     bottle_type: 'Rum',   ml_per_serve: 60,  bottle_size_ml: 700 },
-]
+const SEED_FOOD: FoodRow[] = []
+
+const SEED_RECIPES: RecipeRow[] = []
 
 function buildSeedStock(bars: BarRow[], products: MenuRow[]): StockCell[] {
   const defaults = [24, 20, 20, 48, 20]
@@ -110,7 +98,7 @@ export default function EventCreatePage() {
   const navigate = useNavigate()
 
   // Accordion state — section 1 open by default
-  const [open, setOpen] = useState<Record<number, boolean>>({ 1: true, 2: false, 3: false, 4: false, 5: false })
+  const [open, setOpen] = useState<Record<number, boolean>>({ 1: true, 2: false, 3: false, 4: false, 5: false, 6: false })
   function toggle(n: number) { setOpen((prev) => ({ ...prev, [n]: !prev[n] })) }
 
   // Section 1 — Event Details
@@ -121,7 +109,7 @@ export default function EventCreatePage() {
 
   // Section 2 — Bar Configuration
   const [bars,    setBars]    = useState<BarRow[]>(SEED_BARS)
-  const [nextBarId, setNextBarId] = useState(5)
+  const [nextBarId, setNextBarId] = useState(1)
 
   function addBar() {
     setBars((prev) => [...prev, { id: nextBarId, name: '' }])
@@ -136,12 +124,12 @@ export default function EventCreatePage() {
 
   // Section 3 — Menu
   const [menu,      setMenu]      = useState<MenuRow[]>(SEED_MENU)
-  const [nextMenuId, setNextMenuId] = useState(6)
+  const [nextMenuId, setNextMenuId] = useState(1)
 
   function addProduct() {
     setMenu((prev) => [
       ...prev,
-      { id: nextMenuId, product_name: '', category: 'Spirits', tier: 'B', price: '' },
+      { id: nextMenuId, product_name: '', category: 'Spirits', tier: 'Basic', price: '' },
     ])
     setNextMenuId((n) => n + 1)
   }
@@ -152,9 +140,27 @@ export default function EventCreatePage() {
     setMenu((prev) => prev.filter((r) => r.id !== id))
   }
 
+  // Section 3b — Food Menu
+  const [food,      setFood]      = useState<FoodRow[]>(SEED_FOOD)
+  const [nextFoodId, setNextFoodId] = useState(101)
+
+  function addFood() {
+    setFood((prev) => [
+      ...prev,
+      { id: nextFoodId, product_name: '', category: 'Main', price: '' },
+    ])
+    setNextFoodId((n) => n + 1)
+  }
+  function updateFood<K extends keyof FoodRow>(id: number, key: K, val: FoodRow[K]) {
+    setFood((prev) => prev.map((r) => (r.id === id ? { ...r, [key]: val } : r)))
+  }
+  function removeFood(id: number) {
+    setFood((prev) => prev.filter((r) => r.id !== id))
+  }
+
   // Section 4 — Recipes
   const [recipes,     setRecipes]     = useState<RecipeRow[]>(SEED_RECIPES)
-  const [nextRecipeId, setNextRecipeId] = useState(4)
+  const [nextRecipeId, setNextRecipeId] = useState(1)
 
   function addRecipe() {
     setRecipes((prev) => [
@@ -184,12 +190,78 @@ export default function EventCreatePage() {
     })
   }
 
+  // Validation errors — keys map to fields/sections
+  type Errors = {
+    name?:  string
+    date?:  string
+    venue?: string
+    bars?:  string   // section-level error
+    menu?:  string   // section-level error (drinks OR food)
+  }
+  const [errors, setErrors] = useState<Errors>({})
+
   // Toast
   const [toastVisible, setToastVisible] = useState(false)
   const showToast = useCallback(() => {
     setToastVisible(true)
     setTimeout(() => setToastVisible(false), 3000)
   }, [])
+
+  // Validation logic — returns Errors object (empty = valid)
+  function validate(): Errors {
+    const errs: Errors = {}
+    if (!eventName.trim()) errs.name  = 'Event name is required'
+    if (!eventDate.trim()) errs.date  = 'Date is required'
+    if (!venue.trim())     errs.venue = 'Venue is required'
+    const namedBars = bars.filter((b) => b.name.trim() !== '')
+    if (namedBars.length === 0) errs.bars = 'Add at least one bar with a name'
+    const namedDrinks = menu.filter((m) => m.product_name.trim() !== '')
+    const namedFood   = food.filter((m) => m.product_name.trim() !== '')
+    if (namedDrinks.length + namedFood.length === 0) {
+      errs.menu = 'Add at least one menu item (drink or food)'
+    }
+    return errs
+  }
+
+  // Save handler — runs validation, opens sections with errors, shows toast on success
+  function handleSaveDraft() {
+    const errs = validate()
+    setErrors(errs)
+    if (Object.keys(errs).length > 0) {
+      // Auto-open any section that has an error
+      setOpen((prev) => ({
+        ...prev,
+        1: !!(errs.name || errs.date || errs.venue) || prev[1],
+        2: !!errs.bars || prev[2],
+        3: !!errs.menu || prev[3],
+        4: !!errs.menu || prev[4],
+      }))
+      return
+    }
+    // Validation passed — persist to localStorage + navigate to /events (C4)
+    const newEvent = {
+      id: 'evt-' + Date.now(),
+      name: eventName.trim(),
+      date: eventDate,
+      status: 'draft' as const,
+      expected_guest_count: Number(guests) || 0,
+      bars_count: bars.filter((b) => b.name.trim()).length,
+      location: venue.trim(),
+      created_at: new Date().toISOString().slice(0, 10),
+    }
+
+    // Read existing draft events, append new one, save back
+    try {
+      const existing = JSON.parse(localStorage.getItem('xproject_draft_events') || '[]')
+      existing.push(newEvent)
+      localStorage.setItem('xproject_draft_events', JSON.stringify(existing))
+    } catch {
+      localStorage.setItem('xproject_draft_events', JSON.stringify([newEvent]))
+    }
+
+    console.log('[C4] Event saved to localStorage:', newEvent)
+    navigate('/events')
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto pb-20">
@@ -210,7 +282,7 @@ export default function EventCreatePage() {
           </button>
           <button
             type="button"
-            onClick={showToast}
+            onClick={handleSaveDraft}
             className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
             style={{ backgroundColor: '#1ABC9C' }}
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#17a589')}
@@ -234,19 +306,21 @@ export default function EventCreatePage() {
                 <input
                   type="text"
                   value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
+                  onChange={(e) => { setEventName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }) }}
                   placeholder="e.g. Sundance 2026"
-                  className={inputCls}
+                  className={errors.name ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
                 />
+                {errors.name && <p className="text-xs text-[#E53E3E] mt-1">{errors.name}</p>}
               </div>
               <div>
                 <Label>Date</Label>
                 <input
                   type="date"
                   value={eventDate}
-                  onChange={(e) => setEventDate(e.target.value)}
-                  className={inputCls}
+                  onChange={(e) => { setEventDate(e.target.value); if (errors.date) setErrors({ ...errors, date: undefined }) }}
+                  className={errors.date ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
                 />
+                {errors.date && <p className="text-xs text-[#E53E3E] mt-1">{errors.date}</p>}
               </div>
               <div>
                 <Label>Expected Guests</Label>
@@ -264,10 +338,11 @@ export default function EventCreatePage() {
                 <input
                   type="text"
                   value={venue}
-                  onChange={(e) => setVenue(e.target.value)}
+                  onChange={(e) => { setVenue(e.target.value); if (errors.venue) setErrors({ ...errors, venue: undefined }) }}
                   placeholder="e.g. Villa Roma"
-                  className={inputCls}
+                  className={errors.venue ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
                 />
+                {errors.venue && <p className="text-xs text-[#E53E3E] mt-1">{errors.venue}</p>}
               </div>
             </div>
           )}
@@ -278,6 +353,11 @@ export default function EventCreatePage() {
           <SectionHeader title="2 — Bar Configuration" open={open[2]} onToggle={() => toggle(2)} />
           {open[2] && (
             <div className="px-5 py-5">
+              {errors.bars && (
+                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-[#E53E3E] font-semibold">
+                  {errors.bars}
+                </div>
+              )}
               <div className="space-y-2 mb-4">
                 {bars.map((bar, idx) => (
                   <div key={bar.id} className="flex items-center gap-3">
@@ -315,11 +395,16 @@ export default function EventCreatePage() {
           )}
         </div>
 
-        {/* ── Section 3 — Menu Configuration ─────────────────────────── */}
+        {/* ── Section 3 — Drinks Menu ─────────────────────────────────── */}
         <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
-          <SectionHeader title="3 — Menu Configuration" open={open[3]} onToggle={() => toggle(3)} />
+          <SectionHeader title="3 — Drinks Menu" open={open[3]} onToggle={() => toggle(3)} />
           {open[3] && (
             <div className="px-5 py-5">
+              {errors.menu && (
+                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-[#E53E3E] font-semibold">
+                  {errors.menu}
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full text-xs mb-4">
                   <thead>
@@ -360,7 +445,7 @@ export default function EventCreatePage() {
                             onChange={(e) => updateMenu(row.id, 'tier', e.target.value)}
                             className={selectCls}
                           >
-                            {['B', 'S', 'P', 'U'].map((t) => (
+                            {['Basic', 'Standard', 'Premium', 'Ultra-premium'].map((t) => (
                               <option key={t}>{t}</option>
                             ))}
                           </select>
@@ -406,10 +491,95 @@ export default function EventCreatePage() {
           )}
         </div>
 
-        {/* ── Section 4 — Recipes ─────────────────────────────────────── */}
+        {/* ── Section 4 — Food Menu ───────────────────────────────────── */}
         <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
-          <SectionHeader title="4 — Recipes" open={open[4]} onToggle={() => toggle(4)} />
+          <SectionHeader title="4 — Food Menu" open={open[4]} onToggle={() => toggle(4)} />
           {open[4] && (
+            <div className="px-5 py-5">
+              {errors.menu && (
+                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-[#E53E3E] font-semibold">
+                  {errors.menu}
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs mb-4">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0]">
+                      {['Item Name', 'Category', 'Price (€)', ''].map((h) => (
+                        <th key={h} className="text-left text-[10px] font-bold text-[#4A5568] uppercase tracking-wide py-2 pr-3">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {food.map((row) => (
+                      <tr key={row.id} className="border-b border-[#F7FAFC]">
+                        <td className="py-2 pr-3">
+                          <input
+                            type="text"
+                            value={row.product_name}
+                            onChange={(e) => updateFood(row.id, 'product_name', e.target.value)}
+                            placeholder="Item name"
+                            className={`${inputCls} text-xs py-1.5`}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <select
+                            value={row.category}
+                            onChange={(e) => updateFood(row.id, 'category', e.target.value)}
+                            className={selectCls}
+                          >
+                            {['Appetizer', 'Main', 'Dessert', 'Snack', 'Other'].map((c) => (
+                              <option key={c}>{c}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="number"
+                            value={row.price}
+                            onChange={(e) => updateFood(row.id, 'price', e.target.value)}
+                            placeholder="0.00"
+                            step="0.50"
+                            min="0"
+                            className={`${inputCls} text-xs py-1.5 w-24`}
+                          />
+                        </td>
+                        <td className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeFood(row.id)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#E2E8F0] text-[#4A5568] hover:text-[#E53E3E] hover:border-red-200 hover:bg-red-50 transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                type="button"
+                onClick={addFood}
+                className="flex items-center gap-1.5 text-xs font-semibold text-[#1E5A8D] border border-[#1E5A8D] px-3 py-1.5 rounded-lg hover:bg-[#EBF5FB] transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Food Item
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 5 — Recipes ─────────────────────────────────────── */}
+        <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
+          <SectionHeader title="5 — Recipes" open={open[6]} onToggle={() => toggle(6)} />
+          {open[6] && (
             <div className="px-5 py-5">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs mb-4">
@@ -502,10 +672,10 @@ export default function EventCreatePage() {
           )}
         </div>
 
-        {/* ── Section 5 — Initial Stock Allocation ────────────────────── */}
+        {/* ── Section 6 — Initial Stock Allocation ────────────────────── */}
         <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
-          <SectionHeader title="5 — Initial Stock Allocation" open={open[5]} onToggle={() => toggle(5)} />
-          {open[5] && (
+          <SectionHeader title="6 — Initial Stock Allocation" open={open[6]} onToggle={() => toggle(6)} />
+          {open[6] && (
             <div className="px-5 py-5">
               {bars.length === 0 || menu.length === 0 ? (
                 <p className="text-sm text-[#4A5568] italic">
