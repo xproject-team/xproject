@@ -188,17 +188,17 @@ export default function EventListPage() {
                       {event.name}
                     </span>
                   </td>
-                  <td className={`px-5 py-4 ${textCls}`}>{formatDate(event.date)}</td>
+                  <td className={`px-5 py-4 ${textCls}`}>{formatDate(event.scheduled_date)}</td>
                   <td className="px-5 py-4">
                     <StatusBadge status={effective} />
                   </td>
                   <td className={`px-5 py-4 text-right tabular-nums ${textCls}`}>
-                    {event.expected_guest_count.toLocaleString()}
+                    {(event.expected_guest_count ?? 0).toLocaleString()}
                   </td>
                   <td className={`px-5 py-4 text-right tabular-nums ${textCls}`}>
                     {event.bars_count}
                   </td>
-                  <td className={`px-5 py-4 ${textCls}`}>{event.location}</td>
+                  <td className={`px-5 py-4 ${textCls}`}>{event.venue.name}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center justify-end">
                       {/* View only — all edit/end/dashboard actions live in Detail page (standard pattern) */}

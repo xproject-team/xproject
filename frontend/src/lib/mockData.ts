@@ -8,20 +8,74 @@
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
-export interface Event {
+// ─── Backend-aligned types (match API response shape exactly) ────────────────
+
+/** Venue — matches backend VenueResponse. Nested inside Event. */
+export interface Venue {
   id: string
   name: string
-  date: string
-  /** Backend ENUM: draft / active / live / completed */
-  status: 'live' | 'active' | 'completed' | 'draft'
-  /** Matches backend column expected_guest_count */
-  expected_guest_count: number
-  bars_count: number
-  /** Matches backend column location */
-  location: string
-  created_at: string
-  updated_at?: string
+  address: string | null
+  capacity: number | null
 }
+
+/**
+ * Event — matches backend EventResponse exactly.
+ *
+ * Breaking changes from pre-wire version:
+ *   `date`     → `scheduled_date` (ISO date string, YYYY-MM-DD)
+ *   `location` → `venue.name` (access via nested object)
+ *
+ * New fields required for backend integration:
+ *   `venue`     — nested Venue object (always populated by API)
+ *   `version`   — for optimistic locking on PATCH (contract §4)
+ *   `tenant_id` — multi-tenant scoping (informational, backend validates)
+ *   `started_at`, `ended_at` — set automatically on /start and /end transitions
+ */
+export interface Event {
+  id: string
+  tenant_id: string
+  name: string
+  /** Backend ENUM: draft / active / live / completed (lowercase in JSON) */
+  status: 'draft' | 'active' | 'live' | 'completed'
+  /** ISO date string YYYY-MM-DD (what the event is scheduled for) */
+  scheduled_date: string
+  /** Nested venue object — read venue.name for display */
+  venue: Venue
+  expected_guest_count: number | null
+  bars_count: number
+  /** Optimistic locking counter — send current value in PATCH body */
+  version: number
+  /** ISO datetime; set by backend when /start is called */
+  started_at: string | null
+  /** ISO datetime; set by backend when /end is called */
+  ended_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** POST /events payload. Client does NOT send status — always starts at draft. */
+export interface EventCreatePayload {
+  name: string
+  venue_id: string
+  scheduled_date: string
+  expected_guest_count?: number | null
+}
+
+/**
+ * PATCH /events/{id} payload.
+ * ALL mutable fields optional; `version` is REQUIRED for optimistic locking.
+ * Client sends only the fields it is changing.
+ */
+export interface EventUpdatePayload {
+  name?: string
+  venue_id?: string
+  scheduled_date?: string
+  expected_guest_count?: number | null
+  ended_at?: string | null
+  version: number
+}
+
+// ─── End backend-aligned types ──────────────────────────────────────────────
 
 export interface DrinksBreakdown {
   B: number
@@ -149,13 +203,18 @@ export interface ChatMessage {
 
 export const MOCK_EVENT: Event = {
   id: 'evt-1',
+  tenant_id: 'tenant-mock',
   name: 'Sundance 2026',
-  date: '2026-06-15',
   status: 'live',
+  scheduled_date: '2026-06-15',
+  venue: { id: 'venue-villa-roma', name: 'Villa Roma', address: null, capacity: null },
   expected_guest_count: 350,
   bars_count: 4,
-  location: 'Villa Roma',
-  created_at: '2026-06-01',
+  version: 1,
+  started_at: '2026-06-15T20:00:00Z',
+  ended_at: null,
+  created_at: '2026-06-01T00:00:00Z',
+  updated_at: '2026-06-15T20:00:00Z',
 }
 
 // ─── 1b. MOCK_EVENTS (list) ───────────────────────────────────────────────────
@@ -163,44 +222,63 @@ export const MOCK_EVENT: Event = {
 export const MOCK_EVENTS: Event[] = [
   {
     id: 'evt-1',
+    tenant_id: 'tenant-mock',
     name: 'Sundance 2026',
-    date: '2026-06-15',
     status: 'live',
+    scheduled_date: '2026-06-15',
+    venue: { id: 'venue-villa-roma', name: 'Villa Roma', address: null, capacity: null },
     expected_guest_count: 350,
     bars_count: 4,
-    location: 'Villa Roma',
-    created_at: '2026-06-01',
+    version: 1,
+    started_at: '2026-06-15T20:00:00Z',
+    ended_at: null,
+    created_at: '2026-06-01T00:00:00Z',
+    updated_at: '2026-06-15T20:00:00Z',
   },
   {
     id: 'evt-2',
+    tenant_id: 'tenant-mock',
     name: 'Summer Gala',
-    date: '2026-07-20',
     status: 'draft',
+    scheduled_date: '2026-07-20',
+    venue: { id: 'venue-rooftop', name: 'Rooftop Terrace', address: null, capacity: null },
     expected_guest_count: 200,
     bars_count: 3,
-    location: 'Rooftop Terrace',
-    created_at: '2026-03-15',
+    version: 1,
+    started_at: null,
+    ended_at: null,
+    created_at: '2026-03-15T00:00:00Z',
+    updated_at: '2026-03-15T00:00:00Z',
   },
   {
     id: 'evt-3',
+    tenant_id: 'tenant-mock',
     name: 'NYE Party 2026',
-    date: '2026-12-31',
     status: 'draft',
+    scheduled_date: '2026-12-31',
+    venue: { id: 'venue-grand-ballroom', name: 'Grand Ballroom', address: null, capacity: null },
     expected_guest_count: 500,
     bars_count: 6,
-    location: 'Grand Ballroom',
-    created_at: '2026-03-20',
+    version: 1,
+    started_at: null,
+    ended_at: null,
+    created_at: '2026-03-20T00:00:00Z',
+    updated_at: '2026-03-20T00:00:00Z',
   },
   {
     id: 'evt-4',
+    tenant_id: 'tenant-mock',
     name: 'Spring Festival 2025',
-    date: '2025-04-12',
     status: 'completed',
+    scheduled_date: '2025-04-12',
+    venue: { id: 'venue-garden', name: 'Garden Terrace', address: null, capacity: null },
     expected_guest_count: 280,
     bars_count: 3,
-    location: 'Garden Terrace',
-    created_at: '2025-01-10',
+    version: 1,
+    started_at: '2025-04-12T18:00:00Z',
     ended_at: '2025-04-12T23:00:00Z',
+    created_at: '2025-01-10T00:00:00Z',
+    updated_at: '2025-04-12T23:00:00Z',
   },
 ]
 

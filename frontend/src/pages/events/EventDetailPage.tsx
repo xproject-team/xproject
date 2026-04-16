@@ -125,7 +125,7 @@ export default function EventDetailPage() {
   // ─── Local override state ───────────────────────────────────────────────────
   // Holds saved-but-not-persisted-to-backend edits + status promotions.
   // Merges with the base event for all rendering.
-  type EventOverride = Partial<Pick<Event, 'name' | 'date' | 'location' | 'expected_guest_count' | 'bars_count' | 'status'>>
+  type EventOverride = Partial<Pick<Event, 'name' | 'scheduled_date' | 'venue' | 'expected_guest_count' | 'bars_count' | 'status'>>
   const [override, setOverride] = useState<EventOverride>({})
   const effective = { ...event, ...override }
 
@@ -142,16 +142,16 @@ export default function EventDetailPage() {
   type Draft = {
     name: string
     expected_guest_count: number
-    date: string
-    location: string
+    scheduled_date: string
+    venue_name: string
     bars_count: number
   }
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Draft>({
     name: effective.name,
-    expected_guest_count: effective.expected_guest_count,
-    date: effective.date,
-    location: effective.location,
+    expected_guest_count: effective.expected_guest_count ?? 0,
+    scheduled_date: effective.scheduled_date,
+    venue_name: effective.venue.name,
     bars_count: effective.bars_count,
   })
 
@@ -159,13 +159,13 @@ export default function EventDetailPage() {
     if (!isEditing) {
       setDraft({
         name: effective.name,
-        expected_guest_count: effective.expected_guest_count,
-        date: effective.date,
-        location: effective.location,
+        expected_guest_count: effective.expected_guest_count ?? 0,
+        scheduled_date: effective.scheduled_date,
+        venue_name: effective.venue.name,
         bars_count: effective.bars_count,
       })
     }
-  }, [effective.id, effective.name, effective.expected_guest_count, effective.date, effective.location, effective.bars_count, isEditing])
+  }, [effective.id, effective.name, effective.expected_guest_count, effective.scheduled_date, effective.venue.name, effective.bars_count, isEditing])
 
   // ─── Lock matrix ────────────────────────────────────────────────────────────
   const isLiveEdit = effective.status === 'live'
@@ -195,9 +195,9 @@ export default function EventDetailPage() {
   function handleCancel() {
     setDraft({
       name: effective.name,
-      expected_guest_count: effective.expected_guest_count,
-      date: effective.date,
-      location: effective.location,
+      expected_guest_count: effective.expected_guest_count ?? 0,
+      scheduled_date: effective.scheduled_date,
+      venue_name: effective.venue.name,
       bars_count: effective.bars_count,
     })
     setIsEditing(false)
@@ -252,7 +252,7 @@ export default function EventDetailPage() {
             <StatusBadge status={effective.status} />
           </div>
           <p className="text-sm text-[#4A5568] mt-1">
-            {formatDate(effective.date)} \u00b7 {effective.location}
+            {formatDate(effective.scheduled_date)} \u00b7 {effective.venue.name}
           </p>
         </div>
 
@@ -350,9 +350,9 @@ export default function EventDetailPage() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <StatCard icon={Icons.bars} label="Bars" value={effectiveIsLive ? MOCK_BARS.length : effective.bars_count} sub="configured" />
-        <StatCard icon={Icons.guests} label="Expected Guests" value={effective.expected_guest_count.toLocaleString()} sub="registered" />
+        <StatCard icon={Icons.guests} label="Expected Guests" value={(effective.expected_guest_count ?? 0).toLocaleString()} sub="registered" />
         <StatCard icon={Icons.products} label="Products" value={effectiveIsLive ? products.length : '\u2014'} sub="configured" />
-        <StatCard icon={Icons.venue} label="Venue" value={effective.location} />
+        <StatCard icon={Icons.venue} label="Venue" value={effective.venue.name} />
       </div>
 
       {/* Event Info Card */}
@@ -381,12 +381,12 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Date</p>
             {isEditing && !lockMatrix.date ? (
               <>
-                <input type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })}
+                <input type="date" value={draft.scheduled_date} onChange={(e) => setDraft({ ...draft, scheduled_date: e.target.value })}
                   className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.date)}</p>
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.scheduled_date)}</p>
               </>
             ) : (
-              <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.date)}</FieldDisplay>
+              <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.scheduled_date)}</FieldDisplay>
             )}
           </div>
 
@@ -395,12 +395,12 @@ export default function EventDetailPage() {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Venue</p>
             {isEditing && !lockMatrix.venue ? (
               <>
-                <input type="text" value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })}
+                <input type="text" value={draft.venue_name} onChange={(e) => setDraft({ ...draft, venue_name: e.target.value })}
                   className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.location}</p>
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.venue.name}</p>
               </>
             ) : (
-              <FieldDisplay locked={isEditing && lockMatrix.venue}>{effective.location}</FieldDisplay>
+              <FieldDisplay locked={isEditing && lockMatrix.venue}>{effective.venue.name}</FieldDisplay>
             )}
           </div>
 
@@ -431,10 +431,10 @@ export default function EventDetailPage() {
               <>
                 <input type="number" min={0} value={draft.expected_guest_count} onChange={(e) => setDraft({ ...draft, expected_guest_count: Number(e.target.value) || 0 })}
                   className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.expected_guest_count.toLocaleString()}</p>
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {(effective.expected_guest_count ?? 0).toLocaleString()}</p>
               </>
             ) : (
-              <FieldDisplay locked={isEditing && lockMatrix.guests}>{effective.expected_guest_count.toLocaleString()}</FieldDisplay>
+              <FieldDisplay locked={isEditing && lockMatrix.guests}>{(effective.expected_guest_count ?? 0).toLocaleString()}</FieldDisplay>
             )}
           </div>
 
