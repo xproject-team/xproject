@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     from app.modules.events.router import router as events_router
     from app.modules.venues.router import router as venues_router
     from app.modules.bars.router import router as bars_router
+    from app.modules.products.router import router as products_router
     from app.modules.inventory.router import router as inventory_router
     from app.modules.pos.router import router as pos_router
     from app.modules.alerts.router import router as alerts_router
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app.include_router(events_router, prefix=f"{prefix}/events", tags=["events"])
     app.include_router(venues_router, prefix=f"{prefix}/venues", tags=["venues"])
     app.include_router(bars_router, prefix=f"{prefix}/bars", tags=["bars"])
+    app.include_router(products_router, prefix=f"{prefix}/products", tags=["products"])
     app.include_router(inventory_router, prefix=f"{prefix}/inventory", tags=["inventory"])
     app.include_router(pos_router, prefix=f"{prefix}/pos", tags=["pos"])
     app.include_router(alerts_router, prefix=f"{prefix}/alerts", tags=["alerts"])

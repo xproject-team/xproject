@@ -13,6 +13,7 @@ from app.core.database import Base
 from app.modules.auth.models import Tenant, User  # noqa: F401
 from app.modules.venues.models import Venue  # noqa: F401
 from app.modules.events.models import Event  # noqa: F401
+from app.modules.products.models import Product  # noqa: F401
 
 # TODO: re-enable as each module's models are written in future phases.
 # from app.modules.inventory.models import InventoryItem  # noqa: F401
