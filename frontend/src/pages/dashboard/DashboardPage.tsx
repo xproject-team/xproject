@@ -1,14 +1,40 @@
 /**
  * DashboardPage — Owner-only operational command center.
- * Zone A: KPI strip  |  Zone B: 2×2 bar cards  |  Zone C: Alert sidebar
+ *
+ * Step 7 wire-up (April 17 2026):
+ * - Real data from /bar-stock, /stock-transactions (+ reconciliation), /bars,
+ *   /products via hooks in features/dashboard/hooks.ts
+ * - Pure transformation layer in features/dashboard/selectors.ts turns raw
+ *   API shapes into BarKpi[] consumed by BarCard
+ * - Active-event auto-select: dashboard finds the Live event automatically;
+ *   ?event_id=... URL override supported for testing against non-live events
+ * - Alerts sidebar still mock (no alerts backend yet) — marked TODO
+ * - 4 fields on BarCard (burn rate, depletion, staff, last_alert) render as
+ *   honest placeholders until v1.1
+ *
+ * Loading/error pattern follows EventDetailPage: outer wrapper handles
+ * states with early returns, inner component receives guaranteed data.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
-import { MOCK_BARS, MOCK_ALERTS, MOCK_EVENT } from '@/lib/mockData'
-import type { Alert, Bar } from '@/lib/mockData'
+import {
+  useAllProducts,
+  useBarsForEvent,
+  useBarStockForEvent,
+  useLiveEvent,
+  useReconciliation,
+  useTransactionsForEvent,
+} from '@/features/dashboard/hooks'
+import {
+  selectBarKpis,
+  selectDashboardTotals,
+} from '@/features/dashboard/selectors'
+import { MOCK_ALERTS } from '@/lib/mockData'  // TODO(v1.1): alerts backend
+import type { BarKpi, Event } from '@/lib/mockData'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -19,26 +45,25 @@ function formatTimer(totalSecs: number) {
   return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
 }
 
+function formatCents(cents: number): string {
+  return `€${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`
+}
+
 // ─── Zone A — KPI Strip ───────────────────────────────────────────────────────
 
 interface KpiStripProps {
+  bars: BarKpi[]
   elapsed: number
   unacknowledgedCount: number
   onAlertsClick: () => void
 }
 
-function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps) {
-  const totalRevenue = MOCK_BARS.reduce((sum, b) => sum + b.revenue, 0)
-  const totalDrinks  = MOCK_BARS.reduce((sum, b) => sum + b.drinks_sold, 0)
-  const tierTotals   = MOCK_BARS.reduce(
-    (acc, b) => ({
-      B: acc.B + b.drinks_breakdown.B,
-      S: acc.S + b.drinks_breakdown.S,
-      P: acc.P + b.drinks_breakdown.P,
-      U: acc.U + b.drinks_breakdown.U,
-    }),
-    { B: 0, S: 0, P: 0, U: 0 },
-  )
+function KpiStrip({ bars, elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps) {
+  const { totalRevenueCents, totalDrinksSold, tierTotals } =
+    selectDashboardTotals(bars)
 
   return (
     <div className="bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-center gap-0 overflow-x-auto shrink-0 shadow-sm">
@@ -50,12 +75,10 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
             Total Revenue
           </p>
           <p className="text-2xl font-bold text-[#1A202C] leading-none">
-            €{totalRevenue.toLocaleString()}
+            {formatCents(totalRevenueCents)}
           </p>
         </div>
-        <span className="text-xs font-semibold bg-green-100 text-[#38A169] border border-green-200 px-2 py-1 rounded-full whitespace-nowrap">
-          +12% vs prediction
-        </span>
+        {/* TODO(v1.1): prediction delta requires prediction backend */}
       </div>
 
       {/* Drinks Sold */}
@@ -64,7 +87,7 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
           <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
             Drinks Sold
           </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none">{totalDrinks}</p>
+          <p className="text-2xl font-bold text-[#1A202C] leading-none">{totalDrinksSold}</p>
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex gap-1.5">
@@ -83,7 +106,7 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
         </div>
       </div>
 
-      {/* Active Alerts */}
+      {/* Active Alerts (mock for now) */}
       <button
         onClick={onAlertsClick}
         className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-red-50 rounded-lg px-3 py-1 -mx-3 transition-colors"
@@ -116,12 +139,11 @@ function KpiStrip({ elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps
         </div>
       </div>
 
-
     </div>
   )
 }
 
-// ─── Zone C — Alert Sidebar ───────────────────────────────────────────────────
+// ─── Zone C — Alert Sidebar (still on mock data — TODO v1.1) ─────────────────
 
 const SEVERITY_CFG = {
   critical: {
@@ -197,7 +219,14 @@ function AlertSidebar({ open, onToggle, acknowledged, onAcknowledge }: AlertSide
         </button>
       </div>
 
-      {/* Alert list */}
+      {/* TODO(v1.1) banner — mock data */}
+      {open && (
+        <div className="mx-2 mt-2 mb-1 px-2 py-1.5 text-[10px] bg-amber-50 border border-amber-200 rounded text-amber-800 leading-tight">
+          ⓘ Alerts are mock data until the alerts backend ships in v1.1.
+        </div>
+      )}
+
+      {/* Alert list (MOCK_ALERTS — TODO v1.1) */}
       {open && (
         <div className="flex-1 overflow-y-auto py-2">
           {MOCK_ALERTS.map((alert) => {
@@ -259,27 +288,88 @@ function AlertSidebar({ open, onToggle, acknowledged, onAcknowledge }: AlertSide
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page wrapper: handles loading/error/no-event states ─────────────────────
 
-const START_ELAPSED = 2 * 3600 + 35 * 60  // 2h 35m
+const START_ELAPSED = 2 * 3600 + 35 * 60  // 2h 35m (placeholder — real timer comes from event.started_at in v1.1)
 
 export default function DashboardPage() {
-  const navigate    = useNavigate()
-  const perms       = usePermissions()
-  const alertsRef   = useRef<HTMLDivElement>(null)
+  const navigate         = useNavigate()
+  const perms            = usePermissions()
+  const [searchParams]   = useSearchParams()
 
-  const [elapsed, setElapsed]           = useState(START_ELAPSED)
-  const [sidebarOpen, setSidebarOpen]   = useState(true)
-  const [selectedBar, setSelectedBar]   = useState<Bar | null>(null)
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(
-    () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
-  )
-
-  // Redirect non-owners (belt-and-suspenders — route guard already covers this)
+  // Belt-and-suspenders access check (route guard already covers this)
   if (!perms.canViewAllBars) {
     navigate('/', { replace: true })
     return null
   }
+
+  // ── Active-event resolution: ?event_id=... overrides Live auto-select ──
+  const urlEventId = searchParams.get('event_id')
+  const liveEventQuery = useLiveEvent()
+
+  // If URL has ?event_id, use it. Otherwise wait for liveEventQuery.
+  const eventId = urlEventId ?? liveEventQuery.data?.id ?? null
+
+  // ── Loading state: still resolving which event to show ──
+  if (!urlEventId && liveEventQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-[#4A5568]">
+        Finding the active event…
+      </div>
+    )
+  }
+
+  // ── No event found ──
+  if (!eventId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
+        <p className="text-sm text-[#4A5568] max-w-md">
+          No Live event in progress. The dashboard shows real-time metrics
+          for the currently-active event. Start an event from the Events
+          page, or pass <code className="font-mono bg-[#F7FAFC] px-1 py-0.5 rounded">?event_id=…</code> in the URL to view a specific event.
+        </p>
+        <button
+          onClick={() => navigate('/events')}
+          className="text-xs font-medium text-[#1E5A8D] border border-[#1E5A8D] px-3 py-1.5 rounded-lg hover:bg-[#F0F7FF] transition-colors"
+        >
+          Go to Events
+        </button>
+      </div>
+    )
+  }
+
+  // ── Happy path: we have an eventId, render the live dashboard ──
+  const fallbackEvent: Event | null = liveEventQuery.data ?? null
+  return <DashboardContent eventId={eventId} liveEvent={fallbackEvent} />
+}
+
+// ─── Content: assumes eventId is resolved ────────────────────────────────────
+
+interface DashboardContentProps {
+  eventId:   string
+  liveEvent: Event | null
+}
+
+function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
+  const navigate  = useNavigate()
+  const alertsRef = useRef<HTMLDivElement>(null)
+
+  // ── Data hooks (all gated on eventId via `enabled` internally) ──
+  const barsQuery          = useBarsForEvent(eventId)
+  const barStockQuery      = useBarStockForEvent(eventId)
+  const transactionsQuery  = useTransactionsForEvent(eventId)
+  const productsQuery      = useAllProducts()
+  // reconciliation is used by BarDetailOverlay in v1.1 — prefetched here so
+  // it's warm when the overlay opens
+  useReconciliation(eventId)
+
+  // ── UI state ──
+  const [elapsed,     setElapsed]     = useState(START_ELAPSED)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
+  const [acknowledged, setAcknowledged] = useState<Set<string>>(
+    () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
+  )
 
   useEffect(() => {
     const id = setInterval(() => setElapsed((s) => s + 1), 1000)
@@ -295,7 +385,48 @@ export default function DashboardPage() {
     alertsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
+  // ── Loading guard: wait for all 4 queries to have data ──
+  const isAnyLoading =
+    barsQuery.isLoading ||
+    barStockQuery.isLoading ||
+    transactionsQuery.isLoading ||
+    productsQuery.isLoading
+
+  if (isAnyLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-[#4A5568]">
+        Loading dashboard…
+      </div>
+    )
+  }
+
+  // ── Error guard ──
+  const anyError =
+    barsQuery.error ||
+    barStockQuery.error ||
+    transactionsQuery.error ||
+    productsQuery.error
+
+  if (anyError) {
+    return (
+      <div className="flex items-center justify-center h-full text-sm text-[#E53E3E]">
+        Failed to load dashboard data. Check the backend is reachable.
+      </div>
+    )
+  }
+
+  // ── All data arrived — compute the BarKpi view-model ──
+  const bars         = barsQuery.data ?? []
+  const barStock     = barStockQuery.data ?? []
+  const transactions = transactionsQuery.data ?? []
+  const products     = productsQuery.data ?? []
+
+  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products })
+
   const unacknowledgedCount = MOCK_ALERTS.filter((a) => !acknowledged.has(a.id)).length
+
+  const eventName = liveEvent?.name ?? `Event ${eventId.slice(0, 8)}`
+  const eventStatusLabel = liveEvent?.status === 'live' ? 'Live' : liveEvent?.status ?? 'Preview'
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -305,6 +436,7 @@ export default function DashboardPage() {
 
         {/* Zone A — KPI Strip */}
         <KpiStrip
+          bars={barKpis}
           elapsed={elapsed}
           unacknowledgedCount={unacknowledgedCount}
           onAlertsClick={handleAlertsClick}
@@ -316,7 +448,7 @@ export default function DashboardPage() {
             <div>
               <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
               <p className="text-xs text-[#4A5568] mt-0.5">
-                {MOCK_EVENT.name} · Live · {MOCK_BARS.length} bars active
+                {eventName} · {eventStatusLabel} · {barKpis.length} {barKpis.length === 1 ? 'bar' : 'bars'}
               </p>
             </div>
             <button
@@ -327,15 +459,21 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {MOCK_BARS.map((bar) => (
-              <BarCard
-                key={bar.id}
-                bar={bar}
-                onClick={(id) => setSelectedBar(MOCK_BARS.find((b) => b.id === id) ?? null)}
-              />
-            ))}
-          </div>
+          {barKpis.length === 0 ? (
+            <div className="bg-white rounded-xl p-12 text-center text-sm text-[#4A5568]">
+              No bars set up for this event yet. Add bars from the event detail page.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {barKpis.map((kpi) => (
+                <BarCard
+                  key={kpi.id}
+                  bar={kpi}
+                  onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
+                />
+              ))}
+            </div>
+          )}
         </main>
       </div>
 
@@ -350,6 +488,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Bar detail overlay — sits above everything */}
+      {/* NOTE: BarDetailOverlay still expects the OLD Bar type from mockData.
+          Casting via `as never` is a temporary bridge — overlay wiring is Step 7b. */}
       <BarDetailOverlay
         bar={selectedBar}
         onClose={() => setSelectedBar(null)}

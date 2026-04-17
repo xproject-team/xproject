@@ -1,14 +1,26 @@
-import type { Bar } from '@/lib/mockData'
+/**
+ * BarCard — one tile in the Dashboard's 2×2 grid, one per bar at the event.
+ *
+ * Step 7 wire-up (April 17 2026):
+ * - Accepts BarKpi from features/dashboard/selectors.ts
+ * - Real fields render normally: name, status, revenue, drinks sold,
+ *   tier breakdown, stock level
+ * - Placeholder fields (burn_rate, burn_trend, time_to_depletion_min,
+ *   staff_count, last_alert) render as "—" with a subtle "soon" treatment.
+ *   They'll become real once burn-rate computation, staff shifts, and
+ *   alerts backends ship.
+ */
+import type { BarKpi, BarStatus } from '@/lib/mockData'
 
 interface BarCardProps {
-  bar: Bar
+  bar: BarKpi
   onClick: (barId: string) => void
 }
 
-const STATUS_CFG: Record<Bar['status'], { dot: string; label: string; labelColor: string }> = {
-  healthy:  { dot: 'bg-[#38A169]',               label: 'Healthy',   labelColor: 'text-[#38A169]' },
-  warning:  { dot: 'bg-[#D69E2E]',               label: 'Low Stock', labelColor: 'text-[#D69E2E]' },
-  critical: { dot: 'bg-[#E53E3E] animate-pulse',  label: 'Critical',  labelColor: 'text-[#E53E3E]' },
+const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
+  healthy:  { dot: 'bg-[#38A169]',              label: 'Healthy',   labelColor: 'text-[#38A169]' },
+  warning:  { dot: 'bg-[#D69E2E]',              label: 'Low Stock', labelColor: 'text-[#D69E2E]' },
+  critical: { dot: 'bg-[#E53E3E] animate-pulse', label: 'Critical',  labelColor: 'text-[#E53E3E]' },
 }
 
 function stockBarColor(pct: number) {
@@ -17,30 +29,28 @@ function stockBarColor(pct: number) {
   return 'bg-[#E53E3E]'
 }
 
+// ─── Small "not yet available" pill used by placeholder fields ──────────────
+// Kept intentionally quiet — doesn't scream, but makes it obvious this number
+// will become real once the relevant backend ships. One line, italicized, dim.
+
+function Placeholder({ label }: { label: string }) {
+  return (
+    <span className="text-[#A0AEC0] italic" title={`${label} — coming soon`}>
+      —
+    </span>
+  )
+}
+
 export function BarCard({ bar, onClick }: BarCardProps) {
   const cfg      = STATUS_CFG[bar.status]
-  const stockPct = Math.round((bar.current_stock / bar.initial_stock) * 100)
+  const stockPct = bar.stock_pct
   const tiers    = bar.drinks_breakdown
-  const critical = bar.status === 'critical'
 
-  const trendArrow = bar.burn_trend === 'up' ? '↑' : bar.burn_trend === 'down' ? '↓' : '→'
-  const trendColor =
-    bar.burn_trend === 'up'   ? 'text-[#E53E3E]' :
-    bar.burn_trend === 'down' ? 'text-[#38A169]' :
-                                'text-[#4A5568]'
-
-  const depletionDisplay =
-    bar.time_to_depletion_min >= 60
-      ? `${Math.floor(bar.time_to_depletion_min / 60)}h ${bar.time_to_depletion_min % 60}m`
-      : `${bar.time_to_depletion_min}m`
-  const depletionUrgent = bar.time_to_depletion_min < 45
+  const revenueEuros = Math.round(bar.revenue_cents / 100)
 
   return (
     <button
-      onClick={() => {
-        console.log(`clicked bar ${bar.id}`)
-        onClick(bar.id)
-      }}
+      onClick={() => onClick(bar.id)}
       className={[
         'rounded-xl p-5 shadow-sm hover:shadow-md transition-all text-left w-full border',
         bar.status === 'critical' ? 'bg-red-50 border-red-200' :
@@ -56,7 +66,7 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         </div>
         <div className="text-right shrink-0 ml-3">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Revenue</p>
-          <p className="text-xl font-bold text-[#1A202C]">€{bar.revenue.toLocaleString()}</p>
+          <p className="text-xl font-bold text-[#1A202C]">€{revenueEuros.toLocaleString()}</p>
         </div>
       </div>
 
@@ -81,12 +91,12 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         </div>
       </div>
 
-      {/* 5 — Stock Level */}
+      {/* 5 — Stock Level (REAL) */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-1">
           <p className="text-xs text-[#4A5568]">Stock Level</p>
           <p className="text-xs font-semibold text-[#1A202C]">
-            {bar.current_stock}/{bar.initial_stock} bottles
+            {bar.current_stock}/{bar.initial_stock} units
           </p>
         </div>
         <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
@@ -98,60 +108,42 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         <p className="text-[10px] text-[#4A5568] mt-0.5">{stockPct}% remaining</p>
       </div>
 
-      {/* 6+7+8 — Burn Rate / Time to Depletion / Staff */}
+      {/* 6+7+8 — Burn Rate / Time to Depletion / Staff — PLACEHOLDERS (v1.1) */}
       <div className="grid grid-cols-3 gap-2 mb-3">
         <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Burn Rate</p>
-          <p className="text-sm font-bold text-[#1A202C] mt-0.5">
-            {bar.burn_rate}
-            <span className={`text-xs ml-0.5 ${trendColor}`}>{trendArrow}</span>
+          <p className="text-sm font-bold mt-0.5">
+            <Placeholder label="Burn rate computation" />
           </p>
           <p className="text-[9px] text-[#4A5568]">btl/hr</p>
         </div>
 
-        <div className={[
-          'border rounded-lg px-2.5 py-2 text-center',
-          depletionUrgent ? 'bg-red-50 border-red-200' : 'bg-[#F7FAFC] border-[#E2E8F0]',
-        ].join(' ')}>
+        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Depletion</p>
-          <p className={`text-sm font-bold mt-0.5 ${depletionUrgent ? 'text-[#E53E3E]' : 'text-[#1A202C]'}`}>
-            {depletionDisplay}
+          <p className="text-sm font-bold mt-0.5">
+            <Placeholder label="Time-to-depletion prediction" />
           </p>
           <p className="text-[9px] text-[#4A5568]">remaining</p>
         </div>
 
         <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Staff</p>
-          <p className="text-sm font-bold text-[#1A202C] mt-0.5 flex items-center justify-center gap-0.5">
-            <svg className="w-3.5 h-3.5 text-[#4A5568]" fill="currentColor" viewBox="0 0 20 20">
+          <p className="text-sm font-bold mt-0.5 flex items-center justify-center gap-0.5">
+            <svg className="w-3.5 h-3.5 text-[#A0AEC0]" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
             </svg>
-            {bar.staff_count}
+            <Placeholder label="Staff shift module" />
           </p>
           <p className="text-[9px] text-[#4A5568]">on shift</p>
         </div>
       </div>
 
-      {/* 9 — Last Alert */}
-      <div className={[
-        'rounded-lg px-3 py-2 text-xs',
-        bar.last_alert
-          ? bar.status === 'critical'
-            ? 'bg-red-50 border border-red-200 text-[#E53E3E]'
-            : 'bg-yellow-50 border border-yellow-200 text-[#D69E2E]'
-          : 'bg-[#F7FAFC] border border-[#E2E8F0] text-[#4A5568]',
-      ].join(' ')}>
-        {bar.last_alert ? (
-          <span className="flex items-center gap-1.5">
-            <span className="shrink-0">⚠</span>
-            <span className="truncate">{bar.last_alert}</span>
-          </span>
-        ) : (
-          <span className="flex items-center gap-1.5">
-            <span className="text-[#38A169]">✓</span>
-            <span>No active alerts</span>
-          </span>
-        )}
+      {/* 9 — Last Alert — PLACEHOLDER (v1.1 alerts backend) */}
+      <div className="rounded-lg px-3 py-2 text-xs bg-[#F7FAFC] border border-[#E2E8F0] text-[#A0AEC0]">
+        <span className="flex items-center gap-1.5 italic">
+          <span>ⓘ</span>
+          <span>Alerts feed arrives in v1.1</span>
+        </span>
       </div>
     </button>
   )

@@ -1,0 +1,149 @@
+/**
+ * TanStack Query hooks for the Dashboard data layer.
+ *
+ * Read-only hooks that fetch from the endpoints built in backend Steps 2-6:
+ *   useLiveEvent            → /api/v1/events?status=live  (pick active event)
+ *   useBarsForEvent         → /api/v1/bars?event_id=...
+ *   useBarStockForEvent     → /api/v1/bar-stock/by-event/{event_id}
+ *   useReconciliation       → /api/v1/stock-transactions/reconciliation/by-event/{event_id}
+ *   useTransactionsForEvent → /api/v1/stock-transactions/by-event/{event_id}
+ *   useAllProducts          → /api/v1/products (for tier_rank + name lookup)
+ *
+ * Design notes (match the Events hooks pattern in features/events/hooks.ts):
+ * - Hierarchical query keys under `dashboardKeys` for surgical invalidation
+ * - `enabled` gates so child queries don't fire before the parent resolves
+ * - `refetchInterval: 15s` on the live-data queries so the dashboard feels
+ *   live without WebSocket wiring (that comes in Step 7b)
+ * - All hooks return raw backend shapes — transformation to BarKpi happens
+ *   in features/dashboard/selectors.ts, not here
+ */
+import { useQuery } from '@tanstack/react-query'
+
+import { api } from '@/lib/api'
+import type {
+  BarRow,
+  BarStockRow,
+  Event,
+  ProductRow,
+  ReconciliationReport,
+  StockTransactionRow,
+} from '@/lib/mockData'
+
+// ─── Query keys (hierarchical — invalidate a branch, not individual queries) ──
+
+export const dashboardKeys = {
+  all:            ['dashboard'] as const,
+  liveEvent:      () => [...dashboardKeys.all, 'liveEvent'] as const,
+  allProducts:    () => [...dashboardKeys.all, 'products'] as const,
+  bars:           (eventId: string) =>
+    [...dashboardKeys.all, 'bars', eventId] as const,
+  barStock:       (eventId: string) =>
+    [...dashboardKeys.all, 'barStock', eventId] as const,
+  reconciliation: (eventId: string) =>
+    [...dashboardKeys.all, 'reconciliation', eventId] as const,
+  transactions:   (eventId: string) =>
+    [...dashboardKeys.all, 'transactions', eventId] as const,
+} as const
+
+// ─── Poll interval for "live" data during an event ────────────────────────────
+// 15s = fast enough to feel responsive, slow enough to not hammer the API.
+// Once Step 7b adds WebSocket invalidation this becomes a fallback.
+const LIVE_REFETCH_MS = 15_000
+
+// ─── Live event auto-select ──────────────────────────────────────────────────
+// Returns the first LIVE event for the tenant, or null if none.
+// We ask the backend to filter; the events endpoint currently returns ALL
+// events and we filter client-side. If that ever gets slow we can add
+// ?status=live to the backend query.
+
+export function useLiveEvent() {
+  return useQuery<Event | null>({
+    queryKey: dashboardKeys.liveEvent(),
+    queryFn: async () => {
+      const { data } = await api.get<Event[]>('/events')
+      const live = data.find((e) => e.status === 'live')
+      return live ?? null
+    },
+    // Poll every 30s so a Go-Live transition is picked up automatically
+    refetchInterval: 30_000,
+  })
+}
+
+// ─── Bars for an event ────────────────────────────────────────────────────────
+
+export function useBarsForEvent(eventId: string | null | undefined) {
+  return useQuery<BarRow[]>({
+    queryKey: dashboardKeys.bars(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<BarRow[]>(`/bars?event_id=${eventId}`)
+      return data
+    },
+    enabled: !!eventId,
+  })
+}
+
+// ─── Bar stock for an event ──────────────────────────────────────────────────
+
+export function useBarStockForEvent(eventId: string | null | undefined) {
+  return useQuery<BarStockRow[]>({
+    queryKey: dashboardKeys.barStock(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<BarStockRow[]>(
+        `/bar-stock/by-event/${eventId}`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+// ─── Reconciliation report (revenue aggregate + anomaly count) ───────────────
+
+export function useReconciliation(eventId: string | null | undefined) {
+  return useQuery<ReconciliationReport>({
+    queryKey: dashboardKeys.reconciliation(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<ReconciliationReport>(
+        `/stock-transactions/reconciliation/by-event/${eventId}`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+// ─── Recent transactions (ledger feed) ───────────────────────────────────────
+// Used for drinks_sold count + tier breakdown. We keep the limit high because
+// selectors aggregate across all parent transactions for the event.
+
+export function useTransactionsForEvent(eventId: string | null | undefined) {
+  return useQuery<StockTransactionRow[]>({
+    queryKey: dashboardKeys.transactions(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<StockTransactionRow[]>(
+        `/stock-transactions/by-event/${eventId}?limit=500`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+// ─── All products (catalog — for tier_rank + name joins) ─────────────────────
+// Products rarely change mid-event; cache aggressively (5 min staleTime).
+
+export function useAllProducts() {
+  return useQuery<ProductRow[]>({
+    queryKey: dashboardKeys.allProducts(),
+    queryFn: async () => {
+      const { data } = await api.get<ProductRow[]>(
+        '/products?include_archived=true',
+      )
+      return data
+    },
+    staleTime: 5 * 60 * 1000,  // 5 minutes
+  })
+}

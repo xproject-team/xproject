@@ -611,3 +611,123 @@ export const MOCK_CHAT_MESSAGES: ChatMessage[] = [
   { id: 'msg-9',  sender_role: 'manager',   sender_name: 'Manager',   bar_id: 'bar-1',    bar_name: 'Main Bar',   message: 'Main Bar is handling overflow from DJ Booth. Burn rate up. Watching lime juice — running low.',  timestamp: '22:10', read: false },
   { id: 'msg-10', sender_role: 'owner',     sender_name: 'Owner',     bar_id: null, bar_name: null,         message: 'All managers: anomaly alert on beer consumption at Main Bar. Monitor and report in 15.',         timestamp: '22:15', read: false },
 ]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BACKEND API RESPONSE TYPES (added Step 7 — Dashboard wire)
+// ══════════════════════════════════════════════════════════════════════════════
+// These types mirror the exact JSON shapes returned by backend endpoints.
+// They coexist with the MOCK_* constants above until all pages are wired to
+// real data and the mock constants can be deleted.
+
+// ─── /api/v1/bar-stock/by-event/{event_id} ────────────────────────────────────
+
+export interface BarStockRow {
+  id: string
+  event_id: string
+  bar_id: string
+  product_id: string
+  allocated_qty: number
+  current_qty: number
+  returned_qty: number
+}
+
+// ─── /api/v1/stock-transactions/by-event/{event_id} ───────────────────────────
+
+export type TransactionSource =
+  | 'slesh_pos'
+  | 'manual_bartender'
+  | 'manual_adjustment'
+  | 'reconciliation_correction'
+
+export interface StockTransactionRow {
+  id: string
+  event_id: string
+  bar_id: string
+  product_id: string
+  bar_stock_id: string | null
+  qty: number
+  deficit_qty: number
+  price_cents: number | null
+  source: TransactionSource
+  source_idempotency_key: string | null
+  parent_transaction_id: string | null
+  note: string | null
+  created_at: string
+}
+
+// ─── /api/v1/stock-transactions/reconciliation/by-event/{event_id} ────────────
+
+export interface ReconciliationLine {
+  bar_id: string
+  product_id: string
+  bar_stock_id: string
+  allocated_qty: number
+  current_qty: number
+  returned_qty: number
+  expected_consumption: number
+  actual_consumption: number
+  anomaly_qty: number
+}
+
+export interface ReconciliationReport {
+  event_id: string
+  generated_at: string
+  total_revenue_cents: number
+  transaction_count: number
+  lines: ReconciliationLine[]
+  anomaly_count: number
+}
+
+// ─── /api/v1/bars?event_id={event_id} ─────────────────────────────────────────
+
+export type BarType = 'drinks' | 'food' | 'mixed'
+
+export interface BarRow {
+  id: string
+  event_id: string
+  name: string
+  bar_type: BarType
+  slesh_negozio_id: string | null
+  is_active: boolean
+}
+
+// ─── /api/v1/products (subset we care about for the dashboard) ────────────────
+
+export interface ProductRow {
+  id: string
+  name: string
+  product_type: 'drink' | 'food' | 'ingredient' | 'supply'
+  category: string | null
+  tier_rank: number | null
+  unit: string
+  default_price_cents: number | null
+  is_archived: boolean
+}
+
+// ─── ASSEMBLED VIEW: what BarCard consumes ────────────────────────────────────
+// A BarKpi is the UI's view model. Selectors (features/dashboard/selectors.ts)
+// compose one BarKpi per bar by joining BarRow + BarStockRow[] + StockTransactionRow[]
+// + ProductRow[] + ReconciliationLine[].
+//
+// Fields marked "placeholder (v1.1)" are not yet computable from the backend.
+// They render as "—" or "coming soon" treatments in BarCard for now.
+
+export interface BarKpi {
+  // ── Real fields ──
+  id:             string
+  name:           string
+  status:         BarStatus          // derived from stock % thresholds
+  revenue_cents:  number              // SUM(parent transactions' price_cents)
+  drinks_sold:    number              // count of parent transactions
+  drinks_breakdown: DrinksBreakdown   // grouped by product.tier_rank
+  current_stock:  number              // SUM(bar_stock.current_qty) across all drinks at this bar
+  initial_stock:  number              // SUM(bar_stock.allocated_qty)
+  stock_pct:      number              // 0..100, rounded
+
+  // ── Placeholder fields (v1.1) ──
+  burn_rate:     null                 // btl/hr — needs time-windowed tx analysis
+  burn_trend:    null                 // 'up' | 'down' | 'stable'
+  time_to_depletion_min: null         // derived from burn_rate + current_stock
+  staff_count:   null                 // no backend — staff module is post-Sundance
+  last_alert:    null                 // no backend — alerts module separate
+}
