@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.modules.auth.models import User
+from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
 from app.modules.bars.schemas import BarCreate, BarResponse, BarUpdate
 from app.modules.bars.service import (
@@ -130,3 +130,34 @@ async def delete_bar(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "bar_not_found", "message": str(e)},
         )
+@router.post(
+    "/backfill-channels",
+    status_code=status.HTTP_200_OK,
+)
+async def backfill_channels(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict:
+    """Owner-only: idempotently create chat channels for bars missing one.
+
+    Intended for fixing data inconsistencies after bulk imports, seed runs,
+    or backup restores. Safe to call repeatedly — bars that already have
+    a channel are left untouched.
+
+    Returns a summary:
+      { bars_scanned, channels_created, channels_already_present }
+
+    403 if caller is not the tenant Owner.
+    """
+    if current_user.role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "owner_only",
+                "message": "Only the tenant Owner can trigger channel backfill.",
+            },
+        )
+
+    service = BarService(db)
+    summary = await service.backfill_bar_channels(current_user.tenant_id)
+    return summary

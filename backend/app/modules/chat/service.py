@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.auth.models import User
+from app.modules.auth.models import User, UserRole
 from app.modules.chat.models import ChatAttachment, Channel, ChannelMember, ChatMention, ChatMessage
 from app.modules.chat.mention_parser import parse_mentions
 from app.core import storage
@@ -643,3 +643,54 @@ class ChatService:
         member = await self._ensure_member(channel_id, user_id, tenant_id)
         member.last_read_at = datetime.now(timezone.utc)
         await self.db.commit()
+# ─── Auto-provision hook used by BarService.create_bar ────────────
+    # Idempotent: returns the existing channel if one already exists
+    # for this bar. Does NOT commit — the caller's transaction governs.
+
+    async def create_bar_channel(
+        self,
+        bar_id:    UUID,
+        bar_name:  str,
+        tenant_id: UUID,
+    ) -> Channel:
+        """Create (or return existing) the 'Bar Team: <name>' channel."""
+        existing_stmt = select(Channel).where(
+            and_(
+                Channel.bar_id == bar_id,
+                Channel.channel_type == "bar",
+                Channel.tenant_id == tenant_id,
+            )
+        )
+        existing = (await self.db.execute(existing_stmt)).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+        owner_stmt = select(User).where(
+            and_(
+                User.tenant_id == tenant_id,
+                User.role == UserRole.OWNER,
+                User.is_active.is_(True),
+            )
+        )
+        owner = (await self.db.execute(owner_stmt)).scalar_one_or_none()
+
+        channel = Channel(
+            tenant_id    = tenant_id,
+            channel_type = "bar",
+            bar_id       = bar_id,
+            name         = f"Bar Team: {bar_name}",
+            created_by   = owner.id if owner is not None else None,
+        )
+        self.db.add(channel)
+        await self.db.flush()
+
+        if owner is not None:
+            member = ChannelMember(
+                tenant_id  = tenant_id,
+                channel_id = channel.id,
+                user_id    = owner.id,
+            )
+            self.db.add(member)
+            await self.db.flush()
+
+        return channel
