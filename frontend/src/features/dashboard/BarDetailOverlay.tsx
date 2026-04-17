@@ -22,27 +22,32 @@ import {
   useTransactionsForEvent,
 } from '@/features/dashboard/hooks'
 import { buildRevenuePoints } from '@/features/dashboard/chart-buckets'
-import { MOCK_CHAT_MESSAGES } from '@/lib/mockData'
 import type { BarKpi, BarStatus } from '@/lib/mockData'
+import {
+  useChannels,
+  useChannelMessages,
+  usePostMessage,
+  useMarkChannelRead,
+} from '@/features/chat/useChat'
 
 // Style maps
 const STATUS_DOT: Record<BarStatus, string> = {
-  healthy:  'bg-[#38A169]',
-  warning:  'bg-[#D69E2E]',
+  healthy: 'bg-[#38A169]',
+  warning: 'bg-[#D69E2E]',
   critical: 'bg-[#E53E3E] animate-pulse',
 }
 
 const STATUS_LABEL: Record<BarStatus, { text: string; cls: string }> = {
-  healthy:  { text: 'Healthy',   cls: 'bg-green-100 text-[#38A169]' },
-  warning:  { text: 'Low Stock', cls: 'bg-yellow-100 text-[#D69E2E]' },
-  critical: { text: 'Critical',  cls: 'bg-red-100 text-[#E53E3E]' },
+  healthy: { text: 'Healthy', cls: 'bg-green-100 text-[#38A169]' },
+  warning: { text: 'Low Stock', cls: 'bg-yellow-100 text-[#D69E2E]' },
+  critical: { text: 'Critical', cls: 'bg-red-100 text-[#E53E3E]' },
 }
 
 const TIER_CFG = {
-  B: { label: 'Basic',         bg: 'bg-blue-50',   text: 'text-blue-700',   border: 'border-blue-200'   },
-  S: { label: 'Standard',      bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  P: { label: 'Premium',       bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
-  U: { label: 'Ultra-premium', bg: 'bg-amber-50',  text: 'text-amber-700',  border: 'border-amber-200'  },
+  B: { label: 'Basic', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  S: { label: 'Standard', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
+  P: { label: 'Premium', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
+  U: { label: 'Ultra-premium', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
 } as const
 
 function SectionHeader({ title }: { title: string }) {
@@ -56,9 +61,9 @@ function SectionHeader({ title }: { title: string }) {
 
 // Chart tooltip
 interface TooltipProps {
-  active?:  boolean
+  active?: boolean
   payload?: { dataKey: string; value: number | null; color: string }[]
-  label?:   string
+  label?: string
 }
 function RevenueTooltip({ active, payload, label }: TooltipProps) {
   if (!active || !payload?.length) return null
@@ -84,11 +89,11 @@ interface RevenueChartProps {
 }
 
 function RevenueChart({ barId }: RevenueChartProps) {
-  const liveEventQuery   = useLiveEvent()
+  const liveEventQuery = useLiveEvent()
   const transactionsQuery = useTransactionsForEvent(liveEventQuery.data?.id ?? null)
 
   const eventStartIso = liveEventQuery.data?.started_at ?? null
-  const transactions  = transactionsQuery.data ?? []
+  const transactions = transactionsQuery.data ?? []
 
   const points = useMemo(() => {
     if (!eventStartIso) return []
@@ -205,8 +210,8 @@ function RevenueChart({ barId }: RevenueChartProps) {
 type DerivedStockStatus = 'depleted' | 'critical' | 'warning' | 'healthy'
 
 const PRODUCT_STATUS_CFG: Record<DerivedStockStatus, { label: string; cls: string }> = {
-  healthy:  { label: 'Healthy',  cls: 'bg-green-100 text-[#38A169] border border-green-200' },
-  warning:  { label: 'Warning',  cls: 'bg-yellow-100 text-[#D69E2E] border border-yellow-200' },
+  healthy: { label: 'Healthy', cls: 'bg-green-100 text-[#38A169] border border-green-200' },
+  warning: { label: 'Warning', cls: 'bg-yellow-100 text-[#D69E2E] border border-yellow-200' },
   critical: { label: 'Critical', cls: 'bg-red-100 text-[#E53E3E] border border-red-200' },
   depleted: { label: 'Depleted', cls: 'bg-gray-100 text-[#718096] border border-gray-200' },
 }
@@ -221,7 +226,7 @@ function deriveStockStatus(currentQty: number, allocatedQty: number): DerivedSto
 }
 
 interface StockTableProps {
-  barId:   string
+  barId: string
   eventId: string | null | undefined
 }
 
@@ -248,18 +253,18 @@ function StockTable({ barId, eventId }: StockTableProps) {
     .filter((s) => s.bar_id === barId)
     .map((s) => {
       const product = productById.get(s.product_id)
-      const pct     = s.allocated_qty === 0
+      const pct = s.allocated_qty === 0
         ? 0
         : Math.round((s.current_qty / s.allocated_qty) * 100)
       return {
-        stockId:        s.id,
-        productName:    product?.name ?? 'Unknown product',
-        category:       product?.category ?? '—',
-        currentQty:     s.current_qty,
-        allocatedQty:   s.allocated_qty,
-        unit:           product?.unit ?? 'units',
+        stockId: s.id,
+        productName: product?.name ?? 'Unknown product',
+        category: product?.category ?? '—',
+        currentQty: s.current_qty,
+        allocatedQty: s.allocated_qty,
+        unit: product?.unit ?? 'units',
         pct,
-        status:         deriveStockStatus(s.current_qty, s.allocated_qty),
+        status: deriveStockStatus(s.current_qty, s.allocated_qty),
       }
     })
     .sort((a, b) => a.pct - b.pct)  // ascending: most urgent first
@@ -289,7 +294,7 @@ function StockTable({ barId, eventId }: StockTableProps) {
         </thead>
         <tbody>
           {rows.map((r) => {
-            const st     = PRODUCT_STATUS_CFG[r.status]
+            const st = PRODUCT_STATUS_CFG[r.status]
             const urgent = r.status === 'critical' || r.status === 'depleted'
             return (
               <tr
@@ -347,51 +352,114 @@ function StockTable({ barId, eventId }: StockTableProps) {
 // Until the Chat module ships, messages below are sample data and the input
 // field is local-only (no network, no persistence, no sync).
 
+// Chat section — mini-view of the full sidebar Chat page for THIS bar's channel.
+// Shares TanStack Query keys with /pages/chat/ChatPage so messages sent/received
+// here appear instantly in the sidebar and vice versa, no refetch needed.
+// The bar's channel is resolved by finding the unique bar-type channel where
+// bar_id === this bar. Channels are auto-created when a bar is created (see
+// commit e7c275d); for legacy/bulk-imported bars, Owner can trigger the
+// backfill endpoint POST /api/v1/bars/backfill-channels.
+
 interface ChatSectionProps {
-  barId:   string
+  barId: string
   barName: string
 }
 
 function ChatSection({ barId, barName }: ChatSectionProps) {
+  const channelsQuery = useChannels()
+
+  // Resolve the bar-team channel for THIS specific bar
+  const channel = useMemo(() => {
+    if (!channelsQuery.data) return null
+    return channelsQuery.data.find(
+      (c) => c.channel_type === 'bar' && c.bar_id === barId,
+    ) ?? null
+  }, [channelsQuery.data, barId])
+
+  // Loading channel list
+  if (channelsQuery.isLoading) {
+    return (
+      <p className="text-xs text-[#A0AEC0] italic py-6 text-center">
+        Loading chat&hellip;
+      </p>
+    )
+  }
+
+  // Channel list loaded but no bar-team channel exists for this bar.
+  // Shouldn't happen for newly-created bars (auto-hook) but can for bars
+  // that pre-date the auto-hook without being backfilled.
+  if (channel === null) {
+    return (
+      <p className="text-xs text-[#A0AEC0] italic py-6 text-center">
+        No chat channel for this bar yet.
+      </p>
+    )
+  }
+
+  return <ChatSectionInner channel={channel} barName={barName} />
+}
+
+// Inner component: channel guaranteed non-null, hooks safe to call.
+// Pattern matches EventDetailPage/Content split to avoid Rules-of-Hooks issues.
+interface ChatSectionInnerProps {
+  channel: { id: string; name: string }
+  barName: string
+}
+
+function ChatSectionInner({ channel, barName }: ChatSectionInnerProps) {
   const [input, setInput] = useState('')
 
-  const messages = MOCK_CHAT_MESSAGES
-    .filter((m) => m.bar_id === barId)
-    .slice(-3)
+  const messagesQuery = useChannelMessages(channel.id, 20)
+  const postMessage = usePostMessage(channel.id)
+  const markRead = useMarkChannelRead(channel.id)
+
+  // Mark this channel as read once when the overlay opens on it.
+  // Runs once per channel-change, not on every message arrival.
+  useEffect(() => {
+    markRead.mutate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel.id])
 
   function handleSend() {
-    if (!input.trim()) return
-    // No-op until Chat module ships. See docs/chat-module-spec.md.
-    setInput('')
+    const body = input.trim()
+    if (!body || postMessage.isPending) return
+    postMessage.mutate(
+      { body },
+      {
+        onSuccess: () => setInput(''),
+      },
+    )
   }
+
+  const messages = messagesQuery.data ?? []
+  // API returns newest-first; render oldest-first for natural reading order
+  const ordered = [...messages].reverse()
 
   return (
     <>
-      <div className="mb-4 px-3 py-2 text-[11px] bg-amber-50 border border-amber-200 rounded-md text-amber-800 leading-snug">
-        <span className="font-semibold">Chat module arrives in v1.1.</span>{' '}
-        When built, this box becomes a mini-view of the full sidebar Chat page:
-        messages typed here will sync in real time with the manager's branch in
-        the sidebar, and replies from the manager appear in both places
-        simultaneously. Spec: <span className="font-mono">docs/chat-module-spec.md</span>.
-        Until then, messages below are sample data and the input is local-only.
-      </div>
-
-      {messages.length > 0 ? (
-        <div className="space-y-2 mb-4">
-          {messages.map((msg) => (
+      {messagesQuery.isLoading ? (
+        <p className="text-xs text-[#A0AEC0] italic mb-4 py-4 text-center">
+          Loading messages&hellip;
+        </p>
+      ) : ordered.length > 0 ? (
+        <div className="space-y-2 mb-4 max-h-64 overflow-y-auto pr-1">
+          {ordered.map((msg) => (
             <div
               key={msg.id}
               className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2.5"
             >
               <div className="flex items-center justify-between mb-0.5">
                 <span className="text-xs font-semibold text-[#1A202C]">
-                  {msg.sender_name}
+                  {msg.sender_name ?? 'Unknown sender'}
                 </span>
                 <span className="text-[10px] font-mono text-[#4A5568]">
-                  {msg.timestamp}
+                  {new Date(msg.created_at).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </span>
               </div>
-              <p className="text-xs text-[#4A5568] leading-snug">{msg.message}</p>
+              <p className="text-xs text-[#4A5568] leading-snug">{msg.body}</p>
             </div>
           ))}
         </div>
@@ -408,25 +476,25 @@ function ChatSection({ barId, barName }: ChatSectionProps) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }}
           placeholder={'Send message to ' + barName + ' manager...'}
-          className="flex-1 text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 bg-white text-[#1A202C] placeholder:text-[#CBD5E0] focus:outline-none focus:ring-2 focus:ring-[#1ABC9C]/30 focus:border-[#1ABC9C] transition"
+          disabled={postMessage.isPending}
+          className="flex-1 text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 bg-white text-[#1A202C] placeholder:text-[#CBD5E0] focus:outline-none focus:ring-2 focus:ring-[#1ABC9C]/30 focus:border-[#1ABC9C] transition disabled:opacity-60"
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!input.trim() || postMessage.isPending}
           className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: '#1ABC9C' }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#17a589')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1ABC9C')}
         >
-          Send
+          {postMessage.isPending ? 'Sending…' : 'Send'}
         </button>
       </div>
     </>
   )
 }
-
 interface Props {
-  bar:     BarKpi | null
+  bar: BarKpi | null
   onClose: () => void
 }
 
@@ -509,8 +577,8 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                   <div className="flex gap-3">
                     {(['B', 'S', 'P', 'U'] as const).map((tier) => {
                       const count = b.drinks_breakdown[tier]
-                      const pct   = Math.round((count / Math.max(b.drinks_sold, 1)) * 100)
-                      const cfg   = TIER_CFG[tier]
+                      const pct = Math.round((count / Math.max(b.drinks_sold, 1)) * 100)
+                      const cfg = TIER_CFG[tier]
                       return (
                         <div
                           key={tier}
