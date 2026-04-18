@@ -24,6 +24,7 @@ import type {
   ProductTier,
   StockTransactionRow,
 } from '@/lib/mockData'
+import type { BurnRateRow } from '@/features/dashboard/hooks'
 
 // ─── Status thresholds (stock % → healthy / warning / critical) ──────────────
 // These mirror the visual thresholds used by the existing UI (BarCard.tsx
@@ -64,10 +65,11 @@ export interface SelectorInput {
   barStock:     BarStockRow[]
   transactions: StockTransactionRow[]
   products:     ProductRow[]
+  burnRates:    BurnRateRow[]
 }
 
 export function selectBarKpis(input: SelectorInput): BarKpi[] {
-  const { bars, barStock, transactions, products } = input
+  const { bars, barStock, transactions, products, burnRates } = input
 
   // ── Index products by id for O(1) lookup during aggregation ──
   const productById = new Map<string, ProductRow>()
@@ -119,6 +121,16 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       if (tier) drinks_breakdown[tier] += 1
     }
 
+    // Burn-rate aggregates
+    const brAtBar = burnRates.filter((r) => r.bar_id === bar.id)
+    const bar_burn_rate = brAtBar.length === 0
+      ? null
+      : brAtBar.reduce((sum, r) => sum + parseFloat(r.burn_rate_per_hour), 0)
+    const ttdCandidates = brAtBar
+      .map((r) => r.time_to_depletion_min === null ? null : parseFloat(r.time_to_depletion_min))
+      .filter((v): v is number => v !== null && v > 0)
+    const bar_ttd = ttdCandidates.length === 0 ? null : Math.min(...ttdCandidates)
+
     return {
       // Real fields
       id:               bar.id,
@@ -131,9 +143,9 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       initial_stock,
       stock_pct,
       // Placeholder fields (v1.1)
-      burn_rate:            null,
+      burn_rate:            bar_burn_rate,
       burn_trend:           null,
-      time_to_depletion_min: null,
+      time_to_depletion_min: bar_ttd,
       staff_count:          null,
       last_alert:           null,
     }

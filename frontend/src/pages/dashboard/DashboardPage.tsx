@@ -28,6 +28,7 @@ import {
   useLiveEvent,
   useReconciliation,
   useTransactionsForEvent,
+  useBurnRatesForEvent,
 } from '@/features/dashboard/hooks'
 import {
   selectBarKpis,
@@ -358,6 +359,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const barsQuery          = useBarsForEvent(eventId)
   const barStockQuery      = useBarStockForEvent(eventId)
   const transactionsQuery  = useTransactionsForEvent(eventId)
+  const burnRatesQuery     = useBurnRatesForEvent(eventId)
   const productsQuery      = useAllProducts()
   // reconciliation is used by BarDetailOverlay in v1.1 — prefetched here so
   // it's warm when the overlay opens
@@ -421,7 +423,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const transactions = transactionsQuery.data ?? []
   const products     = productsQuery.data ?? []
 
-  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products })
+  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
 
   const unacknowledgedCount = MOCK_ALERTS.filter((a) => !acknowledged.has(a.id)).length
 

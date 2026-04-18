@@ -18,6 +18,7 @@ import {
 import {
   useAllProducts,
   useBarStockForEvent,
+  useBurnRatesForEvent,
   useLiveEvent,
   useTransactionsForEvent,
 } from '@/features/dashboard/hooks'
@@ -233,8 +234,9 @@ interface StockTableProps {
 function StockTable({ barId, eventId }: StockTableProps) {
   const barStockQuery = useBarStockForEvent(eventId)
   const productsQuery = useAllProducts()
+  const burnRatesQuery = useBurnRatesForEvent(eventId)
 
-  if (barStockQuery.isLoading || productsQuery.isLoading) {
+  if (barStockQuery.isLoading || productsQuery.isLoading || burnRatesQuery.isLoading) {
     return (
       <div className="text-xs text-[#A0AEC0] italic py-6 text-center">
         Loading stock&hellip;
@@ -244,6 +246,8 @@ function StockTable({ barId, eventId }: StockTableProps) {
 
   const allStock = barStockQuery.data ?? []
   const products = productsQuery.data ?? []
+  const burnRates = burnRatesQuery.data ?? []
+  const brByKey = new Map(burnRates.map((r) => [r.bar_id + ":" + r.product_id, r]))
 
   // Index products for O(1) join
   const productById = new Map(products.map((p) => [p.id, p]))
@@ -256,8 +260,13 @@ function StockTable({ barId, eventId }: StockTableProps) {
       const pct = s.allocated_qty === 0
         ? 0
         : Math.round((s.current_qty / s.allocated_qty) * 100)
+      const br = brByKey.get(s.bar_id + ":" + s.product_id)
       return {
         stockId: s.id,
+        productId: s.product_id,
+        burnRate: br ? parseFloat(br.burn_rate_per_hour) : null,
+        burnLabel: br ? br.window_label : null,
+        depletionMin: br && br.time_to_depletion_min !== null ? parseFloat(br.time_to_depletion_min) : null,
         productName: product?.name ?? 'Unknown product',
         category: product?.category ?? '—',
         currentQty: s.current_qty,
@@ -321,16 +330,16 @@ function StockTable({ barId, eventId }: StockTableProps) {
                   </span>
                 </td>
                 <td
-                  className="py-2.5 pr-3 text-[#A0AEC0] italic"
-                  title="Burn rate computation ships in v1.1"
+                  className={"py-2.5 pr-3 font-mono whitespace-nowrap " + (r.burnRate === null ? "text-[#A0AEC0] italic" : "text-[#1A202C]")}
+                  title={r.burnRate === null ? "No recent sales — burn rate will appear once transactions arrive" : ({last_30m: "Rate over last 30 minutes", last_60m: "Rate over last hour", last_120m: "Rate over last 2 hours", event_wide: "Rate averaged over the full event"}[r.burnLabel ?? "event_wide"] ?? "Rate computed from event data")}
                 >
-                  &mdash;
+                  {r.burnRate === null ? "—" : r.burnRate.toFixed(1) + " " + r.unit + "/h"}
                 </td>
                 <td
-                  className="py-2.5 text-[#A0AEC0] italic"
-                  title="Time-to-depletion prediction ships in v1.1"
+                  className={"py-2.5 font-mono whitespace-nowrap " + (r.depletionMin === null ? "text-[#A0AEC0] italic" : "text-[#1A202C]")}
+                  title={r.depletionMin === null ? "No depletion estimate yet" : "Estimated at current rate"}
                 >
-                  &mdash;
+                  {r.depletionMin === null || r.currentQty === 0 ? "—" : r.depletionMin < 60 ? Math.round(r.depletionMin) + "m" : Math.floor(r.depletionMin/60) + "h" + Math.round(r.depletionMin%60) + "m"}
                 </td>
               </tr>
             )

@@ -236,3 +236,21 @@ async def reconciliation_report(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "event_not_found", "message": str(e)},
         )
+
+@router.get(
+    "/burn-rate/by-event/{event_id}",
+)
+async def burn_rate_by_event(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    bar_id: UUID | None = None,
+) -> list[dict]:
+    """Per-product burn rate for a live event, optionally filtered by bar.
+
+    Adaptive window: 30/60/120min, falls back to full event if quiet.
+    Returns: list of { product_id, bar_id, window_minutes, actual_consumed,
+    burn_rate_per_hour, current_qty, time_to_depletion_min }.
+    """
+    service = StockTransactionService(db)
+    return await service.compute_burn_rates(tenant_id, event_id, bar_id)

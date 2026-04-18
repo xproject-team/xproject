@@ -725,9 +725,9 @@ export interface BarKpi {
   stock_pct:      number              // 0..100, rounded
 
   // ── Placeholder fields (v1.1) ──
-  burn_rate:     null                 // btl/hr — needs time-windowed tx analysis
+  burn_rate:     number | null                 // btl/hr — needs time-windowed tx analysis
   burn_trend:    null                 // 'up' | 'down' | 'stable'
-  time_to_depletion_min: null         // derived from burn_rate + current_stock
+  time_to_depletion_min: number | null         // derived from burn_rate + current_stock
   staff_count:   null                 // no backend — staff module is post-Sundance
   last_alert:    null                 // no backend — alerts module separate
 }

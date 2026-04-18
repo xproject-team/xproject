@@ -43,6 +43,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'reconciliation', eventId] as const,
   transactions:   (eventId: string) =>
     [...dashboardKeys.all, 'transactions', eventId] as const,
+  burnRate:       (eventId: string) =>
+    [...dashboardKeys.all, 'burnRate', eventId] as const,
 } as const
 
 // ─── Poll interval for "live" data during an event ────────────────────────────
@@ -145,5 +147,32 @@ export function useAllProducts() {
       return data
     },
     staleTime: 5 * 60 * 1000,  // 5 minutes
+  })
+}
+
+// ─── Burn rate (per-product consumption speed + depletion estimate) ──────
+// Polls every LIVE_REFETCH_MS so the Dashboard and StockTable show fresh rates.
+export interface BurnRateRow {
+  product_id:            string
+  bar_id:                string
+  window_minutes:        number
+  window_label:          'last_30m' | 'last_60m' | 'last_120m' | 'event_wide'
+  actual_consumed:       string
+  burn_rate_per_hour:    string
+  current_qty:           number | null
+  time_to_depletion_min: string | null
+}
+
+export function useBurnRatesForEvent(eventId: string | null | undefined) {
+  return useQuery<BurnRateRow[]>({
+    queryKey: dashboardKeys.burnRate(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<BurnRateRow[]>(
+        `/stock-transactions/burn-rate/by-event/${eventId}`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
   })
 }

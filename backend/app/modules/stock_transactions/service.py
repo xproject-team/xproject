@@ -460,3 +460,34 @@ class StockTransactionService:
             logger.warning(
                 "failed to publish sale event (ledger was written OK): %s", e,
             )
+
+    async def compute_burn_rates(self, tenant_id, event_id, bar_id=None):
+        """Per-product burn rate with adaptive 30/60/120/full-event window."""
+        from sqlalchemy import and_, select, func
+        from datetime import timedelta
+        from app.modules.stock_transactions.models import StockTransaction
+        from app.modules.bar_stock.models import BarStock
+        now = datetime.now(UTC)
+        event = await self.events.get_by_id(tenant_id, event_id)
+        if event is None: return []
+        event_start = getattr(event, "started_at", None) or event.created_at
+        base = [StockTransaction.tenant_id==tenant_id, StockTransaction.event_id==event_id, StockTransaction.parent_transaction_id.is_not(None)]
+        if bar_id is not None: base.append(StockTransaction.bar_id==bar_id)
+        full_stmt = select(StockTransaction.product_id, StockTransaction.bar_id).where(and_(*base)).group_by(StockTransaction.product_id, StockTransaction.bar_id)
+        pairs = (await self.db.execute(full_stmt)).all()
+        out = []
+        for pid, bid in pairs:
+            window_min, consumed = None, Decimal("0")
+            for wmin in (30, 60, 120):
+                ws = now - timedelta(minutes=wmin)
+                v = (await self.db.execute(select(func.sum(StockTransaction.qty - StockTransaction.deficit_qty)).where(and_(*base, StockTransaction.product_id==pid, StockTransaction.bar_id==bid, StockTransaction.created_at>=ws)))).scalar()
+                if v and v > 0: window_min, consumed = wmin, v; break
+            if window_min is None:
+                window_min = max(int((now-event_start).total_seconds()/60), 1)
+                consumed = (await self.db.execute(select(func.sum(StockTransaction.qty - StockTransaction.deficit_qty)).where(and_(*base, StockTransaction.product_id==pid, StockTransaction.bar_id==bid)))).scalar() or Decimal("0")
+            rate = consumed / (Decimal(window_min)/Decimal(60)) if window_min > 0 else Decimal("0")
+            cq = (await self.db.execute(select(BarStock.current_qty).where(and_(BarStock.tenant_id==tenant_id, BarStock.event_id==event_id, BarStock.bar_id==bid, BarStock.product_id==pid)))).scalar()
+            ttd = (Decimal(cq)/rate)*Decimal(60) if cq is not None and rate > 0 else None
+            from decimal import ROUND_HALF_UP; q2=Decimal("0.01"); def_round=lambda v: v.quantize(q2, rounding=ROUND_HALF_UP) if isinstance(v, Decimal) else v; label = ("last_30m" if window_min==30 else "last_60m" if window_min==60 else "last_120m" if window_min==120 else "event_wide"); out.append({"product_id": pid, "bar_id": bid, "window_minutes": window_min, "window_label": label, "actual_consumed": def_round(consumed), "burn_rate_per_hour": def_round(rate), "current_qty": cq, "time_to_depletion_min": def_round(ttd)})
+        return out
+

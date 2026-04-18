@@ -113,7 +113,7 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Burn Rate</p>
           <p className="text-sm font-bold mt-0.5">
-            <Placeholder label="Burn rate computation" />
+            {bar.burn_rate === null ? <Placeholder label="Burn rate — no recent sales" /> : bar.burn_rate.toFixed(1)}
           </p>
           <p className="text-[9px] text-[#4A5568]">btl/hr</p>
         </div>
@@ -121,7 +121,7 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Depletion</p>
           <p className="text-sm font-bold mt-0.5">
-            <Placeholder label="Time-to-depletion prediction" />
+            {bar.time_to_depletion_min === null ? <Placeholder label="Depletion — needs data" /> : bar.time_to_depletion_min < 60 ? Math.round(bar.time_to_depletion_min) + "m" : Math.floor(bar.time_to_depletion_min / 60) + "h" + (Math.round(bar.time_to_depletion_min % 60)) + "m"}
           </p>
           <p className="text-[9px] text-[#4A5568]">remaining</p>
         </div>
