@@ -34,7 +34,8 @@ import {
   selectBarKpis,
   selectDashboardTotals,
 } from '@/features/dashboard/selectors'
-import { MOCK_ALERTS } from '@/lib/mockData'  // TODO(v1.1): alerts backend
+import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAlerts'
+import type { AlertRow } from '@/features/alerts/useAlerts'
 import type { BarKpi, Event } from '@/lib/mockData'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -59,10 +60,11 @@ interface KpiStripProps {
   bars: BarKpi[]
   elapsed: number
   unacknowledgedCount: number
+  criticalCount: number
   onAlertsClick: () => void
 }
 
-function KpiStrip({ bars, elapsed, unacknowledgedCount, onAlertsClick }: KpiStripProps) {
+function KpiStrip({ bars, elapsed, unacknowledgedCount, criticalCount, onAlertsClick }: KpiStripProps) {
   const { totalRevenueCents, totalDrinksSold, tierTotals } =
     selectDashboardTotals(bars)
 
@@ -107,7 +109,7 @@ function KpiStrip({ bars, elapsed, unacknowledgedCount, onAlertsClick }: KpiStri
         </div>
       </div>
 
-      {/* Active Alerts (mock for now) */}
+      {/* Active Alerts — wired to real backend via useAlertsForEvent */}
       <button
         onClick={onAlertsClick}
         className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-red-50 rounded-lg px-3 py-1 -mx-3 transition-colors"
@@ -123,7 +125,7 @@ function KpiStrip({ bars, elapsed, unacknowledgedCount, onAlertsClick }: KpiStri
         {unacknowledgedCount > 0 && (
           <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-[#E53E3E] border border-red-200 px-2 py-1 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
-            {MOCK_ALERTS.filter((a) => a.severity === 'critical').length} critical
+            {criticalCount} critical
           </span>
         )}
       </button>
@@ -144,7 +146,7 @@ function KpiStrip({ bars, elapsed, unacknowledgedCount, onAlertsClick }: KpiStri
   )
 }
 
-// ─── Zone C — Alert Sidebar (still on mock data — TODO v1.1) ─────────────────
+// ─── Zone C — Alert Sidebar (wired to real backend via useAlertsForEvent) ─────
 
 const SEVERITY_CFG = {
   critical: {
@@ -164,15 +166,26 @@ const SEVERITY_CFG = {
   },
 } as const
 
+interface AlertSidebarAlert {
+  id: string
+  bar_id: string
+  bar_name: string
+  severity: 'critical' | 'warning' | 'anomaly'
+  alert_type: 'depletion' | 'anomaly' | 'discrepancy' | 'system'
+  message: string
+  created_at: string
+  is_acknowledged: boolean
+}
 interface AlertSidebarProps {
   open: boolean
   onToggle: () => void
+  alerts: AlertSidebarAlert[]
   acknowledged: Set<string>
   onAcknowledge: (id: string) => void
 }
 
-function AlertSidebar({ open, onToggle, acknowledged, onAcknowledge }: AlertSidebarProps) {
-  const unackedCount = MOCK_ALERTS.filter((a) => !acknowledged.has(a.id)).length
+function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: AlertSidebarProps) {
+  const unackedCount = alerts.filter((a) => !acknowledged.has(a.id)).length
 
   return (
     <div className={[
@@ -220,17 +233,11 @@ function AlertSidebar({ open, onToggle, acknowledged, onAcknowledge }: AlertSide
         </button>
       </div>
 
-      {/* TODO(v1.1) banner — mock data */}
-      {open && (
-        <div className="mx-2 mt-2 mb-1 px-2 py-1.5 text-[10px] bg-amber-50 border border-amber-200 rounded text-amber-800 leading-tight">
-          ⓘ Alerts are mock data until the alerts backend ships in v1.1.
-        </div>
-      )}
 
-      {/* Alert list (MOCK_ALERTS — TODO v1.1) */}
+      {/* Alert list — wired to real backend via useAlertsForEvent */}
       {open && (
         <div className="flex-1 overflow-y-auto py-2">
-          {MOCK_ALERTS.map((alert) => {
+          {alerts.map((alert) => {
             const cfg   = SEVERITY_CFG[alert.severity]
             const acked = acknowledged.has(alert.id)
 
@@ -361,6 +368,24 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const transactionsQuery  = useTransactionsForEvent(eventId)
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
   const productsQuery      = useAllProducts()
+  const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
+  const acknowledgeMutation = useAcknowledgeAlert()
+  // Adapter: map real AlertRow[] -> legacy Alert shape consumed by AlertSidebar
+  // and the KpiStrip. Derives bar_name from context_json; is_acknowledged from
+  // acknowledged_at; clamps 'info' severity to 'warning' for display only.
+  const alerts = (alertsQuery.data?.items ?? []).map((row: AlertRow) => ({
+    id:              row.id,
+    event_id:        row.event_id,
+    bar_id:          row.bar_id,
+    bar_name:        (row.context_json?.bar_name as string) ?? 'Unknown bar',
+    severity:        (row.severity === 'info' ? 'warning' : row.severity) as 'critical' | 'warning' | 'anomaly',
+    alert_type:      row.alert_type,
+    message:         row.message,
+    created_at:      row.created_at,
+    is_acknowledged: row.acknowledged_at !== null,
+    // carry the real version for the ack mutation
+    _version:        row.version,
+  }))
   // reconciliation is used by BarDetailOverlay in v1.1 — prefetched here so
   // it's warm when the overlay opens
   useReconciliation(eventId)
@@ -369,9 +394,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const [elapsed,     setElapsed]     = useState(START_ELAPSED)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(
-    () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
-  )
+  // Acknowledged set derived from server data — not local state. The source of
+  // truth is alerts[i].acknowledged_at on the server; this Set is just a fast
+  // lookup by id for the presentation components.
+  const acknowledged = new Set(alerts.filter((a) => a.is_acknowledged).map((a) => a.id))
 
   useEffect(() => {
     const id = setInterval(() => setElapsed((s) => s + 1), 1000)
@@ -379,8 +405,11 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   }, [])
 
   const handleAcknowledge = useCallback((id: string) => {
-    setAcknowledged((prev) => new Set(prev).add(id))
-  }, [])
+    // Find the current version to pass to the optimistic-lock mutation.
+    const target = alerts.find((a) => a.id === id)
+    if (!target) return
+    acknowledgeMutation.mutate({ alert_id: id, version: target._version })
+  }, [alerts, acknowledgeMutation])
 
   function handleAlertsClick() {
     setSidebarOpen(true)
@@ -425,7 +454,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
 
-  const unacknowledgedCount = MOCK_ALERTS.filter((a) => !acknowledged.has(a.id)).length
+  const unacknowledgedCount = alerts.filter((a) => !acknowledged.has(a.id)).length
 
   const eventName = liveEvent?.name ?? `Event ${eventId.slice(0, 8)}`
   const eventStatusLabel = liveEvent?.status === 'live' ? 'Live' : liveEvent?.status ?? 'Preview'
@@ -441,6 +470,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           bars={barKpis}
           elapsed={elapsed}
           unacknowledgedCount={unacknowledgedCount}
+          criticalCount={alerts.filter((a) => a.severity === 'critical' && !acknowledged.has(a.id)).length}
           onAlertsClick={handleAlertsClick}
         />
 
@@ -484,6 +514,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
         <AlertSidebar
           open={sidebarOpen}
           onToggle={() => setSidebarOpen((o) => !o)}
+          alerts={alerts}
           acknowledged={acknowledged}
           onAcknowledge={handleAcknowledge}
         />

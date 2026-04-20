@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePermissions } from '@/features/auth/usePermissions'
-import { MOCK_ALERTS } from '@/lib/mockData'
+import { useLiveEvent } from '@/features/dashboard/hooks'
+import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAlerts'
+import type { AlertRow } from '@/features/alerts/useAlerts'
 import type { Alert, AlertSeverity } from '@/lib/mockData'
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
@@ -131,11 +133,28 @@ function AlertCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AlertsPage() {
+  const liveEventQuery = useLiveEvent()
+  const eventId = liveEventQuery.data?.id ?? null
+  const alertsQuery = useAlertsForEvent(eventId, { onlyActive: false })
+  const acknowledgeMutation = useAcknowledgeAlert()
+  // Adapter: map real AlertRow[] -> legacy Alert shape consumed by the existing
+  // render logic. Drops no data; merely derives bar_name + is_acknowledged +
+  // narrows severity for display consistency with the legacy mock type.
+  const alertsSource = (alertsQuery.data?.items ?? []).map((row: AlertRow) => ({
+    id:              row.id,
+    event_id:        row.event_id,
+    bar_id:          row.bar_id,
+    bar_name:        (row.context_json?.bar_name as string) ?? 'Unknown bar',
+    severity:        (row.severity === 'info' ? 'warning' : row.severity) as 'critical' | 'warning' | 'anomaly',
+    alert_type:      row.alert_type,
+    message:         row.message,
+    created_at:      row.created_at,
+    is_acknowledged: row.acknowledged_at !== null,
+    _version:        row.version,
+  }))
   const perms = usePermissions()
 
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(
-    () => new Set(MOCK_ALERTS.filter((a) => a.is_acknowledged).map((a) => a.id)),
-  )
+  const acknowledged = new Set(alertsSource.filter((a) => a.is_acknowledged).map((a) => a.id))
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
 
   const handleAcknowledge = useCallback((id: string) => {
@@ -143,19 +162,19 @@ export default function AlertsPage() {
   }, [])
 
   // ── Derived counts ─────────────────────────────────────────────────────────
-  const totalCount        = MOCK_ALERTS.length
-  const unackedCount      = MOCK_ALERTS.filter((a) => !acknowledged.has(a.id)).length
-  const criticalActive    = MOCK_ALERTS.filter((a) => a.severity === 'critical' && !acknowledged.has(a.id)).length
+  const totalCount        = alertsSource.length
+  const unackedCount      = alertsSource.filter((a) => !acknowledged.has(a.id)).length
+  const criticalActive    = alertsSource.filter((a) => a.severity === 'critical' && !acknowledged.has(a.id)).length
 
   // ── Filtered list ──────────────────────────────────────────────────────────
-  const filtered = MOCK_ALERTS.filter((a) => {
+  const filtered = alertsSource.filter((a) => {
     if (activeFilter === 'all')          return true
     if (activeFilter === 'acknowledged') return acknowledged.has(a.id)
     return a.severity === activeFilter && !acknowledged.has(a.id)
   })
 
   // ── Anomaly alerts (owner only) ────────────────────────────────────────────
-  const anomalyAlerts = MOCK_ALERTS.filter((a) => a.alert_type === 'anomaly')
+  const anomalyAlerts = alertsSource.filter((a) => a.alert_type === 'anomaly')
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
