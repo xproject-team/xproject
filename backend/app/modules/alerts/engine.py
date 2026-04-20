@@ -1,35 +1,368 @@
-"""Alert evaluation engine — applies rules against live metrics to generate Alert records.
+"""DepletionEvaluator — consumes burn-rate output and fires time-based alerts.
 
-This file is unique to the alerts module. It contains rule definitions and the
-evaluation loop that determines when an alert should be fired. Keep all rule
-logic here so it can be tested independently of the HTTP layer.
+This is where Alerts meets Burn-rate. Every 5 minutes (configurable) the
+background scheduler runs an evaluator per-tenant per-active-event. The
+evaluator:
+
+  1. Calls StockTransactionService.compute_burn_rates() for the event.
+  2. Applies the Architecture Bible §4.5 severity ladder to each
+     (bar, product) result:
+        TTD < 20 min OR stock = 0  → CRITICAL
+        TTD < 45 min               → WARNING
+        TTD < 60 min               → INFO
+        else                       → no alert
+  3. Builds AlertCreate payloads with role-appropriate messages and
+     a rule-based suggested_action (the AI-advisor slot stays empty for
+     now; future LLM agent fills it).
+  4. Calls AlertsService.create_alert() which deduplicates by key —
+     no floods when the same condition persists across cycles.
+  5. Auto-resolves previously-active alerts whose underlying condition
+     no longer applies (stock was restocked, burn rate dropped).
+
+The evaluator is ISOLATED from the user-facing API: if it crashes, the
+HTTP layer keeps serving cached alerts. Same soft-dependency pattern we
+used for chat broadcast. Exceptions are logged and swallowed at the
+tenant-run boundary.
+
+Routing rule (Architecture Bible + Discovery Report §3):
+  INFO             → owner_only  (Owner sees yellow dot, manager untouched)
+  WARNING/CRITICAL → owner_and_manager  (Manager sees operational text)
+  ANOMALY          → owner_only  (future, handled by AnomalyEngine)
+Managers are NEVER shown anomaly alerts — enforced at the service _view()
+projection. This is a core security/trust principle.
 """
-from dataclasses import dataclass
+from __future__ import annotations
+
+import logging
+from decimal import Decimal
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.alerts.schemas import AlertCreate
+from app.modules.alerts.service import AlertsService
+from app.modules.bars.models import Bar
+from app.modules.products.models import Product
+from app.modules.stock_transactions.service import StockTransactionService
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class AlertRule:
-    """Defines a single alerting rule with threshold and severity."""
+# ─── Thresholds (Architecture Bible §4.5) ─────────────────────────────────────
+# Minutes of runway remaining before action is required.
 
-    name: str
-    severity: str  # info | warning | critical
-    description: str
-
-
-# Built-in alert rules
-STOCK_LOW_WARNING = AlertRule("stock_low_warning", "warning", "Item stock below 20%")
-STOCK_CRITICAL = AlertRule("stock_critical", "critical", "Item stock below 5%")
-ANOMALY_DETECTED = AlertRule("anomaly_detected", "warning", "Consumption anomaly detected")
-SALES_SPIKE = AlertRule("sales_spike", "info", "Sales velocity 2x above baseline")
-
-ALL_RULES: list[AlertRule] = [STOCK_LOW_WARNING, STOCK_CRITICAL, ANOMALY_DETECTED, SALES_SPIKE]
+THRESHOLD_CRITICAL_MIN = 20
+THRESHOLD_WARNING_MIN = 45
+THRESHOLD_INFO_MIN = 60
 
 
-async def evaluate_rules(event_id: int, metrics: dict) -> list[AlertRule]:
-    """Evaluate all rules against the current metrics snapshot.
+# ─── Severity decision helper ─────────────────────────────────────────────────
 
-    Returns the list of rules that have been triggered.
+
+def _severity_for(
+    current_qty: int | None,
+    ttd_minutes: Decimal | None,
+) -> str | None:
+    """Return 'info' / 'warning' / 'critical' or None if no alert warranted.
+
+    Args:
+        current_qty: Units remaining at the bar for this product. None means
+            the burn-rate row didn't carry stock info (defensive).
+        ttd_minutes: Time-to-depletion in minutes, or None if no rate was
+            computable (no sales in any window → no alert, on purpose).
+
+    Rules (in order):
+        stock == 0          → CRITICAL (already out)
+        ttd < 20            → CRITICAL (20 min runway)
+        ttd < 45            → WARNING  (45 min runway)
+        ttd < 60            → INFO
+        else                → None
     """
-    triggered: list[AlertRule] = []
-    # TODO: implement threshold checks against metrics dict
-    return triggered
+    if current_qty is not None and current_qty == 0:
+        return "critical"
+    if ttd_minutes is None:
+        return None
+    # ttd == 0 is effectively depleted too, but we handle it via current_qty
+    # above. Defensive: if somehow only ttd is 0 and stock isn't, still crit.
+    if ttd_minutes <= 0:
+        return "critical"
+    if ttd_minutes < THRESHOLD_CRITICAL_MIN:
+        return "critical"
+    if ttd_minutes < THRESHOLD_WARNING_MIN:
+        return "warning"
+    if ttd_minutes < THRESHOLD_INFO_MIN:
+        return "info"
+    return None
+
+
+def _audience_for(severity: str) -> str:
+    """Alert routing matrix for depletion alerts.
+
+    INFO stays on the Owner dashboard only (yellow dot, feed entry).
+    WARNING + CRITICAL go to the assigned Manager's channel too, with
+    sanitized operational text.
+    """
+    if severity == "info":
+        return "owner_only"
+    return "owner_and_manager"
+
+
+# ─── Message builders (rule-based; AI-advisor slot stays empty for now) ───────
+
+
+def _build_messages(
+    severity: str,
+    product_name: str,
+    bar_name: str,
+    current_qty: int,
+    unit: str,
+    burn_rate_per_hour: Decimal,
+    ttd_minutes: Decimal | None,
+) -> tuple[str, str, str | None, str]:
+    """Produce (title, owner_message, manager_message, suggested_action).
+
+    Owner text includes full context (numbers, the WHY). Manager text is
+    operational only — 'stock low, restock needed'. Anomaly-grade detail is
+    never in manager_message by construction.
+
+    suggested_action is a rule-based string today. Future AI advisor
+    replaces it with historical reasoning via the ai_advisory column;
+    schema + frontend unchanged.
+    """
+    # Round presentation values sensibly.
+    rate_str = f"{burn_rate_per_hour:.1f}"
+    if current_qty == 0:
+        title = f"{product_name} depleted at {bar_name}"
+        owner_message = (
+            f"{product_name} at {bar_name} is fully depleted (0 {unit} "
+            f"remaining). Consumption was running at {rate_str} {unit}/h. "
+            f"Any further orders will create deficit (phantom sales)."
+        )
+        manager_message = (
+            f"Stock depleted for {product_name}. Restock urgently."
+        )
+        suggested_action = (
+            f"Dispatch replenishment of {product_name} to {bar_name} "
+            f"immediately. Typical restock takes 10-15 min."
+        )
+        return title, owner_message, manager_message, suggested_action
+
+    ttd_int = int(ttd_minutes) if ttd_minutes is not None else 0
+
+    if severity == "critical":
+        title = f"{product_name} critically low at {bar_name}"
+        owner_message = (
+            f"{product_name} at {bar_name} will deplete in approximately "
+            f"{ttd_int} minutes at the current rate of {rate_str} {unit}/h. "
+            f"{current_qty} {unit} remaining. Action needed now to avoid "
+            f"stock-out."
+        )
+        manager_message = (
+            f"Low stock warning: {product_name}. Restock needed urgently."
+        )
+        suggested_action = (
+            f"Dispatch {product_name} to {bar_name} within the next "
+            f"10 minutes. Current runway is ~{ttd_int} min."
+        )
+    elif severity == "warning":
+        title = f"{product_name} running low at {bar_name}"
+        owner_message = (
+            f"{product_name} at {bar_name} will deplete in approximately "
+            f"{ttd_int} minutes at {rate_str} {unit}/h. {current_qty} "
+            f"{unit} remaining. Plan a restock."
+        )
+        manager_message = (
+            f"Stock low for {product_name}. Restock recommended."
+        )
+        suggested_action = (
+            f"Prepare restock of {product_name} for {bar_name} within the "
+            f"next 30 minutes."
+        )
+    else:  # info
+        title = f"{product_name} approaching threshold at {bar_name}"
+        owner_message = (
+            f"{product_name} at {bar_name} has {current_qty} {unit} "
+            f"remaining, running at {rate_str} {unit}/h. Projected "
+            f"depletion in ~{ttd_int} minutes. Monitor and plan restock."
+        )
+        manager_message = None  # INFO is owner_only; never reaches manager
+        suggested_action = (
+            f"No immediate action needed. Verify warehouse has "
+            f"{product_name} available for timely restock if rate holds."
+        )
+
+    return title, owner_message, manager_message, suggested_action
+
+
+# ─── The evaluator itself ─────────────────────────────────────────────────────
+
+
+class DepletionEvaluator:
+    """Runs one full depletion pass for one tenant × one event.
+
+    Stateless; create one per scheduler tick. Holds the AsyncSession.
+    """
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.stock_tx_service = StockTransactionService(db)
+        self.alerts_service = AlertsService(db)
+
+    async def _load_name_maps(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> tuple[dict[UUID, tuple[str, str]], dict[UUID, str]]:
+        """Fetch product (id → (name, unit)) and bar (id → name) maps for
+        this tenant. One round-trip each. Cached per evaluator instance.
+
+        Scoped to tenant to prevent cross-tenant name bleed.
+        """
+        prod_stmt = select(
+            Product.id, Product.name, Product.unit,
+        ).where(Product.tenant_id == tenant_id)
+        prod_rows = (await self.db.execute(prod_stmt)).all()
+        products: dict[UUID, tuple[str, str]] = {
+            pid: (name, unit.value if hasattr(unit, "value") else str(unit)) for pid, name, unit in prod_rows
+        }
+
+        bar_stmt = select(Bar.id, Bar.name).where(Bar.tenant_id == tenant_id)
+        bar_rows = (await self.db.execute(bar_stmt)).all()
+        bars: dict[UUID, str] = {bid: name for bid, name in bar_rows}
+
+        return products, bars
+
+    async def evaluate(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> dict[str, int]:
+        """Run one depletion-evaluation pass for an event.
+
+        Returns a counters dict: {'fired': N, 'auto_resolved': M, 'checked': K}.
+        Never raises — exceptions are logged and the counters reflect what
+        got done before the error. This keeps the scheduler resilient.
+        """
+        counters = {"checked": 0, "fired": 0, "auto_resolved": 0}
+
+        try:
+            burn_rows = await self.stock_tx_service.compute_burn_rates(
+                tenant_id=tenant_id,
+                event_id=event_id,
+                bar_id=None,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "depletion evaluator: burn-rate fetch failed for "
+                "tenant=%s event=%s: %s", tenant_id, event_id, e,
+            )
+            return counters
+
+        if not burn_rows:
+            # No transactions in event yet → nothing to evaluate, nothing to
+            # auto-resolve. This is the common case for a quiet event.
+            return counters
+
+        products, bars = await self._load_name_maps(tenant_id, event_id)
+
+        # Track which (bar, product, type) keys are still alert-worthy for
+        # the auto-resolve diff at the end.
+        still_active_keys: set[tuple[UUID, UUID | None, str]] = set()
+
+        for row in burn_rows:
+            counters["checked"] += 1
+
+            # Pull values, coerce to the right types.
+            product_id: UUID = row["product_id"]
+            bar_id: UUID = row["bar_id"]
+            current_qty = row.get("current_qty")
+            burn_rate = row.get("burn_rate_per_hour") or Decimal("0")
+            ttd = row.get("time_to_depletion_min")
+            window_label = row.get("window_label", "event_wide")
+
+            # Severity decision
+            severity = _severity_for(current_qty, ttd)
+            if severity is None:
+                continue
+
+            # Lookup display names (snapshot)
+            prod_entry = products.get(product_id)
+            if prod_entry is None:
+                # Product was deleted or tenant mismatch — skip. Shouldn't
+                # happen in steady-state, but defensive.
+                logger.warning(
+                    "depletion: product %s not found for tenant %s; skip",
+                    product_id, tenant_id,
+                )
+                continue
+            product_name, unit = prod_entry
+            bar_name = bars.get(bar_id, "Unknown bar")
+
+            # Build messages + action
+            title, owner_msg, manager_msg, suggested = _build_messages(
+                severity=severity,
+                product_name=product_name,
+                bar_name=bar_name,
+                current_qty=current_qty or 0,
+                unit=unit,
+                burn_rate_per_hour=burn_rate,
+                ttd_minutes=ttd,
+            )
+
+            audience = _audience_for(severity)
+
+            context = {
+                "current_stock": int(current_qty or 0),
+                "burn_rate_per_hour": float(burn_rate),
+                "ttd_minutes": float(ttd) if ttd is not None else None,
+                "window_label": window_label,
+                "product_name": product_name,
+                "bar_name": bar_name,
+                "unit": unit,
+            }
+
+            payload = AlertCreate(
+                event_id=event_id,
+                bar_id=bar_id,
+                product_id=product_id,
+                alert_type="depletion",
+                severity=severity,
+                audience=audience,
+                title=title,
+                owner_message=owner_msg,
+                manager_message=manager_msg,
+                suggested_action=suggested,
+                context_json=context,
+            )
+
+            try:
+                await self.alerts_service.create_alert(tenant_id, payload)
+                counters["fired"] += 1
+                still_active_keys.add((bar_id, product_id, "depletion"))
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "depletion: create_alert failed for bar=%s product=%s: %s",
+                    bar_id, product_id, e,
+                )
+
+        # Auto-resolve anything that's no longer alert-worthy.
+        try:
+            counters["auto_resolved"] = (
+                await self.alerts_service.auto_resolve_missing(
+                    tenant_id=tenant_id,
+                    event_id=event_id,
+                    still_active_keys=still_active_keys,
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "depletion: auto-resolve failed for event=%s: %s",
+                event_id, e,
+            )
+
+        logger.info(
+            "depletion evaluator: tenant=%s event=%s %s",
+            tenant_id, event_id, counters,
+        )
+        return counters
