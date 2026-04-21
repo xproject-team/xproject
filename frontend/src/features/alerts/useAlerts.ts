@@ -62,6 +62,17 @@ export interface AlertCountResponse {
   total: number
 }
 
+/** Per-bar severity breakdown.
+ * Backend returns a raw object keyed by bar_id (no items wrapper). */
+export interface AlertCountByBarEntry {
+  info: number
+  warning: number
+  critical: number
+  anomaly: number
+  total: number
+}
+export type AlertCountByBarResponse = Record<string, AlertCountByBarEntry>
+
 // ─── Query keys (hierarchical, for surgical invalidation) ────────────────────
 
 export const alertsKeys = {
@@ -70,6 +81,8 @@ export const alertsKeys = {
     [...alertsKeys.all, 'byEvent', eventId] as const,
   count: (eventId: string) =>
     [...alertsKeys.all, 'count', eventId] as const,
+  countByBar: (eventId: string) =>
+    [...alertsKeys.all, 'countByBar', eventId] as const,
   detail: (alertId: string) =>
     [...alertsKeys.all, 'detail', alertId] as const,
 }
@@ -125,6 +138,26 @@ export function useAlertsCount(eventId: string | null | undefined) {
 export interface AcknowledgePayload {
   alert_id: string
   version: number
+}
+
+/**
+ * Per-bar severity counts, for the BarCard red-dot decision.
+ * Returns a Map<bar_id, counts> for fast lookup inside render.
+ */
+export function useAlertsCountByBar(eventId: string | null | undefined) {
+  return useQuery<AlertCountByBarResponse, Error, Map<string, AlertCountByBarEntry>>({
+    queryKey: alertsKeys.countByBar(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<AlertCountByBarResponse>(
+        `/alerts/by-event/${eventId}/count-by-bar`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: ALERTS_POLL_MS,
+    // Transform the response into a Map keyed by bar_id for O(1) lookup.
+    select: (data) => new Map(Object.entries(data)),
+  })
 }
 
 export function useAcknowledgeAlert() {

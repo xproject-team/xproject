@@ -30,6 +30,7 @@ import {
   usePostMessage,
   useMarkChannelRead,
 } from '@/features/chat/useChat'
+import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAlerts'
 
 // Style maps
 const STATUS_DOT: Record<BarStatus, string> = {
@@ -507,6 +508,52 @@ interface Props {
   onClose: () => void
 }
 
+// AlertsSection - Apr 20 2026 cross-page integration
+interface AlertsSectionProps { barId: string; eventId: string | null }
+function AlertsSection({ barId, eventId }: AlertsSectionProps) {
+  const alertsQuery = useAlertsForEvent(eventId, { onlyActive: true })
+  const ackMutation = useAcknowledgeAlert()
+  const alerts = (alertsQuery.data?.items ?? []).filter((a) => a.bar_id === barId)
+  if (alerts.length === 0) {
+    return <p className="text-sm text-[#718096] italic">No active alerts for this bar.</p>
+  }
+  return (
+    <div className="space-y-3">
+      {alerts.map((alert) => {
+        const isCritical = alert.severity === 'critical'
+        const isWarning = alert.severity === 'warning'
+        const pillCls = isCritical ? 'bg-red-100 text-[#E53E3E] border-red-200'
+          : isWarning ? 'bg-amber-100 text-[#B7791F] border-amber-200'
+          : 'bg-blue-100 text-[#2B6CB0] border-blue-200'
+        const borderCls = isCritical ? 'border-[#E53E3E] bg-red-50'
+          : isWarning ? 'border-[#D69E2E] bg-amber-50'
+          : 'border-[#3182CE] bg-blue-50'
+        return (
+          <div key={alert.id} className={'rounded-lg border-l-4 p-3 ' + borderCls}>
+            <div className="flex items-start justify-between gap-3 mb-1.5">
+              <span className={'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ' + pillCls}>
+                {alert.severity}
+              </span>
+              <button
+                onClick={() => ackMutation.mutate({ alert_id: alert.id, version: alert.version })}
+                disabled={ackMutation.isPending}
+                className="text-[11px] font-semibold text-[#4A5568] hover:text-[#1A202C] border border-[#E2E8F0] hover:border-[#CBD5E0] bg-white px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+              >
+                Acknowledge
+              </button>
+            </div>
+            <p className="text-[11px] font-bold text-[#1A202C] mb-1">{alert.title}</p>
+            <p className="text-[12px] text-[#2D3748] leading-snug">{alert.message}</p>
+            {alert.suggested_action && (
+              <p className="mt-2 text-[11px] text-[#4A5568] italic">{'→ ' + alert.suggested_action}</p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function BarDetailOverlay({ bar, onClose }: Props) {
   const isOpen = bar !== null
 
@@ -608,6 +655,10 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                 <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
                   <SectionHeader title={'Stock'} />
                   <StockTable barId={b.id} eventId={liveEventId} />
+                </section>
+                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
+                  <SectionHeader title="Alerts" />
+                  <AlertsSection barId={b.id} eventId={liveEventId} />
                 </section>
 
                 <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">

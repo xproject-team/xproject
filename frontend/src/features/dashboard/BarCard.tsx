@@ -14,6 +14,9 @@ import type { BarKpi, BarStatus } from '@/lib/mockData'
 
 interface BarCardProps {
   bar: BarKpi
+  /** Number of active critical alerts for this bar (from useAlertsCountByBar).
+   * When > 0, a pulsing red pill renders next to the bar name. */
+  criticalAlertCount?: number
   onClick: (barId: string) => void
 }
 
@@ -41,7 +44,7 @@ function Placeholder({ label }: { label: string }) {
   )
 }
 
-export function BarCard({ bar, onClick }: BarCardProps) {
+export function BarCard({ bar, criticalAlertCount = 0, onClick }: BarCardProps) {
   const cfg      = STATUS_CFG[bar.status]
   const stockPct = bar.stock_pct
   const tiers    = bar.drinks_breakdown
@@ -63,6 +66,15 @@ export function BarCard({ bar, onClick }: BarCardProps) {
         <div className="flex items-center gap-2">
           <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
           <h3 className="font-bold text-[#1A202C] text-base leading-tight">{bar.name}</h3>
+          {criticalAlertCount > 0 && (
+            <span
+              className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-[#E53E3E] border border-red-200 px-1.5 py-0.5 rounded-full shrink-0"
+              title={`${criticalAlertCount} active critical alert${criticalAlertCount === 1 ? '' : 's'}`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
+              {criticalAlertCount}
+            </span>
+          )}
         </div>
         <div className="text-right shrink-0 ml-3">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Revenue</p>

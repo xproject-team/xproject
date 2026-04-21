@@ -34,7 +34,7 @@ import {
   selectBarKpis,
   selectDashboardTotals,
 } from '@/features/dashboard/selectors'
-import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAlerts'
+import { useAlertsForEvent, useAcknowledgeAlert, useAlertsCountByBar } from '@/features/alerts/useAlerts'
 import type { AlertRow } from '@/features/alerts/useAlerts'
 import type { BarKpi, Event } from '@/lib/mockData'
 
@@ -369,6 +369,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
   const productsQuery      = useAllProducts()
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
+  const alertCountsByBarQuery = useAlertsCountByBar(eventId)
   const acknowledgeMutation = useAcknowledgeAlert()
   // Adapter: map real AlertRow[] -> legacy Alert shape consumed by AlertSidebar
   // and the KpiStrip. Derives bar_name from context_json; is_acknowledged from
@@ -501,6 +502,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                 <BarCard
                   key={kpi.id}
                   bar={kpi}
+                  criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
                   onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
                 />
               ))}
