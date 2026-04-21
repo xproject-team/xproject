@@ -242,36 +242,3 @@ async def acknowledge_alert(
                 "message": "This alert was already acknowledged.",
             },
         )
-
-
-# ─── WS /ws/alerts/{event_id} — live push (stub; real loop in 1.8) ────────────
-
-
-@router.websocket("/ws/alerts/{event_id}")
-async def alerts_websocket(
-    websocket: WebSocket,
-    event_id: UUID,
-) -> None:
-    """WebSocket stub for real-time alert pushes.
-
-    In Step 1.8 this will:
-      - Authenticate via query param token (same pattern as /ws/chat)
-      - Subscribe to Redis channel alerts:{tenant_id}:{event_id}
-      - Stream new/updated alerts as JSON frames
-
-    For now it accepts the connection and sends a hello frame so the
-    frontend team can start wiring useAlertsSocket against the real URL.
-    """
-    await websocket.accept()
-    try:
-        await websocket.send_json({
-            "type": "connected",
-            "event_id": str(event_id),
-            "message": "alerts websocket stub; live push wired in 1.8",
-        })
-        # Keep the connection alive; echo any inbound to confirm liveness.
-        while True:
-            data = await websocket.receive_text()
-            await websocket.send_json({"type": "echo", "data": data})
-    except WebSocketDisconnect:
-        logger.info("alerts ws disconnected event=%s", event_id)

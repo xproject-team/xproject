@@ -164,3 +164,33 @@ async def websocket_chat(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+# ─── /ws/alerts/{event_id} (Apr 20 2026: alert live push) ──────────────
+@router.websocket("/alerts/{event_id}")
+async def websocket_alerts(
+    websocket: WebSocket,
+    event_id:  UUID,
+    token:     str | None = Query(default=None),
+) -> None:
+    """Event-scoped live alert push.
+
+    Clients auto-subscribe to the event on connect; there is no subscribe/
+    unsubscribe client protocol. Server publishes any alert creation /
+    update / resolution to `alerts:{event_id}` on Redis; the ConnectionManager
+    fans out to all WebSocket subscribers. Frontend consumes via
+    useAlertsSocket and invalidates its TanStack Query cache on any frame.
+    """
+    async with AsyncSessionLocal() as db:
+        user = await _authenticate_ws(token, db)
+    if user is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    key = f"alerts:{event_id}"
+    await manager.connect(websocket, key)
+    try:
+        while True:
+            # Echo keeps the connection alive; real updates arrive via Redis.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

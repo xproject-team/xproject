@@ -28,7 +28,7 @@ from app.realtime.manager import ConnectionManager
 logger = logging.getLogger(__name__)
 
 
-SUBSCRIBED_PATTERNS = ("event:*", "chat:*", "user:*")
+SUBSCRIBED_PATTERNS = ("event:*", "chat:*", "user:*", "alerts:*")
 
 # Backoff caps: start at 1s, double on each failure, max 30s
 _INITIAL_BACKOFF_SEC = 1.0

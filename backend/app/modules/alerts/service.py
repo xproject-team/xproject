@@ -33,6 +33,7 @@ Design principles reinforced here:
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Literal
@@ -92,6 +93,21 @@ class AlertsService:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    # ─── Realtime broadcast helper ─────────────────────────────────────
+    # Publishes a tiny "something changed" frame to Redis. WebSocket
+    # subscribers invalidate their frontend cache and refetch via HTTP.
+    # Broadcast failure must NEVER fail the REST request.
+    async def _broadcast(self, event_id, payload_type: str, alert_id=None):
+        try:
+            # Lazy import avoids circular deps (realtime -> alerts -> realtime)
+            from app.core.redis_client import publish as _ws_publish
+            payload = {"type": payload_type, "event_id": str(event_id)}
+            if alert_id is not None:
+                payload["alert_id"] = str(alert_id)
+            await _ws_publish(f"alerts:{event_id}", json.dumps(payload))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("alerts broadcast failed: %s", exc)
 
     # ── Internal: project an ORM Alert → role-appropriate AlertResponse ──
 
@@ -225,6 +241,7 @@ class AlertsService:
             row.id, row.alert_type, row.severity,
             row.event_id, row.bar_id,
         )
+        await self._broadcast(row.event_id, "alert_changed", row.id)
         return row
 
     # ── READ ────────────────────────────────────────────────────────────────

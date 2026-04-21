@@ -35,6 +35,7 @@ import {
   selectDashboardTotals,
 } from '@/features/dashboard/selectors'
 import { useAlertsForEvent, useAcknowledgeAlert, useAlertsCountByBar } from '@/features/alerts/useAlerts'
+import { useAlertsSocket } from '@/features/alerts/useAlertsSocket'
 import type { AlertRow } from '@/features/alerts/useAlerts'
 import type { BarKpi, Event } from '@/lib/mockData'
 
@@ -370,6 +371,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const productsQuery      = useAllProducts()
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
   const alertCountsByBarQuery = useAlertsCountByBar(eventId)
+  // Live push: keeps all alerts queries fresh via WebSocket invalidation.
+  // If the socket disconnects, the 10s polling fallback inside the query
+  // hooks still keeps the UI correct — belt AND suspenders.
+  useAlertsSocket(eventId)
   const acknowledgeMutation = useAcknowledgeAlert()
   // Adapter: map real AlertRow[] -> legacy Alert shape consumed by AlertSidebar
   // and the KpiStrip. Derives bar_name from context_json; is_acknowledged from
