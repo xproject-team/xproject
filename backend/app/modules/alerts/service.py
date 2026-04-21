@@ -375,6 +375,7 @@ class AlertsService:
             row.id, user_id,
         )
 
+        await self._broadcast(row.event_id, "alert_changed", row.id)
         return AlertAcknowledgeResponse(
             id=row.id,
             acknowledged_at=row.acknowledged_at,
@@ -427,6 +428,8 @@ class AlertsService:
             logger.info(
                 "auto-resolved %d alerts for event=%s", count, event_id,
             )
+            # Broadcast a single change frame; frontend invalidates + refetches.
+            await self._broadcast(event_id, "alerts_auto_resolved", None)
         return count
 
     async def expire_event_alerts(
