@@ -46,7 +46,7 @@ class ReportEventInfo(BaseModel):
     duration_hours: float
     bars_count: int
     guests_served: int | None = None   # NULL until ticketing integration
-    expected_guests: int | None = None
+    expected_guest_count: int | None = None
 
 
 class ReportRevenueKpis(BaseModel):
@@ -93,7 +93,7 @@ class ReportAlertRow(BaseModel):
     bar_id: UUID | None = None
     bar_name: str | None = None
     title: str
-    message: str
+    owner_message: str
     fired_at: datetime
     acknowledged_at: datetime | None = None
     acknowledged_by_name: str | None = None
