@@ -109,6 +109,65 @@ class AlertsService:
         except Exception as exc:  # noqa: BLE001
             logger.warning("alerts broadcast failed: %s", exc)
 
+    # ─── Chat tie-in helper (anomaly acknowledgements) ─────────────────────
+    async def _auto_post_stock_count_request(
+        self,
+        tenant_id,
+        bar_id,
+        sender_id,
+    ) -> None:
+        """Post a neutral stock-count-request message to the bar's chat channel.
+
+        Bypasses ChatService.post_message to avoid its internal commit (which
+        would prematurely end our acknowledge transaction). Also publishes the
+        chat:{channel_id} frame so connected chat WebSocket listeners render
+        the message live. If no bar channel exists yet, silently no-ops.
+        """
+        from sqlalchemy import and_, select
+        from app.modules.chat.models import Channel, ChatMessage
+
+        chan_stmt = select(Channel).where(and_(
+            Channel.bar_id == bar_id,
+            Channel.channel_type == "bar",
+            Channel.tenant_id == tenant_id,
+        ))
+        channel = (await self.db.execute(chan_stmt)).scalar_one_or_none()
+        if channel is None:
+            logger.info(
+                "chat tie-in: no bar channel for bar=%s; skipping", bar_id,
+            )
+            return
+
+        message = ChatMessage(
+            tenant_id=tenant_id,
+            channel_id=channel.id,
+            sender_id=sender_id,
+            body=(
+                "When convenient, please do a routine count of your bar "
+                "inventory and send totals. Thanks."
+            ),
+        )
+        self.db.add(message)
+        await self.db.flush()  # flush only; let the caller commit
+        logger.info(
+            "chat tie-in: posted stock-count request to channel=%s for bar=%s",
+            channel.id, bar_id,
+        )
+
+        # Publish on the chat:{channel_id} key so any connected chat WS
+        # subscribers see the message live. Same lazy-import pattern as
+        # the alerts broadcast helper above.
+        try:
+            from app.core.redis_client import publish as _ws_publish
+            payload = {
+                "type": "message_posted",
+                "channel_id": str(channel.id),
+                "message_id": str(message.id),
+            }
+            await _ws_publish(f"chat:{channel.id}", json.dumps(payload))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("chat tie-in: broadcast failed: %s", exc)
+
     # ── Internal: project an ORM Alert → role-appropriate AlertResponse ──
 
     def _view(
@@ -376,6 +435,26 @@ class AlertsService:
         )
 
         await self._broadcast(row.event_id, "alert_changed", row.id)
+
+        # ─── Chat tie-in: silent investigation for anomalies ───────────────
+        # When the Owner acknowledges an anomaly alert, auto-post a neutral
+        # "please do a count" message to the bar channel. Owner-authored
+        # (appears from the acknowledging user). Generic wording — no product
+        # name — so the bartender cannot reverse-engineer which item we're
+        # auditing. If the post fails for any reason, it must NEVER fail the
+        # acknowledge request; log and swallow.
+        if row.alert_type == "anomaly" and row.audience == "owner_only":
+            try:
+                await self._auto_post_stock_count_request(
+                    tenant_id=tenant_id,
+                    bar_id=row.bar_id,
+                    sender_id=user_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "chat tie-in failed for alert=%s: %s", row.id, exc,
+                )
+
         return AlertAcknowledgeResponse(
             id=row.id,
             acknowledged_at=row.acknowledged_at,
