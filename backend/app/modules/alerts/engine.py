@@ -366,3 +366,56 @@ class DepletionEvaluator:
             tenant_id, event_id, counters,
         )
         return counters
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Orchestrator — runs all detectors in one pass, returns combined counters.
+# ═════════════════════════════════════════════════════════════════════════════
+
+class AlertsOrchestrator:
+    """Runs every alerts detector for one tenant x one event.
+
+    Current detectors:
+      - DepletionEvaluator (time-based stock depletion)
+      - DemandSpikeDetector (anomaly: short-window vs long-window ratio)
+
+    Adding a new detector: import it, instantiate in __init__, call its
+    evaluate() in run_all() and merge its counters. The worker doesn't
+    care how many detectors exist; it just calls run_all().
+    """
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.depletion = DepletionEvaluator(db)
+        # Late import avoids a circular import at module load (detectors
+        # import alerts.service, which imports this module transitively).
+        from app.modules.alerts.detectors.demand_spike import DemandSpikeDetector
+        self.demand_spike = DemandSpikeDetector(db)
+
+    async def run_all(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> dict[str, int]:
+        """Run every detector; return aggregated counters across detectors."""
+        totals = {"checked": 0, "fired": 0, "auto_resolved": 0}
+
+        # Depletion first — it owns the auto-resolve pass and needs to run
+        # before any new alerts are created this tick.
+        dep = await self.depletion.evaluate(tenant_id, event_id)
+        for k, v in dep.items():
+            totals[k] = totals.get(k, 0) + v
+
+        # Load name maps ONCE and share across every detector that needs
+        # them — avoids repeated round-trips for the same tenant-scoped lookup.
+        name_maps = await self.depletion._load_name_maps(tenant_id, event_id)
+
+        # Then anomaly detectors. Each increments "checked" and "fired".
+        # Auto-resolve for anomalies is the SAME depletion auto-resolve —
+        # the evaluator scans ALL active alerts and resolves any whose
+        # dedup key no longer matches. No per-detector auto-resolve needed.
+        spike = await self.demand_spike.evaluate(tenant_id, event_id, name_maps=name_maps)
+        for k, v in spike.items():
+            totals[k] = totals.get(k, 0) + v
+
+        return totals

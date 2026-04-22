@@ -491,3 +491,65 @@ class StockTransactionService:
             from decimal import ROUND_HALF_UP; q2=Decimal("0.01"); def_round=lambda v: v.quantize(q2, rounding=ROUND_HALF_UP) if isinstance(v, Decimal) else v; label = ("last_30m" if window_min==30 else "last_60m" if window_min==60 else "last_120m" if window_min==120 else "event_wide"); out.append({"product_id": pid, "bar_id": bid, "window_minutes": window_min, "window_label": label, "actual_consumed": def_round(consumed), "burn_rate_per_hour": def_round(rate), "current_qty": cq, "time_to_depletion_min": def_round(ttd)})
         return out
 
+    async def compute_burn_rate_fixed_window(
+        self,
+        tenant_id,
+        event_id,
+        window_minutes: int,
+        bar_id=None,
+    ):
+        """Per-product burn rate over a FIXED window (no adaptive fallback).
+
+        Used by anomaly detectors that need to compare rates across two
+        specific time windows (e.g. demand-spike = 15min vs 60min). Always
+        returns one row per (product, bar) pair that has at least one
+        transaction in the event, even if the fixed window saw zero activity
+        (rate=0 in that case, so callers can still compare ratios cleanly).
+        """
+        from sqlalchemy import and_, select, func
+        from datetime import timedelta
+        from app.modules.stock_transactions.models import StockTransaction
+
+        now = datetime.now(UTC)
+        window_start = now - timedelta(minutes=window_minutes)
+
+        base = [
+            StockTransaction.tenant_id == tenant_id,
+            StockTransaction.event_id == event_id,
+            StockTransaction.parent_transaction_id.is_not(None),
+        ]
+        if bar_id is not None:
+            base.append(StockTransaction.bar_id == bar_id)
+
+        pairs_stmt = (
+            select(StockTransaction.product_id, StockTransaction.bar_id)
+            .where(and_(*base))
+            .group_by(StockTransaction.product_id, StockTransaction.bar_id)
+        )
+        pairs = (await self.db.execute(pairs_stmt)).all()
+
+        out = []
+        for pid, bid in pairs:
+            consumed = (await self.db.execute(
+                select(func.sum(StockTransaction.qty - StockTransaction.deficit_qty))
+                .where(and_(
+                    *base,
+                    StockTransaction.product_id == pid,
+                    StockTransaction.bar_id == bid,
+                    StockTransaction.created_at >= window_start,
+                ))
+            )).scalar() or Decimal("0")
+            hours = Decimal(window_minutes) / Decimal(60)
+            rate = consumed / hours if hours > 0 else Decimal("0")
+            from decimal import ROUND_HALF_UP
+            q2 = Decimal("0.01")
+            def_round = lambda v: v.quantize(q2, rounding=ROUND_HALF_UP) if isinstance(v, Decimal) else v
+            out.append({
+                "product_id": pid,
+                "bar_id": bid,
+                "window_minutes": window_minutes,
+                "actual_consumed": def_round(consumed),
+                "burn_rate_per_hour": def_round(rate),
+            })
+        return out
+

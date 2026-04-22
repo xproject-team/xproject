@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal as async_session_factory
 from app.modules.auth.models import User  # noqa: F401 (needed for ORM mapper init)
-from app.modules.alerts.engine import DepletionEvaluator
+from app.modules.alerts.engine import AlertsOrchestrator
 from app.modules.events.models import Event
 
 logger = logging.getLogger(__name__)
@@ -55,8 +55,8 @@ async def evaluate_alerts(
     session: AsyncSession
     async with async_session_factory() as session:
         try:
-            evaluator = DepletionEvaluator(session)
-            counters = await evaluator.evaluate(tenant_uuid, event_uuid)
+            evaluator = AlertsOrchestrator(session)
+            counters = await evaluator.run_all(tenant_uuid, event_uuid)
             await session.commit()
             return {"status": "ok", **counters}
         except Exception as e:  # noqa: BLE001
