@@ -105,6 +105,13 @@ def upgrade() -> None:
         ["tenant_id", "event_id", "version", "language"],
         unique=True,
     )
+    # Matches the auto-index from TenantScopedModel.tenant_id(index=True).
+    # Without this, Alembic autogenerate will try to add it on every run.
+    op.create_index(
+        "ix_reports_tenant_id",
+        "reports",
+        ["tenant_id"],
+    )
     op.create_index(
         "ix_reports_tenant_event_status",
         "reports",
@@ -120,6 +127,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_reports_tenant_status_generated_at", table_name="reports")
     op.drop_index("ix_reports_tenant_event_status", table_name="reports")
+    op.drop_index("ix_reports_tenant_id", table_name="reports")
     op.drop_index("ix_reports_tenant_event_version_language", table_name="reports")
     op.drop_table("reports")
 
