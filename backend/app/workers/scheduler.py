@@ -34,6 +34,7 @@ from arq.connections import RedisSettings
 from app.core.config import settings
 from app.workers.tasks import (
     cron_evaluate_all_live_events,
+    cron_generate_reports_for_completed_events,
     evaluate_alerts,
     generate_report,
     run_predictions,
@@ -51,6 +52,7 @@ class WorkerSettings:
         evaluate_alerts,
         generate_report,
         cron_evaluate_all_live_events,
+        cron_generate_reports_for_completed_events,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -60,6 +62,15 @@ class WorkerSettings:
             cron_evaluate_all_live_events,
             minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55},
             run_at_startup=True,  # Fire once on worker start for fast demo
+        ),
+        # Post-event report generator runs on off-minutes so it doesn't
+        # collide with the alerts evaluator. Every 5 min it scans for
+        # events where ended_at < now - 15min AND no report exists, then
+        # enqueues a generate_report job per eligible event.
+        cron(
+            cron_generate_reports_for_completed_events,
+            minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
+            run_at_startup=True,  # Fire on boot so recent events get picked up
         ),
     ]
 

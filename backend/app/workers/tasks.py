@@ -139,9 +139,123 @@ async def run_predictions(ctx: dict, event_id: str) -> dict:
     return {"event_id": event_id, "status": "ok", "predictions_generated": 0}
 
 
-async def generate_report(ctx: dict, event_id: str) -> dict:
-    """Generate the post-event report including AI narrative and PDF.
+# ─── Post-event report generation ─────────────────────────────────────────────
 
-    Stub: real implementation ships with the reports module.
+
+async def generate_report(ctx: dict, event_id: str) -> dict:
+    """Generate post-event reports (IT + EN) for one completed event.
+
+    Enqueued by cron_generate_reports_for_completed_events 15+ min after
+    an event's ended_at timestamp. Can also be enqueued on-demand by
+    other code paths (e.g. a future admin endpoint).
+
+    The tenant_id is derived from the event row — we don't pass it as a
+    parameter because the cron scans cross-tenant (runs in system context,
+    not user context; see spec §5.2).
+
+    Idempotent: generate_for_event_batch skips languages that already
+    have a report row for this event. Safe to retry.
+
+    Returns counters for observability:
+        {"status": "ok", "reports_generated": N, "event_id": "..."}
     """
-    return {"event_id": event_id, "status": "ok"}
+    try:
+        event_uuid = UUID(event_id)
+    except (TypeError, ValueError) as e:
+        logger.warning("generate_report: bad event_id %s: %s", event_id, e)
+        return {"status": "error", "reason": "invalid_uuid"}
+
+    # Lazy imports — avoids loading reportlab + matplotlib at module import
+    # time, which would slow worker boot for tenants that never generate
+    # reports. First cron tick pays the cost; subsequent ticks are warm.
+    from app.modules.events.models import Event as _Event
+    from app.modules.reports.service import ReportService
+
+    async with async_session_factory() as session:
+        try:
+            event_row = (
+                await session.execute(
+                    select(_Event.tenant_id).where(_Event.id == event_uuid)
+                )
+            ).scalar_one_or_none()
+            if event_row is None:
+                logger.warning("generate_report: event %s not found", event_id)
+                return {"status": "error", "reason": "event_not_found"}
+
+            service = ReportService(session)
+            reports = await service.generate_for_event_batch(
+                tenant_id=event_row,
+                event_id=event_uuid,
+            )
+            return {
+                "status": "ok",
+                "event_id": event_id,
+                "reports_generated": len(reports),
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "generate_report failed: event=%s: %s", event_id, e,
+            )
+            try:
+                await session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return {"status": "error", "reason": str(e)[:200]}
+
+
+async def cron_generate_reports_for_completed_events(ctx: dict) -> dict:
+    """Cron entry point: find completed events past their grace window and
+    enqueue report generation for each.
+
+    Runs on off-minutes so it doesn't contend with the alerts cron which
+    runs on :00, :05, :10, etc. Eligibility per spec §5.2:
+      - status = COMPLETED
+      - ended_at is not null
+      - ended_at < now - 15 min (grace for late POS transactions)
+      - NOT EXISTS any report row for this event
+
+    Uses ReportRepository.list_events_needing_reports which encodes all
+    three conditions in one SQL statement.
+    """
+    from app.modules.reports.repository import ReportRepository
+
+    enqueued = 0
+    skipped = 0
+
+    async with async_session_factory() as session:
+        try:
+            repo = ReportRepository(session)
+            eligible = await repo.list_events_needing_reports(grace_minutes=15)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron_generate_reports: list failed: %s", e)
+            return {"status": "error", "eligible": 0}
+
+    redis = ctx["redis"]
+    for event in eligible:
+        try:
+            job = await redis.enqueue_job(
+                "generate_report",
+                str(event.id),
+                _job_id=f"report:{event.id}",
+            )
+            if job is None:
+                skipped += 1
+            else:
+                enqueued += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "cron_generate_reports: enqueue failed for event=%s: %s",
+                event.id, e,
+            )
+
+    if enqueued or skipped:
+        logger.info(
+            "cron_generate_reports: enqueued=%d skipped=%d of %d eligible",
+            enqueued, skipped, len(eligible),
+        )
+    return {
+        "status": "ok",
+        "eligible": len(eligible),
+        "enqueued": enqueued,
+        "skipped": skipped,
+    }
