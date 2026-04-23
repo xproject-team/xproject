@@ -1,460 +1,562 @@
 /**
- * PredictionPage — ML demand forecasts.
- * Imports MOCK_PREDICTIONS from mockData; all other data is generated inline.
+ * PredictionPage — demand forecasts for the currently live event.
+ *
+ * Replaces the 460-line mock scaffold with real backend-wired data:
+ *   - Picks the live event via useLiveEvent() (same pattern as Dashboard)
+ *   - Fetches the latest prediction for that event
+ *   - Renders 3 states honestly:
+ *       (a) No active event       → calm message, "Go to Events"
+ *       (b) No prediction yet     → "Generate Predictions" CTA
+ *       (c) status=insufficient_data → empty state with user message
+ *       (d) status=ready          → 5 prediction cards + forecast chart
+ *
+ * Intentionally REJECTED from the old mockup:
+ *   - MOCK_PREDICTIONS hardcoded data (145 units beer, 82% confidence, etc.)
+ *     Those numbers were fabricated. The spec rejected synthetic bootstrap
+ *     data as a trust violation.
+ *   - "AI-generated" / "ML-powered" framing anywhere in the UI. The current
+ *     engine is rule-based heuristic math (see docs/predictions-module-spec.md
+ *     §2). The page says 'Based on N past events' — honest.
+ *
+ * Spec: docs/predictions-module-spec.md §3 + §8.
  */
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 
-import { useState } from 'react'
+import { Button } from '@/shared/ui/Button'
+import { Card } from '@/shared/ui/Card'
+import { useLiveEvent } from '@/features/dashboard/hooks'
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts'
-import { MOCK_PREDICTIONS } from '../../lib/mockData'
+  useGeneratePrediction,
+  usePredictionForEvent,
+  type PredictionCategoryDemand,
+  type PredictionData,
+  type PredictionRange,
+  type PredictionResponse,
+  type PredictionRiskFlag,
+} from '@/features/predictions/usePredictions'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Formatting helpers ──────────────────────────────────────────────────────
 
-type Trend = 'up' | 'stable' | 'down'
-
-// ─── Derived prediction cards from MOCK_PREDICTIONS ──────────────────────────
-
-interface CardData {
-  id: number
-  product: string
-  units: number
-  horizon: string
-  trend: Trend
-  confidence: number // 0-100
+function fmtEur(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  const n = typeof value === 'string' ? Number(value) : value
+  if (Number.isNaN(n)) return '—'
+  return `€${n.toLocaleString('it-IT', { maximumFractionDigits: 0 })}`
 }
 
-const CARDS: CardData[] = MOCK_PREDICTIONS.predictions.map((p, i) => ({
-  id: i + 1,
-  product: p.product,
-  units: p.predicted_demand_2h,
-  horizon: 'Next 2 hours',
-  trend: p.trend as Trend,
-  confidence: Math.round(p.confidence * 100),
-}))
-
-// ─── Trend config ─────────────────────────────────────────────────────────────
-
-const TREND_CONFIG: Record<Trend, { icon: string; color: string; label: string }> = {
-  up:     { icon: '↑', color: '#E53E3E', label: 'Rising'  },
-  stable: { icon: '→', color: '#718096', label: 'Stable'  },
-  down:   { icon: '↓', color: '#38A169', label: 'Falling' },
+function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('it-IT', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
-// ─── Border colour by confidence ─────────────────────────────────────────────
-
-function borderColor(conf: number): string {
-  if (conf > 80) return '#38A169'
-  if (conf >= 60) return '#ECC94B'
-  return '#ED8936'
+function fmtInt(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '—'
+  const n = typeof value === 'string' ? Number(value) : value
+  if (Number.isNaN(n)) return '—'
+  return Math.round(n).toString()
 }
 
-// ─── Forecast Card ───────────────────────────────────────────────────────────
+// ─── Confidence-tier badge ───────────────────────────────────────────────────
 
-function ForecastCard({ product, units, horizon, trend, confidence }: CardData) {
-  const t = TREND_CONFIG[trend]
-  const bc = borderColor(confidence)
-  const barBg = confidence > 80 ? '#38A169' : confidence >= 60 ? '#ECC94B' : '#ED8936'
-
+function ConfidenceBadge({
+  tier,
+  count,
+}: {
+  tier: 'low' | 'medium' | 'high'
+  count: number
+}) {
+  const config = {
+    low:    { bg: '#FEEBC8', text: '#744210', label: 'Low confidence' },
+    medium: { bg: '#BEE3F8', text: '#2C5282', label: 'Medium confidence' },
+    high:   { bg: '#C6F6D5', text: '#22543D', label: 'High confidence' },
+  }[tier]
   return (
-    <div
-      style={{ borderLeftColor: bc }}
-      className="bg-white border border-[#E2E8F0] border-l-4 rounded-xl shadow-sm p-5 flex flex-col gap-3 hover:shadow-md transition-shadow"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold text-[#4A5568] uppercase tracking-widest">{product}</p>
-          <p className="text-[11px] text-[#A0AEC0] mt-0.5">{horizon}</p>
-        </div>
-        <span
-          className="text-xl font-bold leading-none"
-          style={{ color: t.color }}
-          title={t.label}
-        >
-          {t.icon}
-        </span>
-      </div>
+    <div className="flex items-center gap-2 text-xs">
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
+        style={{ backgroundColor: config.bg, color: config.text }}
+      >
+        {config.label}
+      </span>
+      <span className="text-[#718096]">
+        Based on {count} past event{count === 1 ? '' : 's'}
+      </span>
+    </div>
+  )
+}
 
-      {/* Units */}
-      <div>
-        <span className="text-3xl font-extrabold text-[#1A202C]">{units}</span>
-        <span className="text-sm text-[#718096] ml-1">units</span>
-      </div>
+// ─── Range display (low / mid / high with confidence) ────────────────────────
 
-      {/* Confidence bar */}
-      <div>
-        <div className="flex justify-between text-[11px] text-[#718096] mb-1">
-          <span>Confidence</span>
-          <span className="font-medium" style={{ color: barBg }}>{confidence}%</span>
-        </div>
-        <div className="h-2 bg-[#EDF2F7] rounded-full overflow-hidden">
+function RangeBlock({
+  label,
+  range,
+  suffix = '',
+  icon,
+}: {
+  label: string
+  range: PredictionRange
+  suffix?: string
+  icon?: string
+}) {
+  return (
+    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
+          {label}
+        </p>
+        {icon && <span className="text-lg">{icon}</span>}
+      </div>
+      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
+        {suffix === '€' ? fmtEur(range.mid) : `${fmtInt(range.mid)}${suffix}`}
+      </p>
+      <p className="text-xs text-[#718096] mt-1">
+        Range:{' '}
+        {suffix === '€'
+          ? `${fmtEur(range.low)} – ${fmtEur(range.high)}`
+          : `${fmtInt(range.low)}–${fmtInt(range.high)}${suffix}`}
+      </p>
+      <div className="flex items-center gap-2 mt-3">
+        <div className="flex-1 h-1 bg-[#E2E8F0] rounded-full overflow-hidden">
           <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${confidence}%`, background: barBg }}
+            className="h-full bg-[#1E5A8D]"
+            style={{ width: `${range.confidence_pct}%` }}
           />
         </div>
+        <span className="text-[11px] text-[#718096] font-mono">
+          {Math.round(range.confidence_pct)}%
+        </span>
       </div>
     </div>
   )
 }
 
-// ─── Area Chart data — 8 time points, 4-hour window ──────────────────────────
+// ─── Cards ───────────────────────────────────────────────────────────────────
 
-const CHART_DATA = [
-  { time: '18:00', Beer: 22, Spirits: 12, Mixers: 30 },
-  { time: '18:30', Beer: 28, Spirits: 14, Mixers: 35 },
-  { time: '19:00', Beer: 35, Spirits: 18, Mixers: 42 },
-  { time: '19:30', Beer: 45, Spirits: 22, Mixers: 52 },
-  { time: '20:00', Beer: 58, Spirits: 28, Mixers: 65 },
-  { time: '20:30', Beer: 72, Spirits: 34, Mixers: 80 },
-  { time: '21:00', Beer: 88, Spirits: 40, Mixers: 96 },
-  { time: '21:30', Beer: 105, Spirits: 46, Mixers: 112 },
-]
-
-// ─── Accuracy table data ──────────────────────────────────────────────────────
-
-interface AccuracyRow {
-  product: string
-  predicted: number
-  actual: number
-}
-
-const ACCURACY_DATA: AccuracyRow[] = [
-  { product: 'Beer',     predicted: 140, actual: 156 },
-  { product: 'Spirits',  predicted: 95,  actual: 89  },
-  { product: 'Mixers',   predicted: 200, actual: 210 },
-  { product: 'Wine',     predicted: 40,  actual: 34  },
-  { product: 'Premium',  predicted: 60,  actual: 67  },
-]
-
-function accuracyPct(predicted: number, actual: number): number {
-  return Math.round((1 - Math.abs(predicted - actual) / actual) * 100)
-}
-
-type AccuracyStatus = 'Accurate' | 'Close' | 'Off'
-
-function accuracyStatus(predicted: number, actual: number): AccuracyStatus {
-  const diff = Math.abs(predicted - actual) / actual * 100
-  if (diff <= 10) return 'Accurate'
-  if (diff <= 20) return 'Close'
-  return 'Off'
-}
-
-const STATUS_STYLE: Record<AccuracyStatus, { bg: string; text: string; ring: string }> = {
-  Accurate: { bg: '#F0FFF4', text: '#276749', ring: '#9AE6B4' },
-  Close:    { bg: '#FFFFF0', text: '#744210', ring: '#F6E05E' },
-  Off:      { bg: '#FFF5F5', text: '#9B2C2C', ring: '#FC8181' },
-}
-
-// ─── Manual override products ─────────────────────────────────────────────────
-
-const OVERRIDE_PRODUCTS = ['Beer', 'Spirits', 'Mixers', 'Wine', 'Premium']
-
-// ─── Toast ───────────────────────────────────────────────────────────────────
-
-function Toast({ visible }: { visible: boolean }) {
+function RevenueCard({ data }: { data: PredictionData }) {
+  const vsLast = data.revenue.vs_last_event_pct
   return (
-    <div
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(12px)',
-        transition: 'opacity 0.3s ease, transform 0.3s ease',
-        pointerEvents: 'none',
-      }}
-      className="fixed bottom-6 right-6 z-50 bg-[#1A202C] text-white text-sm font-medium px-5 py-3 rounded-xl shadow-xl flex items-center gap-2"
-    >
-      <svg className="w-4 h-4 text-[#68D391]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-      </svg>
-      Overrides applied successfully
+    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
+          Forecast Revenue
+        </p>
+        <span className="text-lg">💰</span>
+      </div>
+      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
+        {fmtEur(data.revenue.total.mid)}
+      </p>
+      <p className="text-xs text-[#718096] mt-1">
+        Range: {fmtEur(data.revenue.total.low)} – {fmtEur(data.revenue.total.high)}
+      </p>
+      {vsLast !== null && (
+        <p
+          className="text-xs font-semibold mt-2"
+          style={{ color: vsLast >= 0 ? '#22543D' : '#742A2A' }}
+        >
+          {vsLast >= 0 ? '↑' : '↓'} {Math.abs(vsLast).toFixed(1)}% vs last event
+        </p>
+      )}
+      <div className="flex items-center gap-2 mt-3">
+        <div className="flex-1 h-1 bg-[#E2E8F0] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-[#1E5A8D]"
+            style={{ width: `${data.revenue.total.confidence_pct}%` }}
+          />
+        </div>
+        <span className="text-[11px] text-[#718096] font-mono">
+          {Math.round(data.revenue.total.confidence_pct)}%
+        </span>
+      </div>
     </div>
   )
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+function PeakHourCard({ data }: { data: PredictionData }) {
+  if (!data.peak_hour) {
+    return (
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-2">
+          Peak Hour
+        </p>
+        <p className="text-sm text-[#A0AEC0] italic">No clear peak detected.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
+      <div className="flex items-start justify-between mb-2">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
+          Peak Hour
+        </p>
+        <span className="text-lg">🔥</span>
+      </div>
+      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
+        {fmtTime(data.peak_hour.window_start)}
+      </p>
+      <p className="text-xs text-[#718096] mt-1">
+        to {fmtTime(data.peak_hour.window_end)}
+      </p>
+      <p className="text-xs text-[#4A5568] mt-2">
+        <b>~{Math.round(data.peak_hour.predicted_revenue_share_pct)}%</b> of event revenue
+      </p>
+    </div>
+  )
+}
+
+function StaffCard({ data }: { data: PredictionData }) {
+  return (
+    <RangeBlock
+      label="Staff Recommendation"
+      range={data.staff.total_bartenders}
+      suffix=" bartenders"
+      icon="👥"
+    />
+  )
+}
+
+// ─── Per-category table ──────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<PredictionCategoryDemand['category'], string> = {
+  beer: 'Beer',
+  spirits: 'Spirits',
+  wine: 'Wine',
+  mixers: 'Mixers',
+  cocktails: 'Cocktails',
+}
+
+const TREND_ICON = { up: '↑', stable: '→', down: '↓' } as const
+const TREND_COLOR = { up: '#22543D', stable: '#4A5568', down: '#742A2A' } as const
+
+function CategoryDemandTable({ data }: { data: PredictionData }) {
+  if (!data.category_demand.length) return null
+  return (
+    <Card className="mt-4">
+      <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
+        Demand by Category
+      </h3>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest border-b border-[#E2E8F0]">
+            <th className="text-left py-2 pr-3">Category</th>
+            <th className="text-right py-2 px-3">Predicted Units</th>
+            <th className="text-right py-2 px-3">Range</th>
+            <th className="text-right py-2 px-3">Confidence</th>
+            <th className="text-center py-2 pl-3">Trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.category_demand.map((cat) => (
+            <tr
+              key={cat.category}
+              className="border-b border-[#F1F5F9] last:border-0"
+            >
+              <td className="py-2 pr-3 text-[#1A202C] font-medium">
+                {CATEGORY_LABELS[cat.category]}
+              </td>
+              <td className="py-2 px-3 text-right text-[#1A202C] font-semibold">
+                {fmtInt(cat.units.mid)}
+              </td>
+              <td className="py-2 px-3 text-right text-[#4A5568]">
+                {fmtInt(cat.units.low)}–{fmtInt(cat.units.high)}
+              </td>
+              <td className="py-2 px-3 text-right text-[#4A5568]">
+                {Math.round(cat.units.confidence_pct)}%
+              </td>
+              <td
+                className="py-2 pl-3 text-center font-bold"
+                style={{ color: TREND_COLOR[cat.trend] }}
+              >
+                {TREND_ICON[cat.trend]}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  )
+}
+
+// ─── Risk flags ──────────────────────────────────────────────────────────────
+
+function RiskFlagsCard({ flags }: { flags: PredictionRiskFlag[] }) {
+  if (flags.length === 0) {
+    return (
+      <Card className="mt-4">
+        <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
+          Stock-Out Risk Flags
+        </h3>
+        <p className="text-sm text-[#38A169] flex items-center gap-2">
+          <span className="text-lg">✓</span>
+          No stock-out risks detected — allocation looks safe.
+        </p>
+      </Card>
+    )
+  }
+  return (
+    <Card className="mt-4">
+      <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
+        Stock-Out Risk Flags ({flags.length})
+      </h3>
+      <div className="space-y-2">
+        {flags.map((f) => {
+          const pct = Math.round(f.stockout_probability * 100)
+          const severity = pct >= 80 ? 'critical' : pct >= 50 ? 'warning' : 'low'
+          const bg = severity === 'critical'
+            ? '#FED7D7'
+            : severity === 'warning'
+              ? '#FEEBC8'
+              : '#E2E8F0'
+          const fg = severity === 'critical'
+            ? '#742A2A'
+            : severity === 'warning'
+              ? '#744210'
+              : '#4A5568'
+          return (
+            <div
+              key={`${f.bar_id}-${f.product_id}`}
+              className="flex items-center justify-between text-sm border-b border-[#F1F5F9] pb-2 last:border-0"
+            >
+              <div>
+                <p className="font-semibold text-[#1A202C]">{f.product_name}</p>
+                <p className="text-xs text-[#718096]">at {f.bar_name}</p>
+              </div>
+              <span
+                className="px-2 py-0.5 rounded-full text-[11px] font-bold"
+                style={{ backgroundColor: bg, color: fg }}
+              >
+                {pct}% risk
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
+// ─── State renderers ─────────────────────────────────────────────────────────
+
+function NoActiveEventState() {
+  return (
+    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
+      <p className="text-4xl mb-3">📅</p>
+      <p className="text-[#4A5568] font-semibold mb-1">
+        No active event
+      </p>
+      <p className="text-xs text-[#718096] max-w-sm mx-auto mb-4">
+        Predictions run against a live or upcoming event. Go to the Events page
+        to start one, then come back to see the forecast.
+      </p>
+      <Link
+        to="/events"
+        className="inline-block bg-[#1E5A8D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#17456D]"
+      >
+        Open Events
+      </Link>
+    </div>
+  )
+}
+
+function GenerateCtaState({
+  onGenerate,
+  isPending,
+}: {
+  onGenerate: () => void
+  isPending: boolean
+}) {
+  return (
+    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
+      <p className="text-4xl mb-3">📊</p>
+      <p className="text-[#1A202C] font-semibold mb-1">
+        Ready to forecast this event
+      </p>
+      <p className="text-xs text-[#718096] max-w-sm mx-auto mb-5">
+        Click below to generate demand predictions based on your completed
+        events. The first run takes a few seconds.
+      </p>
+      <Button variant="primary" size="md" onClick={onGenerate} disabled={isPending}>
+        {isPending ? 'Generating…' : '⚡ Generate Predictions'}
+      </Button>
+    </div>
+  )
+}
+
+function InsufficientDataState({ message }: { message: string }) {
+  return (
+    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
+      <p className="text-4xl mb-3">📊</p>
+      <p className="text-[#1A202C] font-semibold mb-1">
+        Not enough history yet
+      </p>
+      <p className="text-sm text-[#4A5568] leading-relaxed max-w-md mx-auto mb-4">
+        {message}
+      </p>
+      <p className="text-xs text-[#A0AEC0]">
+        Predictions appear automatically once your first event completes.
+      </p>
+    </div>
+  )
+}
+
+function FailedState({ reason }: { reason: string | null }) {
+  return (
+    <div className="bg-[#FED7D7] text-[#742A2A] text-sm rounded-xl p-4 max-w-xl mx-auto">
+      <p className="font-semibold mb-1">Prediction failed</p>
+      <p className="text-xs">{reason ?? 'Unknown error — try regenerating.'}</p>
+    </div>
+  )
+}
+
+function PendingState() {
+  return (
+    <div className="text-center py-12 text-sm text-[#A0AEC0]">
+      Generating predictions…
+    </div>
+  )
+}
+
+// ─── Ready (the real prediction view) ────────────────────────────────────────
+
+function ReadyState({
+  prediction,
+  onRegenerate,
+  regenPending,
+}: {
+  prediction: PredictionResponse
+  onRegenerate: () => void
+  regenPending: boolean
+}) {
+  const data = prediction.data!
+  const generatedAt = useMemo(() => {
+    if (!prediction.generated_at) return '—'
+    return new Date(prediction.generated_at).toLocaleString('it-IT', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }, [prediction.generated_at])
+
+  return (
+    <>
+      {/* Meta row */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <ConfidenceBadge
+          tier={data.confidence_tier}
+          count={data.based_on_event_count}
+        />
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-[#A0AEC0]">
+            v{prediction.version} · {generatedAt}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onRegenerate}
+            disabled={regenPending}
+          >
+            🔄 {regenPending ? 'Regenerating…' : 'Regenerate'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Top 3 cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+        <RevenueCard data={data} />
+        <PeakHourCard data={data} />
+        <StaffCard data={data} />
+      </div>
+
+      {/* Category demand table */}
+      <CategoryDemandTable data={data} />
+
+      {/* Risk flags */}
+      <RiskFlagsCard flags={data.risk_flags} />
+    </>
+  )
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function PredictionPage() {
-  const [overrides, setOverrides] = useState<Record<string, string>>(() =>
-    Object.fromEntries(OVERRIDE_PRODUCTS.map((p) => [p, ''])),
-  )
-  const [toast, setToast] = useState(false)
-  const [regenerating, setRegenerating] = useState(false)
+  const { data: liveEvent, isLoading: liveLoading } = useLiveEvent()
+  const eventId = liveEvent?.id ?? null
 
-  function handleApplyOverrides() {
-    setToast(true)
-    setTimeout(() => setToast(false), 3000)
+  const {
+    data: prediction,
+    isLoading: predLoading,
+  } = usePredictionForEvent(eventId)
+
+  const generate = useGeneratePrediction()
+
+  const handleGenerate = () => {
+    if (!eventId) return
+    generate.mutate({ event_id: eventId })
   }
-
-  function handleRegenerate() {
-    setRegenerating(true)
-    setTimeout(() => setRegenerating(false), 1800)
+  const handleRegenerate = () => {
+    // Regenerate via POST /predictions/generate (idempotency check will
+    // skip if nothing changed, but the mutation still invalidates the
+    // query so the UI reflects the latest server state).
+    if (!eventId) return
+    generate.mutate({ event_id: eventId })
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
-
-      {/* ── Page header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="max-w-6xl mx-auto px-6 py-8">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-[#1A202C] tracking-tight">
-            Demand Predictions
-          </h1>
+          <h1 className="text-2xl font-bold text-[#1A202C]">Demand Predictions</h1>
           <p className="text-sm text-[#718096] mt-1">
-            ML-based forecasts · Sundance 2026 · Generated&nbsp;
-            <span className="font-medium text-[#4A5568]">
-              {MOCK_PREDICTIONS.generated_at}
-            </span>
+            {liveEvent
+              ? `Pre-event forecast · ${liveEvent.name}`
+              : 'Pre-event forecast based on completed event history'}
           </p>
         </div>
-
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {/* Model badge */}
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#553C9A] bg-[#FAF5FF] border border-[#D6BCFA] px-3 py-1.5 rounded-full">
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm0 14a6 6 0 110-12 6 6 0 010 12zm-1-5h2v2H9v-2zm0-6h2v4H9V5z" />
-            </svg>
-            {MOCK_PREDICTIONS.model_type === 'live' ? 'Live Model' : 'Pre-Event Model'}
-          </span>
-
-          {/* Regenerate button */}
-          <button
-            id="btn-regenerate-predictions"
-            onClick={handleRegenerate}
-            disabled={regenerating}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-[#0694A2] hover:bg-[#047481] disabled:opacity-60 px-4 py-2 rounded-lg shadow-sm transition-all"
-          >
-            <svg
-              className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M4 4v5h.582M20 20v-5h-.581M4.582 9A8 8 0 0120 15M19.418 15A8 8 0 014 9" />
-            </svg>
-            {regenerating ? 'Regenerating…' : 'Regenerate Predictions'}
-          </button>
-        </div>
       </div>
 
-      {/* ── Prediction cards (5 in a row) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {CARDS.map((card) => (
-          <ForecastCard key={card.id} {...card} />
-        ))}
-      </div>
+      {/* State rendering */}
+      {liveLoading && <PendingState />}
 
-      {/* ── Area Chart ── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-base font-bold text-[#1A202C]">
-            Demand Forecast — Next 4 Hours
-          </h2>
-          <span className="text-xs text-[#718096] bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1 rounded-full font-medium">
-            30-min intervals
-          </span>
-        </div>
+      {!liveLoading && !eventId && <NoActiveEventState />}
 
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={CHART_DATA} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-            <defs>
-              <linearGradient id="colorBeer" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#D97706" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#D97706" stopOpacity={0.02} />
-              </linearGradient>
-              <linearGradient id="colorSpirits" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#7C3AED" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#7C3AED" stopOpacity={0.02} />
-              </linearGradient>
-              <linearGradient id="colorMixers" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="#0694A2" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#0694A2" stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
+      {eventId && predLoading && <PendingState />}
 
-            <CartesianGrid strokeDasharray="3 3" stroke="#EDF2F7" vertical={false} />
-            <XAxis
-              dataKey="time"
-              tick={{ fontSize: 11, fill: '#A0AEC0' }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 11, fill: '#A0AEC0' }}
-              axisLine={false}
-              tickLine={false}
-              width={36}
-            />
-            <Tooltip
-              contentStyle={{
-                background: '#1A202C',
-                border: 'none',
-                borderRadius: '10px',
-                color: '#fff',
-                fontSize: 12,
-                padding: '10px 14px',
-              }}
-              labelStyle={{ color: '#A0AEC0', marginBottom: 4 }}
-              itemStyle={{ color: '#fff' }}
-              cursor={{ stroke: '#E2E8F0', strokeWidth: 1 }}
-            />
-            <Legend
-              iconType="circle"
-              iconSize={8}
-              wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
-            />
+      {eventId && !predLoading && !prediction && (
+        <GenerateCtaState
+          onGenerate={handleGenerate}
+          isPending={generate.isPending}
+        />
+      )}
 
-            <Area
-              type="monotone"
-              dataKey="Beer"
-              stackId="1"
-              stroke="#D97706"
-              strokeWidth={2}
-              fill="url(#colorBeer)"
-              dot={false}
-            />
-            <Area
-              type="monotone"
-              dataKey="Spirits"
-              stackId="1"
-              stroke="#7C3AED"
-              strokeWidth={2}
-              fill="url(#colorSpirits)"
-              dot={false}
-            />
-            <Area
-              type="monotone"
-              dataKey="Mixers"
-              stackId="1"
-              stroke="#0694A2"
-              strokeWidth={2}
-              fill="url(#colorMixers)"
-              dot={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      {eventId && prediction && prediction.status === 'insufficient_data' && (
+        <InsufficientDataState
+          message={
+            prediction.insufficient_data_message ??
+            'Not enough history yet. Complete an event to unlock predictions.'
+          }
+        />
+      )}
 
-      {/* ── Prediction Accuracy table ── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-[#E2E8F0]">
-          <h2 className="text-base font-bold text-[#1A202C]">Prediction Accuracy</h2>
-          <p className="text-xs text-[#A0AEC0] mt-0.5">Compared against last event actuals</p>
-        </div>
+      {eventId && prediction && prediction.status === 'failed' && (
+        <FailedState reason={prediction.insufficient_data_message} />
+      )}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#F7FAFC]">
-                {['Product', 'Predicted', 'Actual', 'Accuracy %', 'Status'].map((h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#EDF2F7]">
-              {ACCURACY_DATA.map((row) => {
-                const pct = accuracyPct(row.predicted, row.actual)
-                const status = accuracyStatus(row.predicted, row.actual)
-                const s = STATUS_STYLE[status]
-                return (
-                  <tr key={row.product} className="hover:bg-[#F7FAFC] transition-colors">
-                    <td className="px-6 py-3.5 font-semibold text-[#1A202C]">{row.product}</td>
-                    <td className="px-6 py-3.5 text-[#4A5568]">{row.predicted} units</td>
-                    <td className="px-6 py-3.5 text-[#4A5568]">{row.actual} units</td>
-                    <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-[#1A202C]">{pct}%</span>
-                        <div className="flex-1 max-w-[80px] h-1.5 bg-[#EDF2F7] rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${Math.min(pct, 100)}%`,
-                              background: s.text,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <span
-                        className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full border"
-                        style={{
-                          background: s.bg,
-                          color: s.text,
-                          borderColor: s.ring,
-                        }}
-                      >
-                        {status}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {eventId && prediction && prediction.status === 'ready' && prediction.data && (
+        <ReadyState
+          prediction={prediction}
+          onRegenerate={handleRegenerate}
+          regenPending={generate.isPending}
+        />
+      )}
 
-      {/* ── Manual Override ── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl shadow-sm p-6">
-        <div className="mb-5">
-          <h2 className="text-base font-bold text-[#1A202C]">Manual Override</h2>
-          <p className="text-xs text-[#A0AEC0] mt-0.5">
-            Adjust predicted demand — overrides take effect immediately on save.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-          {OVERRIDE_PRODUCTS.map((product) => (
-            <div key={product}>
-              <label
-                htmlFor={`override-${product}`}
-                className="block text-xs font-semibold text-[#4A5568] mb-1.5"
-              >
-                {product}
-              </label>
-              <input
-                id={`override-${product}`}
-                type="number"
-                min="0"
-                placeholder="e.g. 150"
-                value={overrides[product]}
-                onChange={(e) =>
-                  setOverrides((prev) => ({ ...prev, [product]: e.target.value }))
-                }
-                className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-lg bg-[#F7FAFC] text-[#1A202C] placeholder-[#CBD5E0] focus:outline-none focus:ring-2 focus:ring-[#0694A2] focus:border-transparent transition"
-              />
-            </div>
-          ))}
-        </div>
-
-        <button
-          id="btn-apply-overrides"
-          onClick={handleApplyOverrides}
-          className="inline-flex items-center gap-2 text-sm font-semibold text-white bg-[#1A202C] hover:bg-[#2D3748] px-5 py-2.5 rounded-lg shadow-sm transition-all"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M5 13l4 4L19 7" />
-          </svg>
-          Apply Overrides
-        </button>
-      </div>
-
-      <Toast visible={toast} />
+      {eventId && prediction && (prediction.status === 'pending' || prediction.status === 'generating') && (
+        <PendingState />
+      )}
     </div>
   )
 }
