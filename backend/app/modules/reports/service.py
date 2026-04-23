@@ -33,6 +33,7 @@ from app.modules.reports.aggregator import (
 )
 from app.modules.reports.models import Report
 from app.modules.reports.narrative import render_narrative
+from app.modules.reports.pdf import render_report_pdf
 from app.modules.reports.repository import ReportRepository
 from app.modules.reports.schemas import PortfolioKpis
 
@@ -313,10 +314,15 @@ class ReportService:
             # UUIDs and datetimes serialize as strings, not objects.
             data_json = data.model_dump(mode="json")
 
+            # Phase 2: render the PDF from the validated snapshot.
+            # Failure propagates into the outer except block, which marks
+            # the row failed — better than a 'ready' report with no PDF.
+            pdf_bytes = render_report_pdf(data)
+
             await self.repo.mark_ready(
                 report,
                 data_json=data_json,
-                pdf_bytes=None,  # Phase 2 will populate this
+                pdf_bytes=pdf_bytes,
             )
             await self.db.commit()
             return report
