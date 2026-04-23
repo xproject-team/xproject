@@ -73,6 +73,48 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
         return report
 
+    async def get_report_in_language(
+        self,
+        tenant_id: UUID,
+        report_id: UUID,
+        language: str,
+    ) -> Report:
+        """Fetch a report, auto-creating the language sibling on demand.
+
+        The frontend language toggle calls this. If the stored report is
+        already in the requested language, returns it directly. Otherwise
+        looks up the sibling (same event+version, different language).
+        If the sibling doesn't exist, generates it inline using the same
+        aggregator + narrative engine pipeline as generate_on_demand.
+
+        Guarantees the UI can always render in EITHER language without
+        asking the user to manually "Generate EN" as a separate action.
+        """
+        # First, the original so we know event_id + version to look up siblings
+        original = await self.repo.get_by_id(tenant_id, report_id)
+        if original is None:
+            raise ReportNotFoundError(f"Report {report_id} not found")
+
+        # Happy path: already in the right language
+        if original.language == language:
+            return original
+
+        # Look for sibling with same (event, version) in the requested language
+        siblings = await self.repo.list_for_event(tenant_id, original.event_id)
+        for s in siblings:
+            if s.version == original.version and s.language == language:
+                return s
+
+        # Sibling doesn't exist — generate it now.
+        sibling = await self.repo.create(
+            tenant_id=tenant_id,
+            event_id=original.event_id,
+            language=language,
+            version=original.version,
+            generated_by=original.generated_by,
+        )
+        return await self._populate_report(sibling)
+
     async def list_for_event(
         self,
         tenant_id: UUID,

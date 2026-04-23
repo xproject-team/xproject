@@ -184,20 +184,45 @@ async def get_report(
     report_id: UUID,
     current_user: Annotated[User, Depends(require_owner)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    lang: Annotated[ReportLanguage | None, Query()] = None,
 ) -> ReportResponse:
     """Full ReportResponse with inline ReportData snapshot.
 
+    Optional `?lang=it|en` query param triggers the language sibling flow:
+    if the stored report matches, returns it; if not, fetches or inline-
+    generates the sibling row. This is how the frontend language toggle
+    works — one URL, two languages, zero manual regeneration UX.
+
     404 if the report does not exist OR belongs to a different tenant.
-    Tenant isolation is enforced at the service layer (repo.get_by_id
-    filters by tenant_id).
+    Tenant isolation is enforced at the service layer.
     """
     service = ReportService(db)
     try:
-        report = await service.get_report(current_user.tenant_id, report_id)
+        if lang is not None:
+            report = await service.get_report_in_language(
+                current_user.tenant_id, report_id, lang
+            )
+        else:
+            report = await service.get_report(current_user.tenant_id, report_id)
     except ReportNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "report_not_found", "message": str(e)},
+        )
+    except EventNotFoundForReportError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except EventNotCompletedError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "event_not_completed", "message": str(e)},
+        )
+    except ReportGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "generation_failed", "message": str(e)},
         )
     return _response_from_report(report)
 

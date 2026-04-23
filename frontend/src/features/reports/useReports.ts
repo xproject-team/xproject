@@ -167,8 +167,8 @@ export const reportsKeys = {
     [...reportsKeys.all, 'list', filters ?? {}] as const,
   forEvent: (eventId: string) =>
     [...reportsKeys.all, 'for-event', eventId] as const,
-  detail: (reportId: string) =>
-    [...reportsKeys.all, 'detail', reportId] as const,
+  detail: (reportId: string, language?: ReportLanguage) =>
+    [...reportsKeys.all, 'detail', reportId, language ?? 'default'] as const,
 }
 
 // ─── Read hooks ──────────────────────────────────────────────────────────────
@@ -218,11 +218,18 @@ export function useReportsForEvent(eventId: string | null) {
   })
 }
 
-export function useReport(reportId: string | null) {
+export function useReport(
+  reportId: string | null,
+  language?: ReportLanguage,
+) {
   return useQuery<ReportResponse>({
-    queryKey: reportId ? reportsKeys.detail(reportId) : reportsKeys.detail(''),
+    queryKey: reportId
+      ? reportsKeys.detail(reportId, language)
+      : reportsKeys.detail('', language),
     queryFn: async () => {
-      const { data } = await api.get<ReportResponse>(`/reports/${reportId}`)
+      const { data } = await api.get<ReportResponse>(`/reports/${reportId}`, {
+        params: language ? { lang: language } : undefined,
+      })
       return data
     },
     enabled: reportId !== null,
