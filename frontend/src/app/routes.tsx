@@ -17,6 +17,7 @@ import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehouseInventoryPage from '@/pages/warehouse/WarehouseInventoryPage'
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
+import ReportDetailPage      from '@/pages/reports/ReportDetailPage'
 import ChatPage              from '@/pages/chat/ChatPage'
 
 // ─── Permission flag type ─────────────────────────────────────────────────────
@@ -223,6 +224,14 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag={['canGenerateReport', 'canGenerateBarReport']}>
             <ReportPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/reports/:reportId"
+        element={
+          <RequirePermission flag={['canGenerateReport', 'canGenerateBarReport']}>
+            <ReportDetailPage />
           </RequirePermission>
         }
       />
