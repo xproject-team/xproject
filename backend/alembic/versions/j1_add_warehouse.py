@@ -267,6 +267,13 @@ def upgrade() -> None:
         sa.Column("scanned_by_role", scanner_role, nullable=False),
         sa.Column("scanned_at", sa.DateTime(timezone=True),
                   nullable=False, server_default=sa.text("now()")),
+        # Standard TenantScopedModel timestamps — required because the ORM
+        # inherits from TenantScopedModel. scanned_at is semantically distinct
+        # (the physical scan moment); these track DB row lifecycle.
+        sa.Column("created_at", sa.DateTime(timezone=True),
+                  nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True),
+                  nullable=False, server_default=sa.text("now()")),
         # Scan qty must be positive
         sa.CheckConstraint(
             "qty > 0",
