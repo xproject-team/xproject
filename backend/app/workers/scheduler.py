@@ -33,6 +33,7 @@ from arq.connections import RedisSettings
 
 from app.core.config import settings
 from app.workers.tasks import (
+    cron_close_paused_invoices,
     cron_evaluate_all_live_events,
     cron_generate_reports_for_completed_events,
     evaluate_alerts,
@@ -53,6 +54,7 @@ class WorkerSettings:
         generate_report,
         cron_evaluate_all_live_events,
         cron_generate_reports_for_completed_events,
+        cron_close_paused_invoices,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -71,6 +73,16 @@ class WorkerSettings:
             cron_generate_reports_for_completed_events,
             minute={1, 6, 11, 16, 21, 26, 31, 36, 41, 46, 51, 56},
             run_at_startup=True,  # Fire on boot so recent events get picked up
+        ),
+        # 48h auto-close for warehouse invoices in PAUSED state. Per
+        # docs/warehouse-module-spec.md §5, paused sessions older than 48h
+        # auto-transition to DISCREPANCY so abandoned scans never linger.
+        # Runs on yet-another off-minute offset {2, 7, 12, ...} to avoid
+        # the other crons.
+        cron(
+            cron_close_paused_invoices,
+            minute={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
+            run_at_startup=False,  # No need to fire on boot — 48h cutoff is slow
         ),
     ]
 

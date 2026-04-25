@@ -259,3 +259,87 @@ async def cron_generate_reports_for_completed_events(ctx: dict) -> dict:
         "enqueued": enqueued,
         "skipped": skipped,
     }
+
+
+
+async def cron_close_paused_invoices(ctx: dict) -> dict:
+    """Cron entry point: auto-close warehouse invoices that have been
+    PAUSED for more than 48 hours.
+
+    Per docs/warehouse-module-spec.md §5, paused sessions can sit forever
+    waiting for a resume that may never come (truck rescheduled, staff
+    forgot, shift ended). After 48h we force-close with whatever scans
+    are on file. The reconciliation engine runs against the partial scan
+    set and the invoice transitions to DISCREPANCY (not VERIFIED — a
+    paused-then-auto-closed session almost certainly has unscanned items).
+
+    Runs on minute offsets {2, 7, 12, ...} to avoid colliding with the
+    alerts cron (:00) and reports cron (:01). Cheap query — uses the
+    existing (tenant_id, status) index on delivery_invoices.
+
+    No fan-out: the work per invoice is just a status transition + the
+    discrepancy report compute. Both fast (<200ms total). Doing it inline
+    avoids Redis enqueue overhead and contention.
+    """
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import select
+    from app.modules.warehouse.models import DeliveryInvoice
+    from app.modules.warehouse.invoice_service import (
+        InvoiceService,
+        InvalidInvoiceTransitionError,
+    )
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+    closed = 0
+    failed = 0
+
+    async with async_session_factory() as session:
+        try:
+            stmt = (
+                select(DeliveryInvoice)
+                .where(
+                    DeliveryInvoice.status == "PAUSED",
+                    DeliveryInvoice.scan_started_at < cutoff,
+                )
+            )
+            eligible = (await session.execute(stmt)).scalars().all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron_close_paused: list failed: %s", e)
+            return {"status": "error", "eligible": 0}
+
+        if not eligible:
+            return {"status": "ok", "eligible": 0, "closed": 0, "failed": 0}
+
+        for invoice in eligible:
+            try:
+                # close_scan handles its own transitions + commit. Pass
+                # closed_by=None to mark this as a system action.
+                svc = InvoiceService(session)
+                await svc.close_scan(
+                    tenant_id=invoice.tenant_id,
+                    invoice_id=invoice.id,
+                    closed_by=None,
+                )
+                closed += 1
+            except InvalidInvoiceTransitionError:
+                # Race: invoice changed state between our SELECT and the
+                # close call. Safe to skip; next tick re-evaluates.
+                pass
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "cron_close_paused: failed to close invoice=%s: %s",
+                    invoice.id, e,
+                )
+                failed += 1
+
+    if closed or failed:
+        logger.info(
+            "cron_close_paused: closed=%d failed=%d of %d eligible",
+            closed, failed, len(eligible),
+        )
+    return {
+        "status": "ok",
+        "eligible": len(eligible),
+        "closed": closed,
+        "failed": failed,
+    }

@@ -146,6 +146,21 @@ class EventService:
         # 5. Apply updates + bump version (repo handles the SET, we commit)
         await self.repo.update(event, updates)
         await self.db.commit()
+
+        # 6. Fire-and-forget auto-regen of predictions when fields that affect
+        #    forecasts changed. Per docs/predictions-module-spec.md §6.3, only
+        #    expected_guest_count matters in this endpoint (bars + menu live
+        #    in their own endpoints and trigger their own regens). The hook
+        #    SWALLOWS failures internally — a prediction problem must never
+        #    break the event update that triggered it.
+        prediction_relevant = {"expected_guest_count"}
+        if prediction_relevant.intersection(updates.keys()):
+            from app.modules.predictions.service import PredictionService
+            await PredictionService(self.db).trigger_auto_regen_for_event(
+                tenant_id=tenant_id,
+                event_id=event_id,
+            )
+
         return event
 
     # ─── Delete ───────────────────────────────────────────────────────────────

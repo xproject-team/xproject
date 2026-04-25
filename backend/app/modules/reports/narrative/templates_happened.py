@@ -12,9 +12,25 @@ from __future__ import annotations
 from app.modules.reports.schemas import ReportData
 
 
-def _fmt_eur(value) -> str:
-    """€24,350 → '24.350' for display. v1.1 will locale-format; v1.0 keeps simple."""
-    return f"{int(round(float(value))):,}".replace(",", ".")
+def _fmt_eur(value, digits: int = 0) -> str:
+    """Italian-locale euro formatting.
+
+    digits=0 (default) — round to whole euros: 24350.49 → '24.350'
+    digits=2           — keep cents:           13.751   → '13,75'
+
+    Italian convention: '.' is the thousands separator, ',' is the decimal.
+    Used for narrative templates where integer euros read cleanly for big
+    aggregates (total revenue, peak-hour revenue) but cents matter for
+    small per-unit values (per-guest spend, unit prices).
+    """
+    n = float(value or 0)
+    if digits == 0:
+        return f"{int(round(n)):,}".replace(",", ".")
+    # Format with English locale first (12,345.67), then swap separators
+    # to Italian (12.345,67). The double-swap via a placeholder avoids
+    # accidentally translating the comma we just inserted.
+    formatted = f"{n:,.{digits}f}"
+    return formatted.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def _fmt_hm(dt) -> str:
@@ -115,7 +131,8 @@ TEMPLATES_HAPPENED = [
             "per_guest": _fmt_eur(
                 float(d.revenue_kpis.total_revenue) / d.event.guests_served
                 if d.event.guests_served > 0
-                else 0
+                else 0,
+                digits=2,
             ),
         },
     },
