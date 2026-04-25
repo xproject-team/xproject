@@ -529,6 +529,13 @@ Mapped to the 2026-04-23 planning session.
 
 Polish decisions, deferrable to implementation phase.
 
+### Polish backlog (added 2026-04-25)
+
+- **Pending Reviews tile + 'See review history' link layout** — the secondary
+  link sits awkwardly below the KPI tile and breaks the 5-tile grid alignment.
+  Move it elsewhere (sidebar nav entry under Warehouse, or dedicated
+  Activity/History tab on the dashboard). Tracked, deferred.
+
 ---
 
 ## Document history

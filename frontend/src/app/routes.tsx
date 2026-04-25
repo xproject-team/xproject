@@ -15,6 +15,7 @@ import AlertsPage            from '@/pages/alerts/AlertsPage'
 import WarehousePage          from '@/pages/warehouse/WarehousePage'
 import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehouseInventoryPage from '@/pages/warehouse/WarehouseInventoryPage'
+import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReviewPage'
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
 import ReportDetailPage      from '@/pages/reports/ReportDetailPage'
@@ -31,8 +32,12 @@ type BooleanPermissionFlag = {
 
 /** Redirects unauthenticated visitors to /login. */
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const location = useLocation()
+  // Wait for AuthProvider to hydrate from /auth/me before deciding to redirect.
+  // Without this, hard browser navigation (typed URL or refresh) bounces the
+  // user to /login during the async window before fetchCurrentUser resolves.
+  if (loading) return null
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />
   return <>{children}</>
 }
@@ -213,6 +218,22 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canViewWarehouseStock">
             <WarehouseScanPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /warehouse/pending-review — Owner approves/rejects unexpected scans.
+       * Owner-only in practice (only Owner can approve via backend role check)
+       * but route gated on canViewWarehouseStock so the link is visible to
+       * warehouse staff for diagnostic purposes. Action buttons fail with
+       * 403 cleanly for non-Owner roles.
+       */}
+      <Route
+        path="/warehouse/pending-review"
+        element={
+          <RequirePermission flag="canViewWarehouseStock">
+            <WarehousePendingReviewPage />
           </RequirePermission>
         }
       />

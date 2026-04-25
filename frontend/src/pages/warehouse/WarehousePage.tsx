@@ -355,12 +355,31 @@ export default function WarehousePage() {
           value={kpis ? fmtDecimal(kpis.active_allocations, 0) : '…'}
           hint="reserved for events"
         />
-        <KpiTile
-          label="Pending Reviews"
-          value={kpis ? fmtInt(kpis.pending_reviews) : '…'}
-          hint="scans to approve"
-          accent={kpis && kpis.pending_reviews > 0 ? 'danger' : 'default'}
-        />
+        <div className="flex flex-col">
+          {kpis && kpis.pending_reviews > 0 ? (
+            <Link to="/warehouse/pending-review" className="block hover:shadow-md transition rounded-lg">
+              <KpiTile
+                label="Pending Reviews"
+                value={fmtInt(kpis.pending_reviews)}
+                hint="click to review"
+                accent="danger"
+              />
+            </Link>
+          ) : (
+            <KpiTile
+              label="Pending Reviews"
+              value={kpis ? fmtInt(kpis.pending_reviews) : '…'}
+              hint="scans to approve"
+              accent="default"
+            />
+          )}
+          <Link
+            to="/warehouse/pending-review"
+            className="text-[11px] text-[#1E5A8D] hover:text-[#2C7AA6] underline mt-1.5 self-end pr-1"
+          >
+            See review history →
+          </Link>
+        </div>
       </div>
 
       {/* Pending deliveries strip (only if any) */}
