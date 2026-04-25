@@ -204,6 +204,20 @@ function AuthenticatedRoutes() {
       />
 
       {/*
+       * /warehouse/scan — invoice reconciliation flow.
+       * Owner + Warehouse Staff (canViewWarehouseStock).
+       * Hosts: invoice picker, create form, scan session UI, discrepancy report.
+       */}
+      <Route
+        path="/warehouse/scan"
+        element={
+          <RequirePermission flag="canViewWarehouseStock">
+            <WarehouseScanPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
        * /predictions — Owner only
        */}
       <Route

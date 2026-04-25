@@ -321,22 +321,15 @@ export default function WarehousePage() {
             Invoice reconciliation & inventory tracking
           </p>
         </div>
-        <button
-          type="button"
-          disabled
-          title="Camera scanner ships in the next release. Until then, deliveries are tracked manually."
-          aria-label="New Delivery — coming in next release"
-          className="inline-flex items-center gap-2 bg-[#CBD5E0] text-white
-                     text-sm font-semibold px-4 py-2 rounded-lg shadow-sm
-                     cursor-not-allowed opacity-80"
+        <Link
+          to="/warehouse/scan"
+          className="inline-flex items-center gap-2 bg-[#1E5A8D] hover:bg-[#2C7AA6]
+                     text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm
+                     transition"
         >
           <span className="text-lg">+</span>
           New Delivery
-          <span className="text-[10px] font-bold uppercase tracking-widest
-                           bg-white/30 px-1.5 py-0.5 rounded ml-1">
-            soon
-          </span>
-        </button>
+        </Link>
       </div>
 
       {/* KPI strip — 5 tiles */}
