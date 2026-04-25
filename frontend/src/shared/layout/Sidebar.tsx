@@ -1,7 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/useAuth'
-import { usePermissions } from '@/features/auth/usePermissions'
 import type { MockUser } from '@/lib/mockUsers'
 
 // ─── Role presentation ────────────────────────────────────────────────────────
@@ -88,6 +87,12 @@ const ICONS = {
       <polyline points="17,6 23,6 23,12" />
     </Icon>
   ),
+  gear: (
+    <Icon>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+    </Icon>
+  ),
   fileText: (
     <Icon>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -160,6 +165,7 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'Predictions', path: '/predictions',  icon: ICONS.trendingUp },
         { label: 'Reports',     path: '/reports',      icon: ICONS.fileText },
         { label: 'Chat',        path: '/chat',         icon: ICONS.messageCircle },
+        { label: 'Settings',    path: '/settings',     icon: ICONS.gear },
       ]
 
     case 'manager':
@@ -167,6 +173,7 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Bar Report',        path: '/reports',   icon: ICONS.fileText },
         { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
+        { label: 'Settings',          path: '/settings',  icon: ICONS.gear },
       ]
 
     case 'bartender':
@@ -174,23 +181,24 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Scan Bottle',       path: '/scan',      icon: ICONS.scan },
         { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
+        { label: 'Settings',          path: '/settings',  icon: ICONS.gear },
       ]
 
     case 'warehouse':
       return [
         { label: 'Scan Goods', path: '/warehouse',           icon: ICONS.scan,          exact: true },
         { label: 'Stock List', path: '/warehouse/inventory', icon: ICONS.clipboardList },
+        { label: 'Settings',   path: '/settings',            icon: ICONS.gear },
       ]
   }
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Component ──────────────────────────────────────────────────────
 
 export function Sidebar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const perms = usePermissions()
 
   const role: MockUser['role'] = user?.role ?? 'owner'
   const navItems = getNavItems(role)

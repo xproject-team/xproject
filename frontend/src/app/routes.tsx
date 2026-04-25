@@ -19,6 +19,7 @@ import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReview
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
 import ReportDetailPage      from '@/pages/reports/ReportDetailPage'
+import SettingsPage         from '@/pages/settings/SettingsPage'
 import ChatPage              from '@/pages/chat/ChatPage'
 
 // ─── Permission flag type ─────────────────────────────────────────────────────
@@ -298,6 +299,16 @@ function AuthenticatedRoutes() {
       />
 
       {/* Fallback — any unknown path → role home */}
+      {/*
+       * /settings — basic account + preferences page.
+       * Open to ALL authenticated roles (no permission flag) — every user
+       * needs sign out and language toggle.
+       */}
+      <Route
+        path="/settings"
+        element={<SettingsPage />}
+      />
+
       <Route path="*" element={<Navigate to={home} replace />} />
     </Routes>
   )
