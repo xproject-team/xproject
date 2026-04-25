@@ -187,7 +187,6 @@ function getNavItems(role: MockUser['role']): NavItem[] {
     case 'warehouse':
       return [
         { label: 'Scan Goods', path: '/warehouse',           icon: ICONS.scan,          exact: true },
-        { label: 'Stock List', path: '/warehouse/inventory', icon: ICONS.clipboardList },
         { label: 'Settings',   path: '/settings',            icon: ICONS.gear },
       ]
   }

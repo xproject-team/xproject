@@ -6,6 +6,12 @@ import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAle
 import type { AlertRow } from '@/features/alerts/useAlerts'
 import type { Alert, AlertSeverity } from '@/lib/mockData'
 
+// Local widened type — adds the _version field that the adapter populates
+// from AlertRow.version. We need this for optimistic-locking on acknowledge.
+// Not added to the shared mockData Alert type to avoid surface area in the
+// legacy mock layer.
+type AlertWithVersion = Alert & { _version: number }
+
 // ─── Style maps ───────────────────────────────────────────────────────────────
 
 const SEVERITY_CFG: Record<AlertSeverity, {
@@ -62,9 +68,9 @@ function AlertCard({
   acked,
   onAcknowledge,
 }: {
-  alert: Alert
+  alert: AlertWithVersion
   acked: boolean
-  onAcknowledge: (id: string) => void
+  onAcknowledge: (id: string, version: number) => void
 }) {
   const navigate = useNavigate()
   const cfg = SEVERITY_CFG[alert.severity]
@@ -117,7 +123,7 @@ function AlertCard({
       <div className="shrink-0 flex flex-col items-end gap-1.5 mt-0.5">
         {!acked ? (
           <button
-            onClick={() => onAcknowledge(alert.id)}
+            onClick={() => onAcknowledge(alert.id, alert._version)}
             className="text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] bg-white hover:bg-[#EDF2F7] px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
           >
             Acknowledge
@@ -157,9 +163,16 @@ export default function AlertsPage() {
   const acknowledged = new Set(alertsSource.filter((a) => a.is_acknowledged).map((a) => a.id))
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
 
-  const handleAcknowledge = useCallback((id: string) => {
-    setAcknowledged((prev) => new Set(prev).add(id))
-  }, [])
+  const handleAcknowledge = useCallback(
+    (id: string, version: number) => {
+      // Fires the real PATCH /alerts/{id}/acknowledge mutation.
+      // version is required for optimistic locking — backend rejects stale acks.
+      // The 'acknowledged' Set is derived from alertsSource, which is refetched
+      // on mutation success — no local state needed.
+      acknowledgeMutation.mutate({ alert_id: id, version })
+    },
+    [acknowledgeMutation],
+  )
 
   // ── Derived counts ─────────────────────────────────────────────────────────
   const totalCount        = alertsSource.length
@@ -301,7 +314,7 @@ export default function AlertsPage() {
                     </div>
                     {!acked && (
                       <button
-                        onClick={() => handleAcknowledge(alert.id)}
+                        onClick={() => handleAcknowledge(alert.id, alert._version)}
                         className="text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] bg-white hover:bg-[#EDF2F7] px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap shrink-0"
                       >
                         Acknowledge

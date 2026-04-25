@@ -14,7 +14,6 @@ import InventoryPage         from '@/pages/inventory/InventoryPage'
 import AlertsPage            from '@/pages/alerts/AlertsPage'
 import WarehousePage          from '@/pages/warehouse/WarehousePage'
 import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
-import WarehouseInventoryPage from '@/pages/warehouse/WarehouseInventoryPage'
 import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReviewPage'
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
@@ -192,19 +191,6 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canViewWarehouseStock">
             <WarehousePage />
-          </RequirePermission>
-        }
-      />
-
-      {/*
-       * /warehouse/inventory — Owner + Warehouse Staff
-       * Must be declared before the /warehouse catch-all above would swallow it.
-       */}
-      <Route
-        path="/warehouse/inventory"
-        element={
-          <RequirePermission flag="canViewWarehouseStock">
-            <WarehouseInventoryPage />
           </RequirePermission>
         }
       />

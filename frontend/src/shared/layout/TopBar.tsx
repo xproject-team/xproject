@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
-import { usePermissions } from '@/features/auth/usePermissions'
 import type { MockUser } from '@/lib/mockUsers'
 import { MentionBell } from '@/features/chat/MentionBell'
 
@@ -17,7 +16,6 @@ const ROLE_BADGE: Record<
 export function TopBar() {
   const navigate         = useNavigate()
   const { user, logout } = useAuth()
-  const perms            = usePermissions()
 
   const role  = user?.role ?? 'owner'
   const badge = ROLE_BADGE[role]

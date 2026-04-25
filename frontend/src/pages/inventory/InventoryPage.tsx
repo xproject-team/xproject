@@ -54,7 +54,7 @@ const BAR_BY_ID = Object.fromEntries(MOCK_BARS.map((b) => [b.id, b]))
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StockBar({ current, initial }: { current: number; initial: number }) {
-  const pct = stockPct(current, initial)
+  const pct = initial > 0 ? Math.max(0, Math.round((current / initial) * 100)) : 0
   return (
     <div className="flex items-center gap-2 min-w-[100px]">
       <div className="flex-1 h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
@@ -235,7 +235,6 @@ export default function InventoryPage() {
                 </tr>
               ) : (
                 filtered.map((p) => {
-                  const pct         = stockPct(p.current_stock, p.initial_stock)
                   const statusCfg   = STATUS_CFG[p.status]
                   const bar         = BAR_BY_ID[p.bar_id]
                   const urgent      = p.estimated_depletion_minutes > 0 && p.estimated_depletion_minutes < 45
