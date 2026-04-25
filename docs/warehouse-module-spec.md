@@ -531,10 +531,11 @@ Polish decisions, deferrable to implementation phase.
 
 ### Polish backlog (added 2026-04-25)
 
-- **Pending Reviews tile + 'See review history' link layout** — the secondary
-  link sits awkwardly below the KPI tile and breaks the 5-tile grid alignment.
-  Move it elsewhere (sidebar nav entry under Warehouse, or dedicated
-  Activity/History tab on the dashboard). Tracked, deferred.
+- **Pending Reviews tile + 'See review history' link layout** — ✅ resolved
+  in commit (T1.6, 2026-04-25). Replaced the wrapper-in-grid with a single
+  always-clickable tile that links to /warehouse/pending-review regardless
+  of count. Restores 5-tile grid alignment; empty-state handling lives on
+  the destination page.
 
 ---
 
