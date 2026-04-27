@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bar_stock.models import BarStock
 from app.modules.bar_stock.repository import BarStockRepository
+from app.modules.bar_stock.realtime_publish import publish_stock_change
 from app.modules.bar_stock.schemas import (
     AdjustRequest,
     AllocateRequest,
@@ -194,6 +195,14 @@ class BarStockService:
             )
 
         await self.db.commit()
+        await publish_stock_change(
+            tenant_id=stock.tenant_id,
+            event_id=stock.event_id,
+            bar_id=stock.bar_id,
+            product_id=stock.product_id,
+            change_type="allocate",
+            extra={"allocated_qty": str(stock.allocated_qty), "current_qty": str(stock.current_qty)},
+        )
         return stock
 
     # ─── Consume (decrement current_qty) ─────────────────────────────────────
@@ -222,6 +231,14 @@ class BarStockService:
         stock.current_qty -= data.qty
         stock = await self.repo.save(stock)
         await self.db.commit()
+        await publish_stock_change(
+            tenant_id=stock.tenant_id,
+            event_id=stock.event_id,
+            bar_id=stock.bar_id,
+            product_id=stock.product_id,
+            change_type="consume",
+            extra={"qty": str(data.qty), "current_qty": str(stock.current_qty)},
+        )
         return stock
 
     # ─── Return (increment returned_qty) ─────────────────────────────────────
@@ -257,6 +274,14 @@ class BarStockService:
         stock.returned_qty = new_returned
         stock = await self.repo.save(stock)
         await self.db.commit()
+        await publish_stock_change(
+            tenant_id=stock.tenant_id,
+            event_id=stock.event_id,
+            bar_id=stock.bar_id,
+            product_id=stock.product_id,
+            change_type="return",
+            extra={"qty": str(data.qty), "returned_qty": str(stock.returned_qty)},
+        )
         return stock
 
     # ─── Adjust (manual correction, audited) ─────────────────────────────────
@@ -317,4 +342,11 @@ class BarStockService:
 
         stock = await self.repo.save(stock)
         await self.db.commit()
+        await publish_stock_change(
+            tenant_id=stock.tenant_id,
+            event_id=stock.event_id,
+            bar_id=stock.bar_id,
+            product_id=stock.product_id,
+            change_type="write",
+        )
         return stock

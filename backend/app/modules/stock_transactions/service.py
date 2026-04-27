@@ -42,6 +42,7 @@ from app.modules.events.repository import EventRepository
 from app.modules.products.models import ProductType
 from app.modules.products.repository import ProductRepository
 from app.modules.recipes.repository import RecipeRepository
+from app.modules.bar_stock.realtime_publish import publish_stock_change
 from app.modules.stock_transactions.cascade import (
     StockDecrementPlan,
     apply_plan_to_stock,
@@ -348,6 +349,17 @@ class StockTransactionService:
         )
         await self.repo.insert(tx)
         await self.db.commit()
+        await publish_stock_change(
+            tenant_id=tx.tenant_id,
+            event_id=tx.event_id,
+            bar_id=tx.bar_id,
+            product_id=tx.product_id,
+            change_type="adjustment",
+            extra={
+                "qty": str(tx.qty),
+                "source": tx.source.value if hasattr(tx.source, "value") else str(tx.source),
+            },
+        )
         return tx
 
     # ─── Reconciliation ───────────────────────────────────────────────────────
