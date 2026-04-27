@@ -22,6 +22,7 @@ Spec: docs/report-module-spec.md §3 + §4.2.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -43,7 +44,7 @@ from app.modules.reports.schemas import (
     ReportRevenueKpis,
     ReportStockRow,
 )
-from app.modules.stock_transactions.models import StockTransaction
+from app.modules.stock_transactions.models import StockTransaction, TransactionSource
 from app.modules.venues.models import Venue
 
 
@@ -352,6 +353,29 @@ class ReportAggregator:
         )
         rows = (await self.db.execute(stmt)).all()
 
+        # Stock-out timestamp lookup. For each (bar, product) where stock
+        # ended at 0, we want the moment the LAST revenue-producing scan
+        # drove inventory below the line. One SQL hop per report — no N+1.
+        stockout_stmt = (
+            select(
+                StockTransaction.bar_id,
+                StockTransaction.product_id,
+                func.max(StockTransaction.created_at).label("last_at"),
+            )
+            .where(
+                StockTransaction.tenant_id == tenant_id,
+                StockTransaction.event_id == event_id,
+                StockTransaction.source.in_(
+                    (TransactionSource.SLESH_POS, TransactionSource.MANUAL_BARTENDER)
+                ),
+            )
+            .group_by(StockTransaction.bar_id, StockTransaction.product_id)
+        )
+        stockout_rows = (await self.db.execute(stockout_stmt)).all()
+        stockout_map: dict[tuple[UUID, UUID], datetime] = {
+            (b_id, p_id): ts for (b_id, p_id, ts) in stockout_rows
+        }
+
         result: list[ReportStockRow] = []
         duration_decimal = Decimal(str(duration_hours)) if duration_hours > 0 else None
 
@@ -389,7 +413,11 @@ class ReportAggregator:
                     consumed_qty=consumed_d,
                     burn_rate_per_hour=burn_rate,
                     stock_out_occurred=stock_out,
-                    stock_out_time=None,  # v1.1: scan stock_transactions for the minute
+                    stock_out_time=(
+                        stockout_map.get((bar_id, product_id))
+                        if stock_out
+                        else None
+                    ),
                     consumption_vs_plan_pct=None,  # needs expected_consumption field
                 )
             )
