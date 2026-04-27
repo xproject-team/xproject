@@ -31,9 +31,9 @@ When an item ships, move it to the **Done** section at the bottom.
 | T1.6 ✅ | Pending Reviews tile + secondary link layout polish | warehouse | ~30 min | warehouse-module-spec §14 polish backlog |
 | T1.7 ✅ | Delete or build orphan stub pages (BarDetailPage, WarehouseInventoryPage) | cleanup | ~30 min | This roadmap |
 | T1.8 ✅ | Delete orphan feature stubs (ChatPanel, AlertPanel, EventForm, ScanHistory, RateChart, NarrativeSection, MetricsGrid, ForecastCard, TicketChart) — real implementations live in pages/ | cleanup | ~30 min | This roadmap |
-| T1.9 | bar_stock.current_qty INTEGER → NUMERIC migration (Q5 from earlier session) | bar_stock | ~30 min | cascade.py:118 |
+| T1.9 ✅ | bar_stock.current_qty INTEGER → NUMERIC migration (Q5 from earlier session) | bar_stock | ~30 min | cascade.py:118 |
 
-**Total Tier 1 effort: ~4 hours, single session.**
+**Total Tier 1 effort: ~4 hours, single session.** ✅ COMPLETE 2026-04-25
 
 ---
 
@@ -97,6 +97,8 @@ When an item ships, move it to the **Done** section at the bottom.
 ## ✅ Done (chronological, most recent first)
 
 ### 2026-04-25
+- 🏆 Tier 1 COMPLETE (9/9) — all v1.0 loose ends closed.
+- T1.9 — bar_stock INTEGER → NUMERIC(12, 3) consistency pass (commit `134ba10`)
 - T1.4 — stock-out timestamp in Reports per-bar drill-down (commit `4cb90d2`)
 - T1.6 — Pending Reviews tile cleanup (commit `63240c8`)
 - T1.2 + T1.3 + T1.5 — Italian euro locale formatting + Predictions auto-regen hook + warehouse 48h auto-close cron (commit `f8735ba`)
