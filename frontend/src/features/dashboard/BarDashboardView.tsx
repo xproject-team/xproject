@@ -31,6 +31,12 @@ import {
   useAlertsForEvent,
   type AlertRow,
 } from '@/features/alerts/useAlerts'
+import {
+  useChannels,
+  useChannelMessages,
+  usePostMessage,
+} from '@/features/chat/useChat'
+import { useState } from 'react'
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -267,6 +273,159 @@ function NoLiveEventState() {
   )
 }
 
+// ─── Bar chat panel ──────────────────────────────────────────────────
+
+interface BarChatPanelProps {
+  role: DashboardRole
+  assignedBarId: string
+  barName: string
+  atRiskCount: number
+}
+
+function BarChatPanel({
+  role,
+  assignedBarId,
+  barName,
+  atRiskCount,
+}: BarChatPanelProps) {
+  const channelsQuery = useChannels()
+
+  // Find this bar's channel. Channels with channel_type='bar' and the
+  // matching bar_id are auto-created when the bar is created.
+  const channel = (channelsQuery.data ?? []).find(
+    (c) => c.channel_type === 'bar' && c.bar_id === assignedBarId,
+  )
+  const channelId = channel?.id ?? null
+
+  const messagesQuery = useChannelMessages(channelId, 5)
+  const postMessage = usePostMessage(channelId ?? '')
+
+  const [draft, setDraft] = useState('')
+
+  const canWrite = role === 'manager'
+  const messages = messagesQuery.data ?? []
+
+  function handleSend() {
+    if (!channelId || !draft.trim()) return
+    postMessage.mutate(
+      { body: draft.trim() },
+      { onSuccess: () => setDraft('') },
+    )
+  }
+
+  function handleRestockRequest() {
+    if (!channelId) return
+    const lowItems =
+      atRiskCount > 0
+        ? `${atRiskCount} item${atRiskCount === 1 ? '' : 's'} at risk`
+        : 'stock running low'
+    const body = `@Owner — Bar ${barName} needs restock. Status: ${lowItems}.`
+    postMessage.mutate({ body })
+  }
+
+  // Empty / loading states
+  if (channelsQuery.isLoading) {
+    return (
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm flex flex-col min-h-[240px]">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-3">
+          Bar Chat
+        </p>
+        <p className="text-xs text-[#A0AEC0] flex-1 flex items-center justify-center">
+          Loading chat…
+        </p>
+      </div>
+    )
+  }
+
+  if (!channel) {
+    return (
+      <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm flex flex-col min-h-[240px]">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-3">
+          Bar Chat
+        </p>
+        <p className="text-xs text-[#A0AEC0] italic flex-1 flex items-center justify-center text-center">
+          Chat not yet configured for this bar.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm flex flex-col min-h-[240px]">
+      <div className="flex items-baseline justify-between mb-3">
+        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
+          Bar Chat
+        </p>
+        <p className="text-[10px] text-[#A0AEC0]">{channel.name}</p>
+      </div>
+
+      {/* Recent messages */}
+      <div className="flex-1 overflow-y-auto mb-2 space-y-2 max-h-[160px]">
+        {messages.length === 0 ? (
+          <p className="text-xs text-[#A0AEC0] italic text-center py-4">
+            No messages yet. {canWrite ? 'Start the conversation below.' : ''}
+          </p>
+        ) : (
+          messages.slice(0, 5).map((m) => (
+            <div key={m.id} className="text-xs">
+              <span className="font-semibold text-[#1A202C]">
+                {m.sender_name ?? 'Unknown'}
+              </span>
+              <span className="text-[#A0AEC0] ml-2">
+                {fmtTime(m.created_at)}
+              </span>
+              <p className="text-[#4A5568] mt-0.5">{m.body}</p>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Manager-only input + actions */}
+      {canWrite && (
+        <div className="border-t border-[#EDF2F7] pt-2 space-y-2">
+          <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSend()
+                }
+              }}
+              placeholder="Type a message…"
+              className="flex-1 px-2 py-1 text-xs border border-[#E2E8F0] rounded-md focus:border-[#1E5A8D] focus:outline-none"
+              disabled={postMessage.isPending}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!draft.trim() || postMessage.isPending}
+              className="text-xs px-3 py-1 rounded-md bg-[#1E5A8D] text-white hover:bg-[#174a78] disabled:opacity-50"
+            >
+              Send
+            </button>
+          </div>
+          <button
+            onClick={handleRestockRequest}
+            disabled={postMessage.isPending}
+            className="w-full text-xs px-3 py-1.5 rounded-md border border-[#DD6B20] text-[#DD6B20] hover:bg-[#FFF7ED] disabled:opacity-50"
+          >
+            + Request Restock
+          </button>
+        </div>
+      )}
+
+      <Link
+        to={`/chat?channel=${channel.id}`}
+        className="text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline mt-2 self-end"
+      >
+        Open full chat →
+      </Link>
+    </div>
+  )
+}
+
 // ─── Main component ──────────────────────────────────────────────────
 
 export function BarDashboardView({ role }: BarDashboardViewProps) {
@@ -437,23 +596,13 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
           ))}
         </div>
 
-        {/* Chat panel — placeholder until 3b.5 */}
-        <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm flex flex-col">
-          <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-3">
-            Bar Chat
-          </p>
-          <p className="text-xs text-[#A0AEC0] italic flex-1 flex items-center justify-center text-center">
-            {role === 'manager'
-              ? 'Recent messages with the Owner. Quick send + Restock Request arrive in the next update.'
-              : 'Recent messages with the Owner. Read-only view.'}
-          </p>
-          <Link
-            to="/chat"
-            className="text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline mt-2 self-end"
-          >
-            Open full chat →
-          </Link>
-        </div>
+        {/* Chat panel — real bar chat (3b.5) */}
+        <BarChatPanel
+          role={role}
+          assignedBarId={assignedBarId}
+          barName={barName}
+          atRiskCount={stockHealth.atRisk}
+        />
       </div>
 
       {/* Transactions table */}
