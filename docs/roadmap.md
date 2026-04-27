@@ -26,9 +26,9 @@ When an item ships, move it to the **Done** section at the bottom.
 | T1.1 | Settings page (sign out, name, email, language toggle) | new | ~30 min | This roadmap |
 | T1.2 ✅ | Predictions auto-regen hook in `EventService.update_event` | predictions | ~30 min | predictions-module-spec §6.3 |
 | T1.3 ✅ | 48h auto-close cron for paused warehouse invoices | warehouse | ~30 min | invoice_service.py:174 |
-| T1.4 | Stock-out time computation in Reports per-bar drill-down | reports | ~30 min | aggregator.py:392 |
+| T1.4 ✅ | Stock-out time computation in Reports per-bar drill-down | reports | ~30 min | aggregator.py:392 |
 | T1.5 ✅ | Locale-format euros in Reports narrative | reports | ~15 min | templates_happened.py:16 |
-| T1.6 | Pending Reviews tile + secondary link layout polish | warehouse | ~30 min | warehouse-module-spec §14 polish backlog |
+| T1.6 ✅ | Pending Reviews tile + secondary link layout polish | warehouse | ~30 min | warehouse-module-spec §14 polish backlog |
 | T1.7 ✅ | Delete or build orphan stub pages (BarDetailPage, WarehouseInventoryPage) | cleanup | ~30 min | This roadmap |
 | T1.8 ✅ | Delete orphan feature stubs (ChatPanel, AlertPanel, EventForm, ScanHistory, RateChart, NarrativeSection, MetricsGrid, ForecastCard, TicketChart) — real implementations live in pages/ | cleanup | ~30 min | This roadmap |
 | T1.9 | bar_stock.current_qty INTEGER → NUMERIC migration (Q5 from earlier session) | bar_stock | ~30 min | cascade.py:118 |
@@ -97,6 +97,8 @@ When an item ships, move it to the **Done** section at the bottom.
 ## ✅ Done (chronological, most recent first)
 
 ### 2026-04-25
+- T1.4 — stock-out timestamp in Reports per-bar drill-down (commit `4cb90d2`)
+- T1.6 — Pending Reviews tile cleanup (commit `63240c8`)
 - T1.2 + T1.3 + T1.5 — Italian euro locale formatting + Predictions auto-regen hook + warehouse 48h auto-close cron (commit `f8735ba`)
 - T1.7 + T1.8 — orphan stub purge (17 files deleted) + AlertsPage acknowledge bug fix + clean type-check (commit `e56d216`)
 - T1.1 — Settings page + roadmap doc + sidebar entry (commit `04e5827`)
