@@ -163,7 +163,7 @@ function AuthenticatedRoutes() {
       <Route
         path="/inventory"
         element={
-          <RequirePermission flag="canViewAllBars">
+          <RequirePermission flag={['canViewAllBars', 'canViewOwnBar']}>
             <InventoryPage />
           </RequirePermission>
         }

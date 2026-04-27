@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
+from app.modules.auth.access_guards import assert_bar_access, resolve_bar_filter
 from app.modules.bar_stock.schemas import (
     AdjustRequest,
     AllocateRequest,
@@ -59,7 +60,7 @@ router = APIRouter()
 async def list_stock_for_event(
     event_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    current_user: Annotated[User, Depends(get_current_user)],
     bar_id: Annotated[UUID | None, Query(description="Filter by bar")] = None,
 ) -> list[BarStockResponse]:
     """Return stock rows for an event, optionally scoped to a specific bar.
@@ -69,9 +70,12 @@ async def list_stock_for_event(
     - Warehouse overview: by-event/{event_id} (all stock rows)
     - 404 if event doesn't exist (vs. silent empty list)
     """
+    # Auto-fill bar_id for Manager/Bartender; assert access for everyone
+    bar_id = resolve_bar_filter(current_user, bar_id)
+    assert_bar_access(current_user, bar_id)
     service = BarStockService(db)
     try:
-        rows = await service.list_for_event(tenant_id, event_id, bar_id=bar_id)
+        rows = await service.list_for_event(current_user.tenant_id, event_id, bar_id=bar_id)
     except EventNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

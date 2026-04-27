@@ -170,18 +170,21 @@ function getNavItems(role: MockUser['role']): NavItem[] {
 
     case 'manager':
       return [
-        { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
-        { label: 'Bar Report',        path: '/reports',   icon: ICONS.fileText },
-        { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
-        { label: 'Settings',          path: '/settings',  icon: ICONS.gear },
+        { label: 'My Bar',     path: '/dashboard', icon: ICONS.wineGlass },
+        { label: 'Inventory',  path: '/inventory', icon: ICONS.package },
+        { label: 'Alerts',     path: '/alerts',    icon: ICONS.bell },
+        { label: 'Bar Report', path: '/reports',   icon: ICONS.fileText },
+        { label: 'Chat',       path: '/chat',      icon: ICONS.messageCircle },
+        { label: 'Settings',   path: '/settings',  icon: ICONS.gear },
       ]
 
     case 'bartender':
       return [
-        { label: 'My Bar', path: '/dashboard', icon: ICONS.wineGlass },
-        { label: 'Scan Bottle',       path: '/scan',      icon: ICONS.scan },
-        { label: 'Chat',              path: '/chat',      icon: ICONS.messageCircle },
-        { label: 'Settings',          path: '/settings',  icon: ICONS.gear },
+        { label: 'My Bar',      path: '/dashboard', icon: ICONS.wineGlass },
+        { label: 'Inventory',   path: '/inventory', icon: ICONS.package },
+        { label: 'Scan Bottle', path: '/scan',      icon: ICONS.scan },
+        { label: 'Chat',        path: '/chat',      icon: ICONS.messageCircle },
+        { label: 'Settings',    path: '/settings',  icon: ICONS.gear },
       ]
 
     case 'warehouse':

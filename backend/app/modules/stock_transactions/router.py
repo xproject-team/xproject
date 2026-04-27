@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
+from app.modules.auth.access_guards import assert_bar_access, resolve_bar_filter
 from app.modules.stock_transactions.models import TransactionSource
 from app.modules.stock_transactions.schemas import (
     ManualAdjustmentRequest,
@@ -58,7 +59,7 @@ router = APIRouter()
 async def list_transactions_for_event(
     event_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    current_user: Annotated[User, Depends(get_current_user)],
     bar_id: Annotated[UUID | None, Query(description="Filter by bar")] = None,
     source: Annotated[
         TransactionSource | None,
@@ -68,11 +69,18 @@ async def list_transactions_for_event(
         int, Query(ge=1, le=500, description="Max rows (default/max 500)"),
     ] = 500,
 ) -> list[StockTransactionResponse]:
-    """Ledger rows for an event, newest first."""
+    """Ledger rows for an event, newest first.
+
+    Bar-scoped per spec docs/bar-dashboard-spec.md S9: Manager/Bartender
+    are auto-locked to their assignedBarId; Owner can pass any bar_id or
+    None for all bars.
+    """
+    bar_id = resolve_bar_filter(current_user, bar_id)
+    assert_bar_access(current_user, bar_id)
     service = StockTransactionService(db)
     try:
         rows = await service.list_for_event(
-            tenant_id, event_id,
+            current_user.tenant_id, event_id,
             bar_id=bar_id, source=source, limit=limit,
         )
     except EventNotFoundError as e:
@@ -243,7 +251,7 @@ async def reconciliation_report(
 async def burn_rate_by_event(
     event_id: UUID,
     db: Annotated[AsyncSession, Depends(get_db)],
-    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    current_user: Annotated[User, Depends(get_current_user)],
     bar_id: UUID | None = None,
 ) -> list[dict]:
     """Per-product burn rate for a live event, optionally filtered by bar.
@@ -252,5 +260,7 @@ async def burn_rate_by_event(
     Returns: list of { product_id, bar_id, window_minutes, actual_consumed,
     burn_rate_per_hour, current_qty, time_to_depletion_min }.
     """
+    bar_id = resolve_bar_filter(current_user, bar_id)
+    assert_bar_access(current_user, bar_id)
     service = StockTransactionService(db)
-    return await service.compute_burn_rates(tenant_id, event_id, bar_id)
+    return await service.compute_burn_rates(current_user.tenant_id, event_id, bar_id)

@@ -17,6 +17,7 @@
  */
 import { Link } from 'react-router-dom'
 
+import { useAuth } from '@/features/auth/useAuth'
 import {
   useApprovePendingScan,
   usePendingReviewQueue,
@@ -57,6 +58,8 @@ const ROLE_BADGES: Record<ScannerRole, { label: string; color: string }> = {
 // ─── Pending review row ──────────────────────────────────────────────────────
 
 function PendingReviewRow({ scan }: { scan: ScanResponse }) {
+  const { user } = useAuth()
+  const isOwner = user?.role === 'owner'
   const approve = useApprovePendingScan()
   const reject = useRejectPendingScan()
 
@@ -124,7 +127,8 @@ function PendingReviewRow({ scan }: { scan: ScanResponse }) {
           )}
         </div>
 
-        {/* Right: action buttons */}
+        {/* Right: action buttons — Owner only per spec §5.3 */}
+        {isOwner && (
         <div className="flex flex-col gap-2 shrink-0">
           <button
             onClick={handleApprove}
@@ -146,6 +150,7 @@ function PendingReviewRow({ scan }: { scan: ScanResponse }) {
             {reject.isPending ? 'Rejecting…' : '✕ Reject'}
           </button>
         </div>
+        )}
       </div>
 
       {/* Error feedback if either mutation fails */}
