@@ -150,9 +150,9 @@ class ReconciliationLine(BaseModel):
     bar_id: UUID
     product_id: UUID
     bar_stock_id: UUID
-    allocated_qty: int
-    current_qty: int
-    returned_qty: int
+    allocated_qty: Decimal
+    current_qty: Decimal
+    returned_qty: Decimal
     expected_consumption: Decimal
     actual_consumption: Decimal
     anomaly_qty: Decimal

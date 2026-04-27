@@ -14,11 +14,14 @@ The service layer enforces additional cross-quantity rules:
 """
 from uuid import UUID
 
+from decimal import Decimal
+
 from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -71,10 +74,10 @@ class BarStock(TenantScopedModel):
     )
 
     # ─── Quantity columns ────────────────────────────────────────────────────
-    allocated_qty: Mapped[int] = mapped_column(Integer, nullable=False)
-    current_qty: Mapped[int] = mapped_column(Integer, nullable=False)
-    returned_qty: Mapped[int] = mapped_column(
-        Integer,
+    allocated_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    current_qty: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    returned_qty: Mapped[Decimal] = mapped_column(
+        Numeric(12, 3),
         nullable=False,
         server_default=text("0"),
     )

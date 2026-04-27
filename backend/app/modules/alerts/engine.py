@@ -61,7 +61,7 @@ THRESHOLD_INFO_MIN = 60
 
 
 def _severity_for(
-    current_qty: int | None,
+    current_qty: 'Decimal | int | None',
     ttd_minutes: Decimal | None,
 ) -> str | None:
     """Return 'info' / 'warning' / 'critical' or None if no alert warranted.
@@ -115,7 +115,7 @@ def _build_messages(
     severity: str,
     product_name: str,
     bar_name: str,
-    current_qty: int,
+    current_qty: 'Decimal | int',
     unit: str,
     burn_rate_per_hour: Decimal,
     ttd_minutes: Decimal | None,
