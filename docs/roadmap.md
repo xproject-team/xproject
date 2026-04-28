@@ -52,6 +52,7 @@ When an item ships, move it to the **Done** section at the bottom.
 | T2.9 | Reports — Event P&L (cost entry in Event Create + reconciled actual) | events + reports | ~4h | report-module-spec §12 v2.3 |
 | T2.10 | Restock request flow (bar manager via Chat → warehouse runner) | chat + warehouse | ~4h | warehouse-module-spec §12 |
 | T2.11 | Supplier analytics dashboard (reliability over time) | warehouse | ~3h | warehouse-module-spec §12 |
+| T2.12 | Optimistic-message double-render on sender's dashboard chat panel | dashboard | ~45 min | test-plans F-1.9 (2026-04-28). Fix: swap temp id for real id in usePostMessage onSuccess; or widen dedup to match by (sender_id, body, created_at). |
 
 **Tier 2 items typically need a 30 min spec addendum before implementation.**
 
@@ -95,6 +96,9 @@ When an item ships, move it to the **Done** section at the bottom.
 ---
 
 ## ✅ Done (chronological, most recent first)
+
+### 2026-04-28
+- 🏆 **Bar Dashboard milestone COMPLETE** (sub-patches 3b.1–3b.7) — Manager + Bartender role-aware dashboards live with real KPIs, alerts, chat, transactions, server-side bar-scoping, and cross-tab WebSocket sync. Verified via Claude in Chrome automated test suite (12/13 pass; cosmetic F-1.9 logged as T2.12).
 
 ### 2026-04-25
 - 🏆 Tier 1 COMPLETE (9/9) — all v1.0 loose ends closed.

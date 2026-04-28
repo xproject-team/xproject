@@ -39,8 +39,8 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Bar Dashboard (Manager + Bartender)
 
-**Status:** ⏳ pending final verification · **Spec:** docs/bar-dashboard-spec.md
-**Sub-patches:** 3b.1 ✅ · 3b.2 ✅ · 3b.3 ✅ · 3b.4 ✅ · 3b.5 ✅ · 3b.6 ✅ · 3b.7 ⏳
+**Status:** ✅ TESTED 2026-04-28 (12/13 pass; F-1.9 cosmetic dedup logged as Tier 2) · **Spec:** docs/bar-dashboard-spec.md
+**Sub-patches:** 3b.1 ✅ · 3b.2 ✅ · 3b.3 ✅ · 3b.4 ✅ · 3b.5 ✅ · 3b.6 ✅ · 3b.7 ✅
 
 ## Test plan: BarDashboard-001 — Manager full path
 
@@ -53,20 +53,20 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Manager logs in via "M. Cocktail" pill → lands on /dashboard
-2. ⏳ Header shows "Cocktail Bar" + "Sundance 2026 · Live event in progress"
-3. ⏳ Live indicator top-right shows green dot + "live"
-4. ⏳ Stock Health KPI shows a real % (not 0%, not placeholder)
-5. ⏳ Revenue Tonight KPI shows a real € value (not 0€, not placeholder)
-6. ⏳ Active Alerts KPI shows count >= 1 (red if any critical)
-7. ⏳ Last 5 Transactions KPI shows count >= 1
-8. ⏳ Active Alerts panel shows the critical alert with Acknowledge button
-9. ⏳ Bar Chat panel shows recent messages + input + Send + Restock buttons
-10. ⏳ Last 5 Transactions table shows real rows with timestamps + qty + source
-11. ⏳ Footer links work: /inventory, /alerts, /chat
-12. ⏳ Click Acknowledge on alert → button disappears, alert marked read
-13. ⏳ Type message + click Send → message appears in chat panel
-14. ⏳ Click Restock Request → templated message posted to chat
+1. ✅ Manager logs in via "M. Cocktail" pill → lands on /dashboard
+2. ✅ Header shows "Cocktail Bar" + "Sundance 2026 · Live event in progress"
+3. ✅ Live indicator top-right shows green dot + "live"
+4. ✅ Stock Health KPI shows a real % (not 0%, not placeholder)
+5. ✅ Revenue Tonight KPI shows a real € value (not 0€, not placeholder)
+6. ✅ Active Alerts KPI shows count >= 1 (red if any critical)
+7. ✅ Last 5 Transactions KPI shows count >= 1
+8. ✅ Active Alerts panel shows the critical alert with Acknowledge button
+9. ✅ Bar Chat panel shows recent messages + input + Send + Restock buttons
+10. ✅ Last 5 Transactions table shows real rows with timestamps + qty + source
+11. ✅ Footer links work: /inventory, /alerts, /chat
+12. ✅ Click Acknowledge on alert → button disappears, alert marked read
+13. ✅ Type message + click Send → message appears in chat panel
+14. ✅ Click Restock Request → templated message posted to chat
 
 ## Test plan: BarDashboard-002 — Cross-page sync
 
@@ -74,14 +74,14 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Send "test A" from dashboard chat panel → message appears
-2. ⏳ Click "Open full chat →" → /chat opens with Cocktail Bar channel selected
-3. ⏳ "test A" message visible on /chat page
-4. ⏳ Send "test B" from /chat page
-5. ⏳ Navigate back to /dashboard via sidebar → both messages visible in dashboard chat panel
-6. ⏳ Open second browser tab at /dashboard
-7. ⏳ Send "test C" from tab 1's dashboard chat
-8. ⏳ Tab 2 shows "test C" within ~1s WITHOUT manual refresh (proves WebSocket push)
+1. ✅ Send "test A" from dashboard chat panel → message appears
+2. ✅ Click "Open full chat →" → /chat opens with Cocktail Bar channel selected
+3. ✅ "test A" message visible on /chat page
+4. ✅ Send "test B" from /chat page
+5. ✅ Navigate back to /dashboard via sidebar → both messages visible in dashboard chat panel
+6. ✅ Open second browser tab at /dashboard
+7. ✅ Send "test C" from tab 1's dashboard chat
+8. ✅ Tab 2 shows "test C" within ~1s WITHOUT manual refresh (proves WebSocket push)
 
 ## Test plan: BarDashboard-003 — Bartender role
 
@@ -89,13 +89,13 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Bartender logs in → lands on /dashboard
-2. ⏳ Header shows the assigned bar name (NOT "My Bar" placeholder)
-3. ⏳ All 4 KPI tiles render with real numbers
-4. ⏳ Active Alerts panel shows alerts BUT NO Acknowledge button (read-only)
-5. ⏳ Bar Chat panel shows messages BUT NO input/Send/Restock (read-only)
-6. ⏳ Sidebar does NOT show "Alerts" entry (Bartender doesn't have alerts page)
-7. ⏳ Footer link "Full alerts page" is NOT visible
+1. ✅ Bartender logs in → lands on /dashboard
+2. ✅ Header shows the assigned bar name (NOT "My Bar" placeholder)
+3. ✅ All 4 KPI tiles render with real numbers
+4. ✅ Active Alerts panel shows alerts BUT NO Acknowledge button (read-only)
+5. ✅ Bar Chat panel shows messages BUT NO input/Send/Restock (read-only)
+6. ✅ Sidebar does NOT show "Alerts" entry (Bartender doesn't have alerts page)
+7. ✅ Footer link "Full alerts page" is NOT visible
 
 ## Test plan: BarDashboard-004 — Owner role unchanged
 
@@ -103,9 +103,9 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Omar logs in → lands on /dashboard
-2. ⏳ Sees ALL bars (multi-bar overview, not "My Bar" view)
-3. ⏳ No regression vs the dashboard he had before this milestone
+1. ✅ Omar logs in → lands on /dashboard
+2. ✅ Sees ALL bars (multi-bar overview, not "My Bar" view)
+3. ✅ No regression vs the dashboard he had before this milestone
 
 ## Test plan: BarDashboard-005 — Server-side bar-scoping
 
@@ -113,9 +113,9 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Manager queries OWN bar_id → 200 with data
-2. ⏳ Manager queries OTHER bar_id → 403 with "bar_access_denied"
-3. ⏳ Manager queries with no bar_id → 200 (auto-fills to own bar)
+1. ✅ Manager queries OWN bar_id → 200 with data
+2. ✅ Manager queries OTHER bar_id → 403 with "bar_access_denied"
+3. ✅ Manager queries with no bar_id → 200 (auto-fills to own bar)
 
 ---
 
@@ -253,7 +253,14 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Failure log
 
-(empty — no failures recorded yet)
+## 2026-04-28
+
+- **F-1.9 (sender's own dashboard chat panel double-renders just-sent message)**
+  Severity: cosmetic. Found during BarDashboard-001/F-1 cross-tab WS verification.
+  Tab 1 sends message → panel inserts optimistic copy with temp id → backend
+  echo arrives via WebSocket with real id → dedup-by-id misses (temp id !=
+  real id) → user sees their own message twice. Other tabs and /chat are
+  unaffected (real id only). Tracked as Tier 2 polish T2.12 in roadmap.
 
 ---
 
