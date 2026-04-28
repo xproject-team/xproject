@@ -10,6 +10,7 @@ const DEV_ACCOUNTS = [
   { email: 'manager.focacceria@nomagroup.it', password: 'manager123',   label: 'M. Focacc.',  role: 'Manager',   color: '#6B21A8' },
   { email: 'manager.malandrino@nomagroup.it', password: 'manager123',   label: 'M. Malandr.', role: 'Manager',   color: '#6B21A8' },
   { email: 'bartender.marco@nomagroup.it',    password: 'bartender123', label: 'Marco',       role: 'Bartender', color: '#059669' },
+  { email: 'warehouse.keeper@nomagroup.it',   password: 'warehouse123', label: 'Giorgio',     role: 'Warehouse', color: '#DD6B20' },
 ]
 
 // Role -> default landing route map. Warehouse staff land on the warehouse

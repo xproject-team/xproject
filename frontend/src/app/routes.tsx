@@ -219,7 +219,7 @@ function AuthenticatedRoutes() {
       <Route
         path="/warehouse/pending-review"
         element={
-          <RequirePermission flag="canViewWarehouseStock">
+          <RequirePermission flag="canCreateEvent">
             <WarehousePendingReviewPage />
           </RequirePermission>
         }

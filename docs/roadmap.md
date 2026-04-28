@@ -98,6 +98,8 @@ When an item ships, move it to the **Done** section at the bottom.
 ## ✅ Done (chronological, most recent first)
 
 ### 2026-04-28
+- 🏆 **5 of 6 milestones TESTED** in one disciplined session via Claude in Chrome + curl:
+  Bar Dashboard ✅ (12/13) · Settings ✅ (19/19) · Auth ✅ (29/30 + 1 fix) · Reports ✅ (17/18 + 1 fix) · Warehouse ✅ (22/23 UI + 5/5 API + 1 fix). Predictions remaining.
 - 🏆 **Bar Dashboard milestone COMPLETE** (sub-patches 3b.1–3b.7) — Manager + Bartender role-aware dashboards live with real KPIs, alerts, chat, transactions, server-side bar-scoping, and cross-tab WebSocket sync. Verified via Claude in Chrome automated test suite (12/13 pass; cosmetic F-1.9 logged as T2.12).
 
 ### 2026-04-25

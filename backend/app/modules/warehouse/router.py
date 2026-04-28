@@ -89,6 +89,32 @@ def require_owner(
     return current_user
 
 
+def require_owner_or_warehouse(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Gate: Owner OR Warehouse keeper.
+
+    Used for warehouse READ endpoints (inventory grid, KPIs, activity feed,
+    event allocations) and operational scan endpoints. Both roles need to
+    see warehouse state to do their jobs:
+      - Owner: full operational visibility + admin actions
+      - Warehouse keeper: their primary surface; can't work without it
+
+    Note: this guard is intentionally loose for visibility. Action endpoints
+    that should be Owner-only (approve/reject pending review, dispute, archive)
+    keep using require_owner above.
+    """
+    if current_user.role not in (UserRole.OWNER, UserRole.WAREHOUSE):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "owner_or_warehouse_only",
+                "message": "Only the tenant Owner or Warehouse keepers can access this endpoint.",
+            },
+        )
+    return current_user
+
+
 def require_warehouse_or_owner(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
@@ -125,7 +151,7 @@ router = APIRouter()
 
 @router.get("/inventory/kpis", response_model=InventoryKpis)
 async def get_kpis(
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InventoryKpis:
     """5-metric dashboard header: total items, total qty, at-risk count,
@@ -137,7 +163,7 @@ async def get_kpis(
 
 @router.get("/inventory", response_model=list[InventoryRow])
 async def get_inventory_grid(
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[InventoryRow]:
     """Product grid: per-product current/allocated/available + risk flag."""
@@ -147,7 +173,7 @@ async def get_inventory_grid(
 
 @router.get("/inventory/activity", response_model=list[ActivityFeedRow])
 async def get_activity_feed(
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[ActivityFeedRow]:
@@ -536,7 +562,7 @@ async def reject_pending_scan(
 )
 async def list_event_allocations(
     event_id: UUID,
-    current_user: Annotated[User, Depends(require_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AllocationResponse]:
     """All warehouse reservations for one event."""

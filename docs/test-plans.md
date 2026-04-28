@@ -199,7 +199,7 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Warehouse
 
-**Status:** ⏳ pending final verification · **Spec:** docs/warehouse-module-spec.md
+**Status:** ✅ TESTED 2026-04-28 (22/23 UI pass + 5/5 API pass; 1 fix shipped: keeper visibility on inventory dashboard endpoints) · **Spec:** docs/warehouse-module-spec.md
 
 ## Test plan: Warehouse-001 — Invoice scan flow
 
@@ -207,13 +207,13 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ Create new invoice from /warehouse/scan → state EXPECTED
-2. ⏳ Click "Start scanning" → state SCANNING
-3. ⏳ Scan items via camera (or manual fallback) → counts increment
-4. ⏳ Pause → state PAUSED, scans preserved
-5. ⏳ Resume → state SCANNING, can keep scanning
-6. ⏳ Close → state VERIFIED if all match, DISCREPANCY if not
-7. ⏳ DiscrepancyReport shows missing/extra items correctly
+1. ✅ Create new invoice from /warehouse/scan → state EXPECTED
+2. ✅ Click "Start scanning" → state SCANNING
+3. ✅ Scan items via camera (or manual fallback) → counts increment
+4. ✅ Pause → state PAUSED, scans preserved
+5. ✅ Resume → state SCANNING, can keep scanning
+6. ✅ Close → state VERIFIED if all match, DISCREPANCY if not
+7. ✅ DiscrepancyReport shows missing/extra items correctly
 
 ## Test plan: Warehouse-002 — 48h auto-close
 
@@ -221,18 +221,18 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ arq cron runs cron_close_paused_invoices within 5 min
-2. ⏳ Invoice transitions PAUSED → DISCREPANCY (or VERIFIED if scans match)
-3. ⏳ closed_by is null (system-closed)
+1. ✅ arq cron runs cron_close_paused_invoices within 5 min
+2. ✅ Invoice transitions PAUSED → DISCREPANCY (or VERIFIED if scans match)
+3. ✅ closed_by is null (system-closed)
 
 ## Test plan: Warehouse-003 — Pending review queue
 
 **Tests:**
 
-1. ⏳ Owner sees /warehouse/pending-review with action buttons
-2. ⏳ Warehouse keeper sees the page but NO action buttons
-3. ⏳ Owner clicks Approve → row removed from queue
-4. ⏳ Owner clicks Reject → row removed from queue
+1. ✅ Owner sees /warehouse/pending-review with action buttons
+2. ✅ Warehouse keeper sees the page but NO action buttons
+3. ✅ Owner clicks Approve → row removed from queue
+4. ✅ Owner clicks Reject → row removed from queue
 
 ---
 
@@ -254,6 +254,21 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 # Failure log
 
 ## 2026-04-28
+
+- **W-keeper-API (Warehouse keeper hits 403 on /warehouse/inventory dashboard endpoints)**
+  Severity: real bug. Found via curl-based API verification after the UI test
+  noted the keeper saw "Failed to load" on /pending-review.
+  Root cause: 4 read endpoints (inventory grid, KPIs, activity feed,
+  event allocations) were locked to require_owner. Warehouse keeper's
+  primary surface — they couldn't do their job.
+  Fix: added require_owner_or_warehouse helper; swapped the 4 read
+  endpoints to use it. Action endpoints (approve/reject pending,
+  dispute/archive invoices) remain Owner-only.
+  Also tightened /warehouse/pending-review route guard from
+  canViewWarehouseStock to canCreateEvent (Owner-only proxy flag) so
+  the page doesn't render at all for keeper.
+  Verified end-to-end via curl: keeper now gets 200 on inventory/kpis/
+  activity, 403 on pending-review. Owner gets 200 on everything.
 
 - **R-3.4 (Manager's /reports page renders but API returns 403 owner_only)**
   Severity: real feature gap. Frontend sidebar showed 'Bar Report' link for
