@@ -36,6 +36,7 @@ import {
   useChannelMessages,
   usePostMessage,
 } from '@/features/chat/useChat'
+import { useDashboardSocket } from '@/features/dashboard/useDashboardSocket'
 import { useState } from 'react'
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -80,14 +81,21 @@ function fmtTime(iso: string | null | undefined): string {
 
 // ─── Live-sync indicator ─────────────────────────────────────────────
 
-function LiveSyncIndicator() {
+function LiveSyncIndicator({ isConnected }: { isConnected: boolean }) {
+  // Wired to real WebSocket connection state (3b.6).
+  // Green = connected, frames flowing live.
+  // Orange = not connected; the 10s polling fallback carries data
+  //          freshness silently — user is never stranded.
+  const dotColor = isConnected ? '#10B981' : '#DD6B20'
+  const label = isConnected ? 'live' : 'polling'
   return (
     <div className="flex items-center gap-2 text-xs text-[#718096]">
       <span
-        className="w-2 h-2 rounded-full bg-[#10B981]"
-        aria-label="Live data"
+        className="w-2 h-2 rounded-full"
+        style={{ backgroundColor: dotColor }}
+        aria-label={isConnected ? 'Live, real-time updates' : 'Polling fallback active'}
       />
-      <span>live</span>
+      <span>{label}</span>
     </div>
   )
 }
@@ -442,6 +450,12 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
   const barsQuery = useBarsForEvent(eventId)
   const acknowledge = useAcknowledgeAlert()
 
+  // Real-time push for the dashboard. Sub-patch 3b.6: opens one WS per
+  // mount, listens for stock:* + event:* frames, invalidates dashboard
+  // + alerts caches on any update so KPI tiles, alerts panel, and the
+  // transactions table react in <200ms.
+  const { isConnected: wsConnected } = useDashboardSocket(eventId)
+
   // Bar name lookup (the GET /bars endpoint already returns this user's bar
   // because they're scoped to it; for v1 we just match by id).
   const barName = useMemo(() => {
@@ -530,7 +544,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
             Sundance 2026 · Live event in progress
           </p>
         </div>
-        <LiveSyncIndicator />
+        <LiveSyncIndicator isConnected={wsConnected} />
       </div>
 
       {/* 4 KPI tiles */}

@@ -12,6 +12,8 @@ Patterns subscribed:
   event:*    — event-scoped live updates
   chat:*     — chat channel broadcasts
   user:*     — user-scoped notifications (mentions, DMs, etc.)
+  alerts:*   — alert lifecycle events (created, acknowledged, resolved)
+  stock:*    — bar_stock + stock_transactions changes (for live dashboard sync)
 """
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ from app.realtime.manager import ConnectionManager
 logger = logging.getLogger(__name__)
 
 
-SUBSCRIBED_PATTERNS = ("event:*", "chat:*", "user:*", "alerts:*")
+SUBSCRIBED_PATTERNS = ("event:*", "chat:*", "user:*", "alerts:*", "stock:*")
 
 # Backoff caps: start at 1s, double on each failure, max 30s
 _INITIAL_BACKOFF_SEC = 1.0
