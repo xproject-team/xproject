@@ -32,6 +32,7 @@ interface IncomingEnvelope {
 
 
 export function useChatSocket({ activeChannelId, currentUserId, allChannelIds }: UseChatSocketArgs) {
+  void currentUserId  // kept in API for future use; SKIP-self logic moved out (RT-1.8 fix)
   const qc = useQueryClient()
   const subscribedChannelsRef = useRef<Set<string>>(new Set())
 
@@ -58,7 +59,7 @@ export function useChatSocket({ activeChannelId, currentUserId, allChannelIds }:
       const msg = env.message
 
       // Skip if we sent it — usePostMessage already put it in the cache
-      if (msg.sender_id === currentUserId) return
+      // SKIP REMOVED: dedup-by-id below handles self-echoes (fixes RT-1.8 cross-tab push)
 
       qc.setQueryData<MessageResponse[]>(
         chatKeys.messages(env.channel_id),
@@ -77,7 +78,7 @@ export function useChatSocket({ activeChannelId, currentUserId, allChannelIds }:
       const msg = env.message
 
       // Skip our own edits — useEditMessage already updated the cache
-      if (msg.sender_id === currentUserId) return
+      // SKIP REMOVED: dedup-by-id below handles self-echoes (fixes RT-1.8 cross-tab push)
 
       qc.setQueryData<MessageResponse[]>(
         chatKeys.messages(env.channel_id),
