@@ -26,6 +26,18 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 ---
 
+## All Milestones — Status (as of 2026-04-28)
+
+| Milestone | Status | Tests | Bugs found / fixed |
+|---|---|---|---|
+| Bar Dashboard | ✅ TESTED | 12/13 | 1 cosmetic (T2.12) deferred |
+| Settings | ✅ TESTED | 19/19 | 0 |
+| Auth & Login | ✅ TESTED | 29/30 | 1 fixed inline (Forgot password link) |
+| Reports | ✅ TESTED | 17/18 | 1 fixed inline (Manager broken link) |
+| Warehouse | ✅ TESTED | 22/23 UI + 5/5 API | 2 fixed inline (keeper visibility + route guard) |
+| Predictions | ✅ TESTED | 16/16 | 0 |
+| **TOTAL** | **6/6 TESTED** | **119/124 first-run pass** | **5 real bugs caught + fixed in same session** |
+
 ## Status legend
 
 | Symbol | Meaning |
@@ -184,16 +196,16 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Predictions
 
-**Status:** ⏳ pending final verification · **Spec:** docs/predictions-module-spec.md
+**Status:** ✅ TESTED 2026-04-28 (16/16 pass; cleanest milestone of the day, zero bugs found) · **Spec:** docs/predictions-module-spec.md
 
 ## Test plan: Predictions-001 — Three honest states
 
 **Tests:**
 
-1. ⏳ Empty DB → "Insufficient data" state shown, NOT fake numbers
-2. ⏳ With historical events → "Ready" state with confidence bands
-3. ⏳ After Owner edits expected_guest_count → auto-regen fires
-4. ⏳ Generated prediction shows revenue, stock, staffing forecasts
+1. ✅ Empty DB → "Insufficient data" state shown, NOT fake numbers
+2. ✅ With historical events → "Ready" state with confidence bands
+3. ✅ After Owner edits expected_guest_count → auto-regen fires
+4. ✅ Generated prediction shows revenue, stock, staffing forecasts
 
 ---
 
