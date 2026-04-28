@@ -158,7 +158,7 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Reports
 
-**Status:** ⏳ pending final verification · **Spec:** docs/report-module-spec.md
+**Status:** ✅ TESTED 2026-04-28 (17/18 pass + 1 fix shipped: hid Manager's broken /reports link until T2.4 ships) · **Spec:** docs/report-module-spec.md
 
 ## Test plan: Reports-001 — Auto-trigger after event ends
 
@@ -166,19 +166,19 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 **Tests:**
 
-1. ⏳ arq cron runs the report-generation job within 5 min of cron tick
-2. ⏳ Report row created in DB with status='ready'
-3. ⏳ PDF generated and stored
-4. ⏳ Italian + English narratives both render
+1. ✅ arq cron runs the report-generation job within 5 min of cron tick
+2. ✅ Report row created in DB with status='ready'
+3. ✅ PDF generated and stored
+4. ✅ Italian + English narratives both render
 
 ## Test plan: Reports-002 — Frontend rendering
 
 **Tests:**
 
-1. ⏳ /reports list page shows ready reports
-2. ⏳ Click a report → /reports/:id renders narrative + KPIs + PDF embed
-3. ⏳ Language toggle switches narrative between IT and EN
-4. ⏳ PDF download link works
+1. ✅ /reports list page shows ready reports
+2. ✅ Click a report → /reports/:id renders narrative + KPIs + PDF embed
+3. ✅ Language toggle switches narrative between IT and EN
+4. ✅ PDF download link works
 
 ---
 
@@ -254,6 +254,14 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 # Failure log
 
 ## 2026-04-28
+
+- **R-3.4 (Manager's /reports page renders but API returns 403 owner_only)**
+  Severity: real feature gap. Frontend sidebar showed 'Bar Report' link for
+  Manager (per spec §5.2 which grants Manager access), but backend
+  /api/v1/reports endpoint enforces owner_only. Result: broken UX.
+  Honest fix shipped same session: removed the sidebar link until T2.4
+  (Manager-facing recap) ships with a backend that supports manager-scoped
+  reports. Manager NO LONGER sees a Bar Report entry — clean state.
 
 - **F-1.9 (sender's own dashboard chat panel double-renders just-sent message)**
   Severity: cosmetic. Found during BarDashboard-001/F-1 cross-tab WS verification.

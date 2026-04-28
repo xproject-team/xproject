@@ -44,7 +44,7 @@ When an item ships, move it to the **Done** section at the bottom.
 | T2.1 | BarDetailOverlay live data — burn rate, staff, last alert | dashboard | ~3h | BarDetailOverlay.tsx (v1.1 placeholders) |
 | T2.2 | Reports — Appendix with raw metrics per bar × product | reports | ~2h | report-module-spec §12 v1.1 |
 | T2.3 | Reports — Event Comparison view (≥2 similar events) | reports | ~3h | report-module-spec §12 v1.2 |
-| T2.4 | Reports — Manager-facing recap (own-bar data only, no anomalies) | reports | ~3h | report-module-spec §12 v1.3 |
+| T2.4 | Reports — Manager-facing recap (own-bar data only, no anomalies). **CONFIRMED BLOCKING via test R-3.4 on 2026-04-28**: backend `/api/v1/reports` currently returns 403 owner_only for Manager; frontend sidebar link removed until this ships. | reports | ~3h | report-module-spec §12 v1.3 + test-plans R-3.4 |
 | T2.5 | Audit PDF export of DiscrepancyReport | warehouse | ~2h | warehouse-module-spec §12 |
 | T2.6 | Per-bar Manager view of Predictions (filtered) | predictions | ~2h | predictions-module-spec §12 v1.2 |
 | T2.7 | PDF export of Predictions (pre-event planning brief) | predictions | ~2h | predictions-module-spec §12 v2.0 |

@@ -173,7 +173,6 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'My Bar',     path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Inventory',  path: '/inventory', icon: ICONS.package },
         { label: 'Alerts',     path: '/alerts',    icon: ICONS.bell },
-        { label: 'Bar Report', path: '/reports',   icon: ICONS.fileText },
         { label: 'Chat',       path: '/chat',      icon: ICONS.messageCircle },
         { label: 'Settings',   path: '/settings',  icon: ICONS.gear },
       ]
