@@ -167,6 +167,20 @@ export function LoginForm() {
         {loading ? 'Signing in…' : 'Sign in'}
       </button>
 
+      {/* Forgot password — inert in v1.0 per auth-and-roles-spec §4.3.
+          Renders so the affordance exists; full reset flow ships later. */}
+      <button
+        type="button"
+        onClick={() => {
+          window.alert(
+            'Password reset will be available soon. For now, please contact your tenant admin.',
+          )
+        }}
+        className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
+      >
+        Forgot password?
+      </button>
+
       {/* Dev quick-login shortcuts — hidden in production builds */}
       {isDev && (
         <div className="pt-2 border-t border-[#E2E8F0]">

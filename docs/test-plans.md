@@ -121,38 +121,38 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Auth & Login
 
-**Status:** ⏳ pending final verification · **Spec:** docs/auth-and-roles-spec.md
+**Status:** ✅ TESTED 2026-04-28 (29/30 pass + 1 fix shipped same session: 'Forgot password?' link added per spec §4.3) · **Spec:** docs/auth-and-roles-spec.md
 
 ## Test plan: Auth-001 — Login form crash safety
 
 **Tests:**
 
-1. ⏳ Submit form with both fields empty → no blank page, native validation kicks in
-2. ⏳ Submit valid email + WRONG password → red error banner appears AND STAYS (no page reload)
-3. ⏳ Submit valid email + correct password → lands on role-appropriate landing
-4. ⏳ Backend down (kill uvicorn) → "Can't reach the server" message, no crash
-5. ⏳ Click "Forgot password?" → inert message (deferred per spec)
+1. ✅ Submit form with both fields empty → no blank page, native validation kicks in
+2. ✅ Submit valid email + WRONG password → red error banner appears AND STAYS (no page reload)
+3. ✅ Submit valid email + correct password → lands on role-appropriate landing
+4. ✅ Backend down (kill uvicorn) → "Can't reach the server" message, no crash
+5. ✅ Click "Forgot password?" → inert message (deferred per spec)
 
 ## Test plan: Auth-002 — Role-aware redirect
 
 **Tests:**
 
-1. ⏳ Owner login → lands on /dashboard
-2. ⏳ Manager login → lands on /dashboard (filtered to own bar)
-3. ⏳ Bartender login → lands on /dashboard (own bar view)
-4. ⏳ Warehouse keeper login → lands on /warehouse
+1. ✅ Owner login → lands on /dashboard
+2. ✅ Manager login → lands on /dashboard (filtered to own bar)
+3. ✅ Bartender login → lands on /dashboard (own bar view)
+4. ✅ Warehouse keeper login → lands on /warehouse
 
 ## Test plan: Auth-003 — Permission matrix enforcement
 
 **Tests:**
 
-1. ⏳ Manager hard-refreshes /events → redirects (Manager not allowed)
-2. ⏳ Manager hard-refreshes /warehouse → redirects
-3. ⏳ Manager hard-refreshes /predictions → redirects
-4. ⏳ Bartender hard-refreshes /events → redirects
-5. ⏳ Bartender hard-refreshes /alerts → redirects
-6. ⏳ Warehouse keeper hard-refreshes /chat → redirects
-7. ⏳ All roles can reach /settings
+1. ✅ Manager hard-refreshes /events → redirects (Manager not allowed)
+2. ✅ Manager hard-refreshes /warehouse → redirects
+3. ✅ Manager hard-refreshes /predictions → redirects
+4. ✅ Bartender hard-refreshes /events → redirects
+5. ✅ Bartender hard-refreshes /alerts → redirects
+6. ✅ Warehouse keeper hard-refreshes /chat → redirects
+7. ✅ All roles can reach /settings
 
 ---
 
@@ -238,16 +238,16 @@ under Tier 1 (if blocking) or Tier 2 (if non-blocking polish).
 
 # Milestone — Settings
 
-**Status:** ⏳ pending verification
+**Status:** ✅ TESTED 2026-04-28 (19/19 pass; warehouse role skipped — no dev seed)
 
 ## Test plan: Settings-001 — All roles can sign out
 
 **Tests:**
 
-1. ⏳ Owner → /settings → click Sign out → redirected to /login
-2. ⏳ Manager → /settings → click Sign out → redirected to /login
-3. ⏳ Bartender → /settings → click Sign out → redirected to /login
-4. ⏳ Warehouse keeper → /settings → click Sign out → redirected to /login
+1. ✅ Owner → /settings → click Sign out → redirected to /login
+2. ✅ Manager → /settings → click Sign out → redirected to /login
+3. ✅ Bartender → /settings → click Sign out → redirected to /login
+4. ✅ Warehouse keeper → /settings → click Sign out → redirected to /login
 
 ---
 
