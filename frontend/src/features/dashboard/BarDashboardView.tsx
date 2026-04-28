@@ -21,6 +21,7 @@ import { Link } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/useAuth'
 import {
+  useAllProducts,
   useBarsForEvent,
   useBarStockForEvent,
   useLiveEvent,
@@ -36,6 +37,7 @@ import {
   useChannelMessages,
   usePostMessage,
 } from '@/features/chat/useChat'
+import { useChatSocket } from '@/features/chat/useChatSocket'
 import { useDashboardSocket } from '@/features/dashboard/useDashboardSocket'
 import { useState } from 'react'
 
@@ -189,6 +191,7 @@ function AlertRowView({
 
 function TransactionsTable({
   transactions,
+  productNamesById,
 }: {
   transactions: Array<{
     id: string
@@ -198,7 +201,7 @@ function TransactionsTable({
     price_cents: number | null
     source: string
   }>
-  /* productNamesById is enriched below; kept loose-typed for compat */
+  productNamesById: Map<string, string>
 }) {
   if (transactions.length === 0) {
     return (
@@ -233,7 +236,7 @@ function TransactionsTable({
                   {fmtTime(tx.created_at)}
                 </td>
                 <td className="py-2 px-2 text-sm text-[#1A202C] font-medium">
-                  {tx.product_id.slice(0, 8)}…
+                  {productNamesById.get(tx.product_id) ?? `${tx.product_id.slice(0, 8)}…`}
                 </td>
                 <td className="py-2 px-2 text-right text-sm">{tx.qty}</td>
                 <td className="py-2 px-2 text-xs text-[#718096]">{tx.source}</td>
@@ -297,6 +300,7 @@ function BarChatPanel({
   atRiskCount,
 }: BarChatPanelProps) {
   const channelsQuery = useChannels()
+  const { user } = useAuth()
 
   // Find this bar's channel. Channels with channel_type='bar' and the
   // matching bar_id are auto-created when the bar is created.
@@ -307,6 +311,16 @@ function BarChatPanel({
 
   const messagesQuery = useChannelMessages(channelId, 5)
   const postMessage = usePostMessage(channelId ?? '')
+
+  // Subscribe to live chat updates so messages sent from /chat (or another
+  // tab) flow back into this panel without a manual refresh. Mirrors the
+  // ChatPage usage but scoped to just this bar's channel.
+  // Closes test failures B4 and B7 from the 2026-04-28 automated test run.
+  useChatSocket({
+    activeChannelId: channelId,
+    currentUserId: user?.id ?? '',
+    allChannelIds: channelId ? [channelId] : [],
+  })
 
   const [draft, setDraft] = useState('')
 
@@ -446,6 +460,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
   // Hooks always called (Rules of Hooks); they no-op when eventId is null.
   const barStockQuery = useBarStockForEvent(eventId)
   const transactionsQuery = useTransactionsForEvent(eventId)
+  const productsQuery = useAllProducts()
   const alertsQuery = useAlertsForEvent(eventId, { onlyActive: false })
   const barsQuery = useBarsForEvent(eventId)
   const acknowledge = useAcknowledgeAlert()
@@ -511,6 +526,16 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
     const items = transactionsQuery.data ?? []
     return items.slice(0, 5)
   }, [transactionsQuery.data])
+
+  // Map product_id -> name for the transactions table. Without this lookup
+  // the table renders truncated UUIDs (test failure A12, 2026-04-28).
+  const productNamesById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of productsQuery.data ?? []) {
+      m.set(p.id, p.name)
+    }
+    return m
+  }, [productsQuery.data])
 
   // ── Edge cases ─────────────────────────────────────────────────────
 
@@ -628,7 +653,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
           <p className="text-xs text-[#A0AEC0] py-4">Loading transactions…</p>
         )}
         {!transactionsQuery.isLoading && (
-          <TransactionsTable transactions={recentTransactions} />
+          <TransactionsTable transactions={recentTransactions} productNamesById={productNamesById} />
         )}
       </div>
 
