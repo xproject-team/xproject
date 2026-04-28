@@ -18,9 +18,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
+import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
 import {
   useAllProducts,
   useBarsForEvent,
@@ -303,10 +305,20 @@ const START_ELAPSED = 2 * 3600 + 35 * 60  // 2h 35m (placeholder — real timer 
 
 export default function DashboardPage() {
   const navigate         = useNavigate()
+  const { user }         = useAuth()
   const perms            = usePermissions()
   const [searchParams]   = useSearchParams()
 
-  // Belt-and-suspenders access check (route guard already covers this)
+  // Role-aware branch: Owner sees the multi-bar overview below; Manager
+  // and Bartender get their per-bar 'My Bar' view. Warehouse keepers
+  // never reach this page (route guard redirects them to /warehouse).
+  // Spec: docs/bar-dashboard-spec.md S3.
+  const role = user?.role
+  if (role === 'manager' || role === 'bartender') {
+    return <BarDashboardView role={role} />
+  }
+  // Belt-and-suspenders for any unexpected role: route guard already
+  // gates this page, so we shouldn't reach here. If we do, redirect home.
   if (!perms.canViewAllBars) {
     navigate('/', { replace: true })
     return null
