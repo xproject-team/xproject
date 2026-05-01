@@ -177,11 +177,16 @@ class SleshAdapter(BasePOSAdapter):
 
     async def list_products(
         self,
-        experience_id: str | None = None,
+        experience_id:   str | None = None,
+        *,
+        populated_field: str | None = None,
     ) -> list[Product]:
         items = await self._get_list(
             "/product/my",
-            params={"experienceId": experience_id},
+            params={
+                "experienceId":   experience_id,
+                "populatedField": populated_field,
+            },
             op_name="list_products",
         )
         return [Product.model_validate(p) for p in items]
@@ -282,14 +287,17 @@ class SleshAdapter(BasePOSAdapter):
         Walks pages forward via Slesh's `from` offset. Stops when
         `hasNextPage` is false or the response is malformed.
         """
+        # Slesh's `from` is 1-indexed (minimum 1). Omit it on the first
+        # page so we don't trigger a 400 BAD_REQUEST validation error.
         offset = 0
         page   = 0
         while True:
-            page_params = {
+            page_params: dict[str, Any] = {
                 **(params or {}),
                 "pageSize": page_size,
-                "from":     offset,
             }
+            if offset > 0:
+                page_params["from"] = offset
             envelope = await self._call(path, params=page_params, op_name=f"{op_name}#p{page}")
 
             if not isinstance(envelope, dict):

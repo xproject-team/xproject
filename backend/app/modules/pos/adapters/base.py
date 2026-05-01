@@ -86,7 +86,9 @@ class BasePOSAdapter(ABC):
     @abstractmethod
     async def list_products(
         self,
-        experience_id: str | None = None,
+        experience_id:   str | None = None,
+        *,
+        populated_field: str | None = None,
     ) -> list["Product"]:
         """List physical and digital products for the brand.
 
