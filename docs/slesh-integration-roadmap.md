@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B4 — Schema Migrations
-**Current step:** ⏳ Not started — B3 complete, ready to begin B4.1
-**Branch:** `develop` (will switch to `feat/slesh-b4-schema-migrations` at B4.1)
+**Phase:** B5 — Reference Data Sync (One-Shot CLI)
+**Current step:** ⏳ Not started — B4 complete, ready to begin B5.1
+**Branch:** `develop` (will switch to `feat/slesh-b5-reference-sync` at B5.1)
 **Last update:** 2026-05-01
 **Blockers:** None
 
@@ -23,8 +23,8 @@
 | **B1** | `feat/slesh-b1-config` | Token & config plumbing | Low | ~2 h | ✅ Done (a8e0b51) |
 | **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | ✅ Done (d2a9739) |
 | **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ✅ Done (f20ddff) |
-| **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | 🔵 Next |
-| **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ⏸ Pending |
+| **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ✅ Done (7fad547) |
+| **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | 🔵 Next |
 | **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | ⏸ Pending |
 | **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | ⏸ Pending |
 | **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | ⏸ Pending |
@@ -183,28 +183,25 @@ If the answer is "no" or "I don't know," the branch is not done. This applies ev
 
 **Steps:**
 
-- [ ] **B4.1** — Branch `feat/slesh-b4-schema-migrations`
-- [ ] **B4.2** — Verify whether `categories` is its own table or part of `products` (check existing models)
-- [ ] **B4.3** — Create alembic migration `l1_add_external_pos_id_to_products`:
-  - Adds column `external_pos_id VARCHAR(128) NULL` to `products`
-  - Adds index on it
-  - Includes downgrade
-- [ ] **B4.4** — If categories is a separate table, create `l2_add_external_pos_id_to_categories` similarly
-- [ ] **B4.5** — Update SQLAlchemy model in `models.py`
-- [ ] **B4.6** — Update Pydantic schemas (request/response) in `schemas.py`
-- [ ] **B4.7** — Update repository methods to handle the new field
-- [ ] **B4.8** — Run migration on local DB: `alembic upgrade head`
-- [ ] **B4.9** — Verify column exists: `psql xproject_dev -c "\d products"`
-- [ ] **B4.10** — Test downgrade then upgrade (round-trip safety)
-- [ ] **B4.11** — Run full test regression
-- [ ] **B4.12** — Commit: `feat(slesh): add external_pos_id columns to products (and categories)`
-- [ ] **B4.13** — Push, merge to `develop`, delete branch
+- [x] **B4.1** — Branch `feat/slesh-b4-schema-migrations` created
+- [x] **B4.2** — Confirmed: products.category is an ENUM column, NOT a separate categories table. So only ONE migration needed.
+- [x] **B4.3** — Created migration `l1_add_external_pos_id_to_products`: ALTER TABLE products + CREATE INDEX. Reversible downgrade.
+- [x] **B4.4** — N/A (categories is an enum, not a table)
+- [x] **B4.5** — Updated `Product.external_pos_id: Mapped[str | None]` (mirrors bars.slesh_negozio_id)
+- [x] **B4.6** — Updated all 3 Pydantic schemas: ProductResponse, ProductCreate, ProductUpdate (max_length=128)
+- [x] **B4.7** — Updated `Repository.create()` to persist external_pos_id; `update()` handles it via existing model_dump auto-loop
+- [x] **B4.8** — Ran migration: caught and fixed `alembic_version VARCHAR(32)` overflow by shortening revision ID from 38 to 25 chars
+- [x] **B4.9** — Verified column + index in DB via `psql \d products`
+- [x] **B4.10** — Round-trip verified: downgrade removes column cleanly, upgrade restores it
+- [x] **B4.11** — Full regression: 73 passed, 1 deselected, 0 failed (0.39s)
+- [x] **B4.12** — Committed: `feat(slesh): add external_pos_id to products (Slesh linkage)` (4 files, 61+/0-)
+- [x] **B4.13** — Pushed, fast-forward merged to develop, local branch deleted
 
-**Completion record:** `[done] YYYY-MM-DD — commit ________`
+**Completion record:** `[done] 2026-05-01 — commit 7fad547`
 
 ---
 
-## ⏸ B5 — Reference Data Sync (One-Shot CLI)
+## 🔵 B5 — Reference Data Sync (One-Shot CLI)
 
 **Goal:** A CLI command that pulls all shops, categories, and products from Slesh for a given brand/experience and upserts them into our DB. First time we see real Slesh data populated locally.
 
