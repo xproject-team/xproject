@@ -1,0 +1,73 @@
+{
+  "_id": "6650c69e25fcbf370f6fcc16",
+  "_createdAt": 1716569758657,
+  "_owner": "6650c68e60a2aa80260a54f7",
+  "_shortCode": "kPHr6A",
+  "_hasCustomApp": false,
+  "billing": {
+    "vatNumber": "REDACTED_VAT_11_DIGITS",
+    "vat": "ITREDACTED_VAT_11_DIGITS",
+    "companyName": "Sundance Srls",
+    "address": {
+      "_placeId": "REDACTED_PLACE_ID",
+      "_latitude": 41.9224596,
+      "_longitude": 12.441853,
+      "_formatted": "Via REDACTED, 00136 Roma RM, Italia",
+      "_postalCode": "00136",
+      "_city": "Roma",
+      "_streetName": "Via REDACTED",
+      "_country": "IT",
+      "_streetNumber": "NN",
+      "_political": "RM"
+    },
+    "uniqueCode": "REDACTED_UNIQUE_CODE",
+    "pec": "redacted@example.com"
+  },
+  "images": {
+    "logo": {
+      "url": "https://redacted.example/logo",
+      "blurhash": "REDACTED"
+    },
+    "horizontalLogo": {
+      "url": "https://redacted.example/h-logo",
+      "blurhash": "REDACTED"
+    },
+    "favicon": {
+      "url": "https://redacted.example/favicon",
+      "blurhash": "REDACTED"
+    }
+  },
+  "isEnabled": true,
+  "name": "Sundance",
+  "nuvola": {
+    "isEnabled": false,
+    "password": "***"
+  },
+  "defaults": {
+    "language": "it",
+    "timezone": "Europe/Rome",
+    "currency": "EUR"
+  },
+  "description": {
+    "en": "Sundance Sunday",
+    "it": "Sundance Sunday"
+  },
+  "customization": {
+    "_type": "brand",
+    "website": "",
+    "social": {
+      "facebook": [],
+      "instagram": [],
+      "tiktok": []
+    },
+    "contacts": {
+      "email": "",
+      "phone": ""
+    }
+  },
+  "configuration": {
+    "rollToNextExperience": false,
+    "skipDailyReset": false,
+    "defaultNfcTech": "NTAG216"
+  }
+}

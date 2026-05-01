@@ -49,3 +49,43 @@ async def owner_token(client: AsyncClient) -> str:
 async def owner_headers(owner_token: str) -> dict[str, str]:
     """Convenience fixture: Authorization header dict for Owner calls."""
     return {"Authorization": f"Bearer {owner_token}"}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Slesh API fixtures — Layer 2 of the sandbox-defense strategy
+# ─────────────────────────────────────────────────────────────────────
+import json
+from pathlib import Path as _Path
+
+
+_SLESH_FIXTURE_DIR = _Path(__file__).parent / "fixtures" / "slesh"
+
+
+@pytest.fixture
+def slesh_fixture():
+    """Load a recorded Slesh API response from disk.
+
+    Usage:
+        def test_brand_parses(slesh_fixture):
+            raw = slesh_fixture("brand_my")
+            brand = Brand.model_validate(raw)
+            assert brand.id == "6650c69e25fcbf370f6fcc16"
+
+    The fixture loader returns a callable so tests can request multiple
+    fixtures in one test without nested dependencies. Filenames are passed
+    WITHOUT the `.json` suffix.
+
+    See backend/tests/fixtures/slesh/README.md for the full fixture catalog
+    and re-recording procedure.
+    """
+    def _load(name: str) -> dict | list:
+        path = _SLESH_FIXTURE_DIR / f"{name}.json"
+        if not path.exists():
+            available = sorted(p.stem for p in _SLESH_FIXTURE_DIR.glob("*.json"))
+            raise FileNotFoundError(
+                f"Slesh fixture {name!r} not found. "
+                f"Available: {available}. "
+                f"Looked in: {_SLESH_FIXTURE_DIR}"
+            )
+        return json.loads(path.read_text())
+    return _load

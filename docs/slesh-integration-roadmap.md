@@ -422,6 +422,9 @@ When we make a decision while building, log it here so we don't forget the "why.
 | 2026-04-30 | Test discipline: medium (smoke + unit, ~15-20 min) | Balances thoroughness with pace | All branches |
 | 2026-04-30 | Backup discipline: git branches only, no `.backup` files | Trust git, not file copies | All branches |
 | 2026-04-30 | Branch strategy: short-lived per component | Reviewable, revertable, testable independently | All branches |
+| 2026-05-01 | Slesh API has 2 response shapes: paginated `{docs:[...]}` for shops/orders, plain list `[...]` for categories/products | Discovered during B2.6 fixture recording — undocumented quirk | B3 adapter implementation |
+| 2026-05-01 | Sundance scale: 21 shops, 5 categories, 84 products, 38,046 historical orders | Reality is bigger than initial assumption (4-5 bars); architecture handles it but informs UI density and backfill scope | B5 sync, B7 backfill, frontend |
+| 2026-05-01 | Slesh added `cleanWalletsOnExperienceEnded` field overnight | Lenient+log strategy absorbed it cleanly with zero crashes — validates the design choice | Brand schema (defer update) |
 
 ---
 

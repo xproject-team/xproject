@@ -1,0 +1,205 @@
+[
+  {
+    "_id": "666aea1e613f425a72a8fac9",
+    "_createdAt": 1718282782065,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "_type": "physical",
+    "category": "6846d7deb4f60dabfdc8e124",
+    "sorting": {
+      "6846d7deb4f60dabfdc8e124": 1
+    },
+    "name": {
+      "en": "Acqua",
+      "it": "Acqua"
+    },
+    "description": {
+      "en": "Acqua description",
+      "it": "Acqua description"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "defaultPrice": 200,
+    "defaultVat": "10",
+    "shops": [
+      {
+        "_shop": "684820e2f8e1514a1f5b2272",
+        "configuration": []
+      },
+      {
+        "_shop": "68480db43a7e6efbd1cb81ce",
+        "configuration": []
+      },
+      {
+        "_shop": "684856f1875ac2b6d14beb50",
+        "configuration": []
+      }
+    ],
+    "stock": {
+      "quantities": {}
+    },
+    "externalRef": "",
+    "isFiscalDisabled": false,
+    "adultCheck": false,
+    "allergens": [],
+    "ingredients": [],
+    "isDeposit": false,
+    "purchaseEnablingDigitalProducts": []
+  },
+  {
+    "_id": "666aea40613f425a72a8fad3",
+    "_createdAt": 1718282816566,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "_type": "physical",
+    "category": "6846d7deb4f60dabfdc8e124",
+    "sorting": {
+      "6846d7deb4f60dabfdc8e124": 2
+    },
+    "name": {
+      "en": "Analcolico",
+      "it": "Analcolico"
+    },
+    "description": {
+      "en": "Analcolico description",
+      "it": "Analcolico description"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "defaultPrice": 800,
+    "defaultVat": "10",
+    "shops": [
+      {
+        "_shop": "684820e2f8e1514a1f5b2272",
+        "price": 800,
+        "vat": "10",
+        "configuration": []
+      }
+    ],
+    "stock": {
+      "quantities": {}
+    },
+    "externalRef": "",
+    "isFiscalDisabled": false,
+    "adultCheck": false,
+    "allergens": [],
+    "ingredients": [],
+    "isDeposit": false,
+    "purchaseEnablingDigitalProducts": []
+  },
+  {
+    "_id": "666aea4634182ea516d013df",
+    "_createdAt": 1718282822020,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "_type": "physical",
+    "category": "66683ed734182ea516cfdd60",
+    "sorting": {},
+    "name": {
+      "en": "BUN ceci",
+      "it": "BUN ceci"
+    },
+    "description": {
+      "en": "BUN ceci description",
+      "it": "BUN ceci description"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "defaultPrice": 1000,
+    "defaultVat": "10",
+    "shops": [],
+    "stock": {
+      "quantities": {}
+    },
+    "externalRef": "",
+    "isFiscalDisabled": false,
+    "adultCheck": false,
+    "allergens": [],
+    "ingredients": [],
+    "isDeposit": false,
+    "purchaseEnablingDigitalProducts": []
+  },
+  {
+    "_id": "666aea4834182ea516d013e8",
+    "_createdAt": 1718282824194,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "_type": "physical",
+    "category": "66683ed734182ea516cfdd60",
+    "sorting": {},
+    "name": {
+      "en": "BUN manzo",
+      "it": "BUN manzo"
+    },
+    "description": {
+      "en": "BUN manzo description",
+      "it": "BUN manzo description"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "defaultPrice": 1000,
+    "defaultVat": "10",
+    "shops": [
+      {
+        "_shop": "66683ed9613f425a72a8c447",
+        "price": 1000,
+        "vat": "10",
+        "configuration": []
+      }
+    ],
+    "stock": {
+      "quantities": {}
+    },
+    "externalRef": "",
+    "isFiscalDisabled": false,
+    "adultCheck": false,
+    "allergens": [],
+    "ingredients": [],
+    "isDeposit": false,
+    "purchaseEnablingDigitalProducts": []
+  },
+  {
+    "_id": "666aea4b34182ea516d013f1",
+    "_createdAt": 1718282827251,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "_type": "physical",
+    "category": "66683ed734182ea516cfdd60",
+    "sorting": {},
+    "name": {
+      "en": "BUN melanzana",
+      "it": "BUN melanzana"
+    },
+    "description": {
+      "en": "BUN melanzana description",
+      "it": "BUN melanzana description"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "defaultPrice": 1000,
+    "defaultVat": "10",
+    "shops": [
+      {
+        "_shop": "66683ed9613f425a72a8c447",
+        "price": 1000,
+        "vat": "10",
+        "configuration": []
+      }
+    ],
+    "stock": {
+      "quantities": {}
+    },
+    "externalRef": "",
+    "isFiscalDisabled": false,
+    "adultCheck": false,
+    "allergens": [],
+    "ingredients": [],
+    "isDeposit": false,
+    "purchaseEnablingDigitalProducts": []
+  }
+]

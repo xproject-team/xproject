@@ -1,0 +1,205 @@
+{
+  "from": 1,
+  "to": 2,
+  "total": 38046,
+  "hasNextPage": true,
+  "docs": [
+    {
+      "_createdAt": 1754253131893,
+      "_id": "688fc74cf5b38f86c2c7e56f",
+      "_brand": "6650c69e25fcbf370f6fcc16",
+      "_shop": {
+        "_id": "684820e2f8e1514a1f5b2272",
+        "name": "Cocktail Bar "
+      },
+      "_type": "experience",
+      "_language": "it",
+      "_customerEmail": "redacted@example.com",
+      "status": "completed",
+      "payment": {
+        "_type": "token",
+        "status": "successful",
+        "_paymentToken": "68652ff298f2aa50e9446759"
+      },
+      "__code": "el-3186",
+      "__cartGrossAmountBeforePromo": 1000,
+      "__cartDiscountAmount": 0,
+      "__cartGrossAmount": 1000,
+      "__cartNetAmount": 909.090909090909,
+      "__cartVatAmount": 90.90909090909099,
+      "__cartDepositAmount": 0,
+      "__cartFiscalGrossAmount": 0,
+      "__cartFiscalNetAmount": 0,
+      "__extraCosts": 0,
+      "__subtotal": 1000,
+      "__updatedAt": 1777635171898,
+      "_appliedPromos": [],
+      "cart": [
+        {
+          "_id": "688fc74c2bc1c1b2167bded5",
+          "_product": "666aea5634182ea516d01416",
+          "_trackStock": false,
+          "_productName": {
+            "en": "Cocktail",
+            "it": "Cocktail"
+          },
+          "_productImage": {
+            "url": "https://slesh.it/cdn-cgi/imagedelivery/7R-gY8CTkXVcrsWzkz22iA/f5c359ae-c152-42fb-e5be-920916e27300/public",
+            "blurhash": "eIBp^O4T9FxpR=8^t8xuk9a$4m%Mt6j_V?xujpoiM|adN1xuaeROxu"
+          },
+          "_productExternalRef": "",
+          "_vat": "10",
+          "_isDigital": false,
+          "_configuration": [],
+          "_category": "6846d7deb4f60dabfdc8e124",
+          "_categoryName": {
+            "it": "beverage"
+          },
+          "_appliedPromos": [],
+          "_appliedCustomDiscounts": [],
+          "_grossAmountBeforePromo": 1000,
+          "_discountAmount": 0,
+          "_grossAmount": 1000,
+          "_netAmount": 909.090909090909,
+          "_vatAmount": 90.90909090909099,
+          "_isDeposit": false,
+          "isFiscalDisabled": false,
+          "hasBeenPickedUp": false
+        }
+      ],
+      "fiscalStatus": "not_requested",
+      "fiscalSendAttempts": 0,
+      "fiscalNextSend": 1777635171898,
+      "hasBeenSeen": false,
+      "_experience": {
+        "_id": "686530b43b7b5b7f06b0098d",
+        "name": "Sundance 03/08/2025"
+      },
+      "_experienceOrderCode": "order_684820e2f8e1514a1f5b2272_gKikpyMNspjIpEmb7AsCA",
+      "user": "689002ff1c66f73c909d9d9f",
+      "operator": {
+        "_id": "6848545f2f6f46ec07e79463",
+        "info": {
+          "name": "REDACTED",
+          "surname": "REDACTED",
+          "email": "redacted@example.com"
+        },
+        "_type": "operator"
+      }
+    },
+    {
+      "_createdAt": 1754252980441,
+      "_id": "688fc6b5f5b38f86c2c7e558",
+      "_brand": "6650c69e25fcbf370f6fcc16",
+      "_shop": {
+        "_id": "684820e2f8e1514a1f5b2272",
+        "name": "Cocktail Bar "
+      },
+      "_type": "experience",
+      "_language": "it",
+      "_customerEmail": "redacted@example.com",
+      "status": "completed",
+      "payment": {
+        "_type": "token",
+        "status": "successful",
+        "_paymentToken": "68652ff298f2aa50e9446759"
+      },
+      "__code": "el-3185",
+      "__cartGrossAmountBeforePromo": 1100,
+      "__cartDiscountAmount": 0,
+      "__cartGrossAmount": 1100,
+      "__cartNetAmount": 999.9999999999999,
+      "__cartVatAmount": 100.00000000000009,
+      "__cartDepositAmount": 100,
+      "__cartFiscalGrossAmount": 0,
+      "__cartFiscalNetAmount": 0,
+      "__extraCosts": 0,
+      "__subtotal": 1100,
+      "__updatedAt": 1777635171898,
+      "_appliedPromos": [],
+      "cart": [
+        {
+          "_id": "688fc6b51cd9ecf8af20fb49",
+          "_product": "666aea5634182ea516d01416",
+          "_trackStock": false,
+          "_productName": {
+            "en": "Cocktail",
+            "it": "Cocktail"
+          },
+          "_productImage": {
+            "url": "https://slesh.it/cdn-cgi/imagedelivery/7R-gY8CTkXVcrsWzkz22iA/f5c359ae-c152-42fb-e5be-920916e27300/public",
+            "blurhash": "eIBp^O4T9FxpR=8^t8xuk9a$4m%Mt6j_V?xujpoiM|adN1xuaeROxu"
+          },
+          "_productExternalRef": "",
+          "_vat": "10",
+          "_isDigital": false,
+          "_configuration": [],
+          "_category": "6846d7deb4f60dabfdc8e124",
+          "_categoryName": {
+            "it": "beverage"
+          },
+          "_appliedPromos": [],
+          "_appliedCustomDiscounts": [],
+          "_grossAmountBeforePromo": 1000,
+          "_discountAmount": 0,
+          "_grossAmount": 1000,
+          "_netAmount": 909.090909090909,
+          "_vatAmount": 90.90909090909099,
+          "_isDeposit": false,
+          "isFiscalDisabled": false,
+          "hasBeenPickedUp": false
+        },
+        {
+          "_id": "688fc6b51cd9ecf8af20fb4a",
+          "_product": "666aea4e34182ea516d01403",
+          "_trackStock": false,
+          "_productName": {
+            "en": "Bicchiere",
+            "it": "Bicchiere"
+          },
+          "_productImage": {
+            "url": "https://slesh.it/cdn-cgi/imagedelivery/7R-gY8CTkXVcrsWzkz22iA/bb2b9186-6dbf-48c3-fc20-e41657b3b300/public",
+            "blurhash": "eASigQof~qof-;_3WBD%ofWB?bj[M{WBIU00j[?bayof~qWB9FofWB"
+          },
+          "_productExternalRef": "",
+          "_vat": "10",
+          "_isDigital": false,
+          "_configuration": [],
+          "_category": "6846d7deb4f60dabfdc8e124",
+          "_categoryName": {
+            "it": "beverage"
+          },
+          "_appliedPromos": [],
+          "_appliedCustomDiscounts": [],
+          "_grossAmountBeforePromo": 100,
+          "_discountAmount": 0,
+          "_grossAmount": 100,
+          "_netAmount": 90.9090909090909,
+          "_vatAmount": 9.090909090909093,
+          "_isDeposit": true,
+          "isFiscalDisabled": true,
+          "hasBeenPickedUp": false
+        }
+      ],
+      "fiscalStatus": "not_requested",
+      "fiscalSendAttempts": 0,
+      "fiscalNextSend": 1777635171898,
+      "hasBeenSeen": false,
+      "_experience": {
+        "_id": "686530b43b7b5b7f06b0098d",
+        "name": "Sundance 03/08/2025"
+      },
+      "_experienceOrderCode": "order_684820e2f8e1514a1f5b2272_zKvUP2f9wDep0uURPAC4S",
+      "user": "688f6d7d3d232a1f75aef80b",
+      "operator": {
+        "_id": "6848545f2f6f46ec07e79463",
+        "info": {
+          "name": "REDACTED",
+          "surname": "REDACTED",
+          "email": "redacted@example.com"
+        },
+        "_type": "operator"
+      }
+    }
+  ]
+}

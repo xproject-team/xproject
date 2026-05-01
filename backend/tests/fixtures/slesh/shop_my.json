@@ -1,0 +1,210 @@
+{
+  "from": 1,
+  "to": 2,
+  "total": 21,
+  "hasNextPage": true,
+  "docs": [
+    {
+      "_id": "687f4dfb2bedfeed66a5f33f",
+      "_createdAt": 1753173499910,
+      "_brand": "6650c69e25fcbf370f6fcc16",
+      "_owner": "6650c68e60a2aa80260a54f7",
+      "_shortCode": "cXtDupyoSN",
+      "isEnabled": true,
+      "name": "Pret a Polpett",
+      "email": "redacted@example.com",
+      "phone": "+39REDACTED",
+      "address": {
+        "_placeId": "REDACTED_PLACE_ID",
+        "_latitude": 41.794514,
+        "_longitude": 12.582197,
+        "_formatted": "Via REDACTED, REDACTED Roma RM, Italia",
+        "_postalCode": "00134",
+        "_city": "Roma",
+        "_streetName": "Via REDACTED",
+        "_country": "IT",
+        "_streetNumber": "NN",
+        "_political": "RM"
+      },
+      "configuration": {
+        "sendEmailTeam": false,
+        "sendOrderNotification": false,
+        "openingSchedule": {
+          "ordinary": [],
+          "closingWeekdays": [],
+          "extra": []
+        },
+        "categoriesToShowInKitchenAndDisplay": []
+      },
+      "orderConfiguration": {
+        "express": {
+          "isEnabled": false,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "stripe",
+            "token",
+            "mixed",
+            "external-pos"
+          ],
+          "initialStatus": "ready",
+          "minAmount": 0,
+          "isTipEnabled": false,
+          "isSelfPickup": true,
+          "showQrOnSelfPickup": false,
+          "needPickupConfirm": false,
+          "pickupOptions": {
+            "isEnabled": false,
+            "pickupValues": []
+          },
+          "isStripeEmailEnabled": false,
+          "customerInfoPrompt": {
+            "isEnabled": false,
+            "askEmail": false,
+            "askName": false
+          },
+          "serviceCost": {
+            "isEnabled": false,
+            "amount": 0
+          },
+          "allowUnauthenticatedOrder": true,
+          "showGridLayout": false
+        },
+        "experience": {
+          "isEnabled": true,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "token"
+          ],
+          "initialStatus": "completed"
+        },
+        "cash-desk": {
+          "isEnabled": false,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "stripe",
+            "token",
+            "mixed",
+            "external-pos"
+          ],
+          "initialStatus": "completed",
+          "pickupOptions": {
+            "isEnabled": false,
+            "pickupValues": []
+          }
+        },
+        "menu": {
+          "isEnabled": false
+        }
+      },
+      "defaults": {
+        "language": "it",
+        "timezone": "Europe/Rome",
+        "currency": "EUR"
+      }
+    },
+    {
+      "_id": "687f4dcadba8cc3bd82750a8",
+      "_createdAt": 1753173450786,
+      "_brand": "6650c69e25fcbf370f6fcc16",
+      "_owner": "6650c68e60a2aa80260a54f7",
+      "_shortCode": "bhVkjdFT0k",
+      "isEnabled": true,
+      "name": "Ape Magna",
+      "email": "redacted@example.com",
+      "phone": "+39REDACTED",
+      "address": {
+        "_placeId": "REDACTED_PLACE_ID",
+        "_latitude": 41.794514,
+        "_longitude": 12.582197,
+        "_formatted": "Via REDACTED, REDACTED Roma RM, Italia",
+        "_postalCode": "00134",
+        "_city": "Roma",
+        "_streetName": "Via REDACTED",
+        "_country": "IT",
+        "_streetNumber": "NN",
+        "_political": "RM"
+      },
+      "configuration": {
+        "sendEmailTeam": false,
+        "sendOrderNotification": false,
+        "openingSchedule": {
+          "ordinary": [],
+          "closingWeekdays": [],
+          "extra": []
+        },
+        "categoriesToShowInKitchenAndDisplay": []
+      },
+      "orderConfiguration": {
+        "express": {
+          "isEnabled": false,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "stripe",
+            "token",
+            "mixed",
+            "external-pos"
+          ],
+          "initialStatus": "ready",
+          "minAmount": 0,
+          "isTipEnabled": false,
+          "isSelfPickup": true,
+          "showQrOnSelfPickup": false,
+          "needPickupConfirm": false,
+          "pickupOptions": {
+            "isEnabled": false,
+            "pickupValues": []
+          },
+          "isStripeEmailEnabled": false,
+          "customerInfoPrompt": {
+            "isEnabled": false,
+            "askEmail": false,
+            "askName": false
+          },
+          "serviceCost": {
+            "isEnabled": false,
+            "amount": 0
+          },
+          "allowUnauthenticatedOrder": true,
+          "showGridLayout": false
+        },
+        "experience": {
+          "isEnabled": true,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "token"
+          ],
+          "initialStatus": "completed"
+        },
+        "cash-desk": {
+          "isEnabled": false,
+          "shouldAutoPrintFiscal": false,
+          "shouldAutoPrintKitchen": false,
+          "supportedPaymentTypes": [
+            "stripe",
+            "token",
+            "mixed",
+            "external-pos"
+          ],
+          "initialStatus": "completed",
+          "pickupOptions": {
+            "isEnabled": false,
+            "pickupValues": []
+          }
+        },
+        "menu": {
+          "isEnabled": false
+        }
+      },
+      "defaults": {
+        "language": "it",
+        "timezone": "Europe/Rome",
+        "currency": "EUR"
+      }
+    }
+  ]
+}

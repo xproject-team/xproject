@@ -1,0 +1,57 @@
+[
+  {
+    "_id": "66683ed734182ea516cfdd60",
+    "_createdAt": 1718107863288,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "name": {
+      "en": "Sundance Sunday",
+      "it": "prodotti non attivi"
+    },
+    "image": {
+      "url": "https://redacted.example/img",
+      "blurhash": "REDACTED"
+    },
+    "externalRef": "",
+    "sorting": 0
+  },
+  {
+    "_id": "6846d795bd26b383c49d7cef",
+    "_createdAt": 1749473173351,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "name": {
+      "it": "Food"
+    },
+    "externalRef": "",
+    "sorting": 0
+  },
+  {
+    "_id": "6846d7deb4f60dabfdc8e124",
+    "_createdAt": 1749473246520,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "name": {
+      "it": "beverage"
+    },
+    "externalRef": "",
+    "sorting": 0
+  },
+  {
+    "_id": "684808ea262443f1a08c947c",
+    "_createdAt": 1749551338930,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "name": {
+      "it": "Merch"
+    },
+    "externalRef": "",
+    "sorting": 0
+  },
+  {
+    "_id": "684808fdf8e1514a1f5b120d",
+    "_createdAt": 1749551357338,
+    "_brand": "6650c69e25fcbf370f6fcc16",
+    "name": {
+      "it": "Guardaroba"
+    },
+    "externalRef": "",
+    "sorting": 0
+  }
+]
