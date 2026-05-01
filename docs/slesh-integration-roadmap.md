@@ -6,10 +6,10 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B1 — Token & Config Plumbing
-**Current step:** ⏳ Not started — waiting to begin Step 1 (create branch)
-**Branch:** `develop` (will switch to `feat/slesh-b1-config` at Step 1)
-**Last update:** 2026-04-30
+**Phase:** B2 — Adapter Contract + Pydantic Schemas + Fixtures
+**Current step:** ⏳ Not started — B1 complete, ready to begin B2.1
+**Branch:** `develop` (will switch to `feat/slesh-b2-adapter-contract` at B2.1)
+**Last update:** 2026-05-01
 **Blockers:** None
 
 > **How to update this section:** When you start a step, change "Not started" to "In progress." When a branch finishes, update Phase to the next branch. Keep it short — this is the dashboard, not the log.
@@ -20,8 +20,8 @@
 
 | # | Branch | Focus | Risk | Effort | Status |
 |---|---|---|---|---|---|
-| **B1** | `feat/slesh-b1-config` | Token & config plumbing | Low | ~2 h | 🔵 Next |
-| **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | ⏸ Pending |
+| **B1** | `feat/slesh-b1-config` | Token & config plumbing | Low | ~2 h | ✅ Done (a8e0b51) |
+| **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | 🔵 Next |
 | **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ⏸ Pending |
 | **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ⏸ Pending |
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ⏸ Pending |
@@ -77,33 +77,30 @@ If the answer is "no" or "I don't know," the branch is not done. This applies ev
 
 **Steps:**
 
-- [ ] **B1.1** — Create feature branch `feat/slesh-b1-config` off `develop`
-- [ ] **B1.2** — Remove placeholder fields `slesh_api_url`, `slesh_api_key` from `Settings` class
-- [ ] **B1.3** — Add new Slesh fields:
+- [x] **B1.1** — Create feature branch `feat/slesh-b1-config` off `develop`
+- [x] **B1.2** — Remove placeholder fields `slesh_api_url`, `slesh_api_key` from `Settings` class
+- [x] **B1.3** — Add new Slesh fields:
   - `slesh_base_url: str = "https://api.slesh.it/api"`
   - `slesh_api_token: str = ""` (loaded from env)
   - `slesh_brand_id: str = ""` (loaded from env)
   - `slesh_request_timeout: float = 10.0`
   - `slesh_rate_limit_rps: int = 5`
   - `slesh_max_retries: int = 3`
-- [ ] **B1.4** — Smoke test: `python -c "from app.core.config import settings; print(len(settings.slesh_api_token))"` should print `201`
-- [ ] **B1.5** — Create `backend/tests/core/test_config.py` with three tests:
-  - `test_settings_loads_without_error` — import works
-  - `test_slesh_token_present` — non-empty
-  - `test_slesh_brand_id_is_24char_hex` — format check
-- [ ] **B1.6** — Run `pytest backend/tests/core/test_config.py` (3 passing)
-- [ ] **B1.7** — Run `pytest backend/` (full regression — all existing tests still pass)
-- [ ] **B1.8** — Commit: `feat(slesh): add Slesh API config fields to Settings`
-- [ ] **B1.9** — Push branch: `git push -u origin feat/slesh-b1-config`
-- [ ] **B1.10** — Merge to `develop` (fast-forward), delete branch
+- [x] **B1.4** — Smoke test: token loaded (201 chars), brand ID validated (24-char hex), all 6 assertions passed
+- [x] **B1.5** — Created `backend/tests/test_config.py` with 7 tests (project uses flat tests/, not nested tests/core/)
+- [x] **B1.6** — Ran tests: 7 passed in 0.01s
+- [x] **B1.7** — Full regression: 9 passed (7 new + 2 pre-existing reports tests), 0 failed
+- [x] **B1.8** — Committed: `feat(slesh): add Slesh API config fields and unit tests`
+- [x] **B1.9** — Pushed branch: `git push -u origin feat/slesh-b1-config`
+- [x] **B1.10** — Merged to `develop` (fast-forward), local branch deleted
 
 **Done when:** All B1.x boxes checked, commit hash recorded below.
 
-**Completion record:** `[done] YYYY-MM-DD — commit ________`
+**Completion record:** `[done] 2026-05-01 — commit a8e0b51`
 
 ---
 
-## ⏸ B2 — Adapter Contract + Pydantic Schemas + Fixtures
+## 🔵 B2 — Adapter Contract + Pydantic Schemas + Fixtures
 
 **Goal:** Replace the wrong-shaped `BasePOSAdapter` ABC with the read-only contract. Build Pydantic models for every Slesh response shape we use. Set up the fixture-based testing infrastructure that replaces the missing sandbox.
 
