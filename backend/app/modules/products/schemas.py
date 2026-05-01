@@ -37,6 +37,7 @@ class ProductResponse(BaseModel):
     tier_rank: int | None = Field(default=None, ge=1, le=4)
     unit: ProductUnit
     default_price_cents: int | None = Field(default=None, ge=0)
+    external_pos_id: str | None = None
     is_archived: bool
 
 
@@ -55,6 +56,7 @@ class ProductCreate(BaseModel):
     tier_rank: int | None = Field(default=None, ge=1, le=4)
     unit: ProductUnit
     default_price_cents: int | None = Field(default=None, ge=0)
+    external_pos_id: str | None = Field(default=None, max_length=128)
 
     @field_validator("name")
     @classmethod
@@ -84,6 +86,7 @@ class ProductUpdate(BaseModel):
     tier_rank: int | None = Field(default=None, ge=1, le=4)
     unit: ProductUnit | None = None
     default_price_cents: int | None = Field(default=None, ge=0)
+    external_pos_id: str | None = Field(default=None, max_length=128)
 
     @field_validator("name")
     @classmethod

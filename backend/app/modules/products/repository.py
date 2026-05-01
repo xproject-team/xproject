@@ -112,6 +112,7 @@ class ProductRepository:
             tier_rank=resolved_tier_rank,
             unit=data.unit,
             default_price_cents=data.default_price_cents,
+            external_pos_id=data.external_pos_id,
             is_archived=False,
         )
         self.db.add(product)

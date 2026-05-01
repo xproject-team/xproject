@@ -159,6 +159,12 @@ class Product(TenantScopedModel):
 
     default_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Slesh product._id — populated by reference data sync (B5).
+    # Indexed because every order-line ingest looks up product by this.
+    external_pos_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, index=True,
+    )
+
     is_archived: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
