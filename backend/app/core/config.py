@@ -33,9 +33,15 @@ class Settings(BaseSettings):
     redis_url:    str = "redis://localhost:6379"
 
     # External services
-    slesh_api_url:     str = ""
-    slesh_api_key:     str = ""
     anthropic_api_key: str = ""
+
+    # Slesh POS Integration — read-only adapter; production-only (no sandbox)
+    slesh_base_url:        str = "https://api.slesh.it/api"
+    slesh_api_token:       str = ""    # set via env (.env), 1-year lifetime
+    slesh_brand_id:        str = ""    # set via env (.env), 24-char hex
+    slesh_request_timeout: float = 10.0    # seconds — single HTTP call ceiling
+    slesh_rate_limit_rps:  int = 5         # client-side limiter, tune later
+    slesh_max_retries:     int = 3         # exp backoff: 1s -> 2s -> 4s
 
     # CORS — comma-separated list of allowed origins (env: CORS_ORIGINS)
     cors_origins: str = "http://localhost:3000,http://localhost:5174"
