@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B5 — Reference Data Sync (One-Shot CLI)
-**Current step:** ⏳ Not started — B4 complete, ready to begin B5.1
-**Branch:** `develop` (will switch to `feat/slesh-b5-reference-sync` at B5.1)
+**Phase:** B6 — Order Polling Worker
+**Current step:** ⏳ Not started — B5 complete, ready to begin B6.1
+**Branch:** `develop` (will switch to `feat/slesh-b6-order-poller` at B6.1)
 **Last update:** 2026-05-01
 **Blockers:** None
 
@@ -24,8 +24,8 @@
 | **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | ✅ Done (d2a9739) |
 | **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ✅ Done (f20ddff) |
 | **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ✅ Done (7fad547) |
-| **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | 🔵 Next |
-| **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | ⏸ Pending |
+| **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ✅ Done (e9e25e8) |
+| **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | 🔵 Next |
 | **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | ⏸ Pending |
 | **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | ⏸ Pending |
 
@@ -212,30 +212,26 @@ If the answer is "no" or "I don't know," the branch is not done. This applies ev
 
 **Steps:**
 
-- [ ] **B5.1** — Branch `feat/slesh-b5-reference-sync`
-- [ ] **B5.2** — Build `sync_service.py` with three methods:
-  - `sync_shops(brand_id, experience_id)` — upserts to `bars` via `slesh_negozio_id`
-  - `sync_categories(brand_id, experience_id)` — upserts via `external_pos_id`
-  - `sync_products(brand_id, experience_id)` — upserts via `external_pos_id`
-- [ ] **B5.3** — Build CLI script `sync_slesh_reference.py`:
-  - Accepts `--experience-id` argument
-  - Reads brand_id from settings
-  - Calls sync_service methods in order
-  - Logs counts: created, updated, skipped
-  - Idempotent — safe to re-run
-- [ ] **B5.4** — Write unit tests against fixtures (no network)
-- [ ] **B5.5** — Run sync against real Slesh: `python -m app.scripts.sync_slesh_reference --experience-id <past Sundance>`
-- [ ] **B5.6** — Verify in DB: bars populated, products populated, categories populated
-- [ ] **B5.7** — Re-run sync (should report 0 created, all updated/skipped — idempotency check)
-- [ ] **B5.8** — Run full regression
-- [ ] **B5.9** — Commit: `feat(slesh): add one-shot reference data sync CLI command`
-- [ ] **B5.10** — Push, merge to `develop`, delete branch
+- [x] **B5.1** — Branch `feat/slesh-b5-reference-sync` created
+- [x] **B5.2** — `sync_service.py`: 2 methods (sync_shops + sync_products). Categories handled via in-code enum mapping — no separate sync needed since our schema treats categories as enum values, not a table.
+- [x] **B5.3** — CLI `sync_slesh_reference.py` with --tenant-slug + --event-id + --experience-id + --skip-shops/products. Verifies token first, then runs both syncs in a single transaction.
+- [x] **B5.4** — `test_sync_service.py`: 14 unit tests (parametrized category classification, SyncResult arithmetic, warning behavior, whitespace tolerance).
+- [x] **B5.5** — First live run: 21 shops + 66 products created from real Slesh data
+- [x] **B5.6** — Verified in DB: 21 bars (Ape Magna, Bar Barcelo, Cocktail Bar, Focacceria, etc.), 66 products by type (14 drink + 48 food + 4 supply) with real prices
+- [x] **B5.7** — Idempotency confirmed: re-run produces created=0, all skipped
+- [x] **B5.8** — Full regression: 87 passed, 1 deselected, 0 failed (0.35s)
+- [x] **B5.9** — Committed: `feat(slesh): reference data sync — shops + products` (5 files, 555+/5-)
+- [x] **B5.10** — Pushed, fast-forward merged to develop, local branch deleted
 
-**Completion record:** `[done] YYYY-MM-DD — commit ________`
+**Real-world quirks discovered & fixed during B5.5:**
+1. Slesh `from` query param is 1-indexed (minimum 1). from=0 returned 400. Fixed in _iter_paginated.
+2. Slesh returns Product.category as bare ID by default; needs `?populatedField=category` to get the full Category dict. Threaded populated_field through list_products.
+
+**Completion record:** `[done] 2026-05-01 — commit e9e25e8`
 
 ---
 
-## ⏸ B6 — Order Polling Worker (THE CORE)
+## 🔵 B6 — Order Polling Worker (THE CORE)
 
 **Goal:** The arq job that polls `GET /order/brand-my` on a schedule, maps cart line items into `stock_transactions`, and lets the existing 7-step ingestion pipeline take over from there. **This is the single most important branch in the entire integration.**
 
