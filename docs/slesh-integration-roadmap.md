@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B2 — Adapter Contract + Pydantic Schemas + Fixtures
-**Current step:** ⏳ Not started — B1 complete, ready to begin B2.1
-**Branch:** `develop` (will switch to `feat/slesh-b2-adapter-contract` at B2.1)
+**Phase:** B3 — Real Adapter Implementation
+**Current step:** ⏳ Not started — B2 complete, ready to begin B3.1
+**Branch:** `develop` (will switch to `feat/slesh-b3-adapter-impl` at B3.1)
 **Last update:** 2026-05-01
 **Blockers:** None
 
@@ -21,8 +21,8 @@
 | # | Branch | Focus | Risk | Effort | Status |
 |---|---|---|---|---|---|
 | **B1** | `feat/slesh-b1-config` | Token & config plumbing | Low | ~2 h | ✅ Done (a8e0b51) |
-| **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | 🔵 Next |
-| **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ⏸ Pending |
+| **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | ✅ Done (d2a9739) |
+| **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | 🔵 Next |
 | **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ⏸ Pending |
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ⏸ Pending |
 | **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | ⏸ Pending |
@@ -115,39 +115,23 @@ If the answer is "no" or "I don't know," the branch is not done. This applies ev
 
 **Steps:**
 
-- [ ] **B2.1** — Branch `feat/slesh-b2-adapter-contract`
-- [ ] **B2.2** — Rewrite `base.py`: remove `process_transaction` and `get_balance`; add abstract methods:
-  - `verify_token() -> Brand`
-  - `list_shops(experience_id: str | None = None) -> list[Shop]`
-  - `list_categories(experience_id: str | None = None) -> list[Category]`
-  - `list_products(experience_id: str | None = None) -> list[Product]`
-  - `list_orders(since_ts: datetime, until_ts: datetime, ...) -> AsyncIterator[Order]`
-- [ ] **B2.3** — Create `schemas.py` with Pydantic models:
-  - `Brand`, `Shop`, `Category`, `Product`, `Order`, `CartLine`, `Payment`, `User` (the wristband holder)
-  - All field names match Slesh exactly (`_id`, `_createdAt`, etc.)
-  - Use `model_config = ConfigDict(populate_by_name=True)` for the underscore prefixes
-- [ ] **B2.4** — Create `converters.py`:
-  - `cents_to_decimal(cents: int) -> Decimal` — divide by 100
-  - `unix_ms_to_datetime(ms: int) -> datetime` — UTC, with Europe/Rome conversion if needed
-  - `localized_name(name: dict, locale: str = "it") -> str` — picks `name.it` or fallback
-- [ ] **B2.5** — Set up fixture infrastructure:
-  - Create `tests/fixtures/slesh/` directory
-  - Create `tests/conftest.py` (or extend) with `@pytest.fixture mock_slesh_response` that loads JSON files from disk
-- [ ] **B2.6** — Record initial fixtures (THIS IS THE ONLY STEP THAT HITS REAL SLESH IN B2):
-  - `brand_my.json` — response from `GET /brand/my`
-  - `shop_my.json` — response from `GET /shop/my?brandId=...`
-  - One real order response from `GET /order/brand-my?brandId=...&fromTs=...&toTs=...&pageSize=5`
-- [ ] **B2.7** — Update `slesh.py` to a skeleton: subclass `BasePOSAdapter`, methods raise `NotImplementedError("ships in B3")`. This keeps the import surface stable.
-- [ ] **B2.8** — Write `test_schemas.py`: parse each fixture, assert key fields present, assert types correct
-- [ ] **B2.9** — Write `test_converters.py`: 800 cents → Decimal('8.00'), Unix ms → datetime, localized_name
-- [ ] **B2.10** — Run new tests (all pass)
-- [ ] **B2.11** — Run full regression (`pytest backend/`)
-- [ ] **B2.12** — Commit: `feat(slesh): add adapter contract, Pydantic schemas, and fixture-based test infrastructure`
-- [ ] **B2.13** — Push, merge to `develop`, delete branch
+- [x] **B2.1** — Branch `feat/slesh-b2-adapter-contract` created
+- [x] **B2.2** — Rewrote `base.py` with 5 read-only methods (verify_token, list_shops, list_categories, list_products, list_orders); old wrong-shaped methods removed
+- [x] **B2.3** — Created `schemas.py` with 11 Pydantic models (Brand, Shop, ShopAddress, Category, Product, CartLine, Payment, User, ShopRef, ExperienceRef, Order). Pythonic alias mapping (_id → id, _createdAt → created_at). Lenient + log strategy via extra='allow' + module-level dedup of unknown-field warnings.
+- [x] **B2.4** — Created `converters.py` with 6 functions: cents_to_decimal, decimal_to_cents, unix_ms_to_datetime, datetime_to_unix_ms, to_europe_rome, localized_name. Money is Decimal (never float). Locale cascade: it → en → any → ''. Warning dedup at module level.
+- [x] **B2.5** — Created `tests/fixtures/slesh/` directory + README + extended `conftest.py` with `slesh_fixture` helper.
+- [x] **B2.6** — Recorded 5 real Slesh fixtures (brand, shop, category, product, order_brand_my). PII redacted (emails, phones, VAT, addresses, wristband tags).
+- [x] **B2.7** — `slesh.py` rewritten as concrete skeleton: subclasses BasePOSAdapter, all 5 methods raise NotImplementedError pointing at B3. Importable, instantiable.
+- [x] **B2.8** — Wrote `test_schemas.py`: 23 tests covering all 5 schemas, alias mapping, lenient strategy, and the 4 real-world quirks discovered during fixture validation.
+- [x] **B2.9** — Wrote `test_converters.py`: 25 tests covering money (parametrized), timestamps (UTC + Rome), localized name cascade, and the warning-dedup regression.
+- [x] **B2.10** — Ran new tests: 23 + 25 = 48 passed (parametrized expands further to ~50 cases).
+- [x] **B2.11** — Full regression: **57 passed, 0 failed, 0.37s** total runtime.
+- [x] **B2.12** — Committed: `feat(slesh): adapter contract, schemas, converters, and fixture-based tests` (14 files, 2056+/15-).
+- [x] **B2.13** — Pushed branch, fast-forward merged to `develop`, local branch deleted.
 
 **Sandbox-defense note:** B2.5 and B2.6 implement Layer 2 of the 4-layer sandbox-defense strategy.
 
-**Completion record:** `[done] YYYY-MM-DD — commit ________`
+**Completion record:** `[done] 2026-05-01 — commit d2a9739`
 
 ---
 
