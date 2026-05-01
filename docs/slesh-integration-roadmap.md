@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B3 — Real Adapter Implementation
-**Current step:** ⏳ Not started — B2 complete, ready to begin B3.1
-**Branch:** `develop` (will switch to `feat/slesh-b3-adapter-impl` at B3.1)
+**Phase:** B4 — Schema Migrations
+**Current step:** ⏳ Not started — B3 complete, ready to begin B4.1
+**Branch:** `develop` (will switch to `feat/slesh-b4-schema-migrations` at B4.1)
 **Last update:** 2026-05-01
 **Blockers:** None
 
@@ -22,8 +22,8 @@
 |---|---|---|---|---|---|
 | **B1** | `feat/slesh-b1-config` | Token & config plumbing | Low | ~2 h | ✅ Done (a8e0b51) |
 | **B2** | `feat/slesh-b2-adapter-contract` | Adapter ABC + Pydantic schemas + fixtures | Low | ~6 h | ✅ Done (d2a9739) |
-| **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | 🔵 Next |
-| **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ⏸ Pending |
+| **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ✅ Done (f20ddff) |
+| **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | 🔵 Next |
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ⏸ Pending |
 | **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | ⏸ Pending |
 | **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | ⏸ Pending |
@@ -149,28 +149,24 @@ If the answer is "no" or "I don't know," the branch is not done. This applies ev
 
 **Steps:**
 
-- [ ] **B3.1** — Branch `feat/slesh-b3-adapter-impl`
-- [ ] **B3.2** — `client.py`: thin httpx.AsyncClient wrapper that:
-  - Reads token + brand_id from settings
-  - Sets `Authorization: Bearer ...` header
-  - Timeout from settings
-  - All methods are GET-only (no POST/PUT/DELETE — read-only by construction)
-- [ ] **B3.3** — `limiter.py`: token-bucket rate limiter (5 req/s default from settings)
-- [ ] **B3.4** — `retry.py`: exponential backoff on 429/5xx (1s → 2s → 4s, max 30s); circuit breaker after N consecutive errors
-- [ ] **B3.5** — Implement `SleshAdapter.verify_token()` → calls `GET /brand/my`, parses with Pydantic Brand schema
-- [ ] **B3.6** — Implement `list_shops`, `list_categories`, `list_products` — all paginated where applicable
-- [ ] **B3.7** — Implement `list_orders` as an async generator yielding parsed `Order` models, handling pagination via cursor
-- [ ] **B3.8** — Write `test_adapter_unit.py` — uses fixtures from B2, no network calls. Tests every method.
-- [ ] **B3.9** — Write `test_adapter_live.py` — ONE test, calls `verify_token()` against real Slesh. Decorated with `@pytest.mark.live` so CI skips it.
-- [ ] **B3.10** — Run unit tests (all pass, no network)
-- [ ] **B3.11** — Run live test ONCE manually: `pytest backend/tests/modules/pos/test_adapter_live.py -m live` → returns Sundance brand
-- [ ] **B3.12** — Run full regression
-- [ ] **B3.13** — Commit: `feat(slesh): implement read-only adapter with rate limiting, retry, and circuit breaker`
-- [ ] **B3.14** — Push, merge to `develop`, delete branch
+- [x] **B3.1** — Branch `feat/slesh-b3-adapter-impl` created
+- [x] **B3.2** — `client.py` (215 lines): httpx async wrapper, bearer auth, JSON parsing, 5 typed exceptions. Read-only by construction (only `get()` exists). `trust_env=False` to avoid stale local proxy state. **IPv4-only transport** to sidestep half-broken IPv6 on institutional networks (Cloudflare-fronted Slesh + asyncio = 'Connection reset' without happy-eyeballs fallback).
+- [x] **B3.3** — `limiter.py` (109 lines): token-bucket rate limiter, 5 req/s default, burst-friendly, monotonic time. Behavioral test verified 5-instant-then-200ms-throttle.
+- [x] **B3.4** — `retry.py` (286 lines): RetryPolicy + CircuitBreaker (closed/open/half_open). Retries 429/5xx/network only. Hystrix-standard thresholds: 5 fails → open, 60s cooldown, 1 probe. 6 behavioral tests verify state transitions.
+- [x] **B3.5** — `slesh.py` rewritten: composes client + limiter + retry. Two explicit pagination helpers (`_get_paginated` for shops/orders, `_get_list` for categories/products). Async generator `list_orders`. brand_id auto-injected. async context manager. `from_components()` for tests.
+- [x] **B3.6** — Cross-module verification: 7 sub-modules, 25 public symbols, all import cleanly; B1+B2 tests still 55/55.
+- [x] **B3.7** — `test_adapter_unit.py` (321 lines, 16 tests): fixture-based via in-file FakeSleshHTTPClient. Covers verify_token list-unwrap, multi-page pagination, brand_id injection, plain-list parsing, defensive shape checks, async generator, datetime conversion, context manager, stalled-pagination guard.
+- [x] **B3.8** — Unit tests run: 16 passed in 0.03s.
+- [x] **B3.9** — `test_adapter_live.py` (86 lines, 1 test): `verify_token` against real Slesh, marked `@pytest.mark.live`, auto-skips without token.
+- [x] **B3.10** — Live test run successfully against real Slesh `/brand/my`: **0.40s end-to-end**. First Sundance-brand parse from real production data through the full B3 stack.
+- [x] **B3.11** — Created `pytest.ini` registering the `live` marker + `addopts = -m "not live"` so default runs skip live tests. Full regression: **73 passed, 1 deselected, 0 failed in 0.43s**.
+- [x] **B3.12** — Committed: `feat(slesh): real adapter with httpx + rate limiter + retry + circuit breaker` (7 files, 1300+/36-).
+- [x] **B3.13** — Pushed branch.
+- [x] **B3.14** — Fast-forward merged to `develop`, local branch deleted.
 
 **Sandbox-defense note:** B3.3, B3.4 implement Layer 1 (read-only by construction) and Layer 3 (sparing live tests).
 
-**Completion record:** `[done] YYYY-MM-DD — commit ________`
+**Completion record:** `[done] 2026-05-01 — commit f20ddff`
 
 ---
 
