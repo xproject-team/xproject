@@ -6,10 +6,10 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B6 — Order Polling Worker
-**Current step:** ⏳ Not started — B5 complete, ready to begin B6.1
-**Branch:** `develop` (will switch to `feat/slesh-b6-order-poller` at B6.1)
-**Last update:** 2026-05-01
+**Phase:** B7 — Historical Backfill of One Past Event
+**Current step:** ⏳ Not started — B6 core done (tests B6.7-B6.14 deferred), ready for B7.1
+**Branch:** `develop` (will switch to `feat/slesh-b7-historical-backfill` at B7.1)
+**Last update:** 2026-05-02
 **Blockers:** None
 
 > **How to update this section:** When you start a step, change "Not started" to "In progress." When a branch finishes, update Phase to the next branch. Keep it short — this is the dashboard, not the log.
@@ -25,8 +25,8 @@
 | **B3** | `feat/slesh-b3-adapter-impl` | Real adapter (httpx + retry + rate limit) | Low | ~6 h | ✅ Done (f20ddff) |
 | **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ✅ Done (7fad547) |
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ✅ Done (e9e25e8) |
-| **B6** | `feat/slesh-b6-order-poller` | The polling worker (the core) | High | ~10 h | 🔵 Next |
-| **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | ⏸ Pending |
+| **B6** | `feat/slesh-b6-order-poller` | The polling worker (core: B6.1-B6.6) | High | ~10 h | ✅ Core done (3876248) — tests deferred |
+| **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | 🔵 Next |
 | **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | ⏸ Pending |
 
 **Total estimated effort:** ~43 hours (~9 working days at 5 h/day, ~6 days at 7 h/day)
