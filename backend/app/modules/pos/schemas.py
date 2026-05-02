@@ -249,7 +249,7 @@ class Order(_SleshModel):
     status:       str = "confirmed"
 
     # Shop is normally present but some order types may omit it
-    shop:         ShopRef | str | None = None
+    shop:         ShopRef | str | None = Field(alias="_shop", default=None)
     experience:   ExperienceRef | None = Field(alias="_experience", default=None)
 
     cart:         list[CartLine] = Field(default_factory=list)
