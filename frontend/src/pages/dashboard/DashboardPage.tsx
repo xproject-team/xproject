@@ -22,6 +22,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
+import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
 import {
@@ -532,8 +533,8 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
         </main>
       </div>
 
-      {/* Zone C — Alert sidebar (25%) */}
-      <div ref={alertsRef} className="flex-none">
+      {/* Zone C — Right column: alerts on top, wristband activity below */}
+      <div ref={alertsRef} className="flex-none flex flex-col overflow-y-auto max-h-screen">
         <AlertSidebar
           open={sidebarOpen}
           onToggle={() => setSidebarOpen((o) => !o)}
@@ -541,6 +542,11 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           acknowledged={acknowledged}
           onAcknowledge={handleAcknowledge}
         />
+        {sidebarOpen && (
+          <div className="border-l border-[#E2E8F0] bg-white p-3 w-80">
+            <WristbandActivityFeed eventId={eventId} limit={25} />
+          </div>
+        )}
       </div>
 
       {/* Bar detail overlay — sits above everything */}

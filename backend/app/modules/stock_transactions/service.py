@@ -255,6 +255,7 @@ class StockTransactionService:
             source_idempotency_key=data.source_idempotency_key,
             parent_transaction_id=None,  # parent itself
             note=data.note,
+            payment_type=data.payment_type,
         )
         await self.repo.insert(parent_tx)
 
@@ -274,6 +275,7 @@ class StockTransactionService:
                 source_idempotency_key=None,  # only parent carries the key
                 parent_transaction_id=parent_tx.id,
                 note=None,
+                payment_type=data.payment_type,
             )
             children.append(child_tx)
         if children:

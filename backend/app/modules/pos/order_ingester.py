@@ -58,6 +58,46 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Slesh payment.type → our PaymentType enum
+# ─────────────────────────────────────────────────────────────────────
+# Slesh sends payment.type as a free string with 7 documented values.
+# We map them 1:1 to our PaymentType enum, with one rename:
+# Slesh\'s "tap-to-pay" → our "tap_to_pay" (Postgres ENUMs cannot have
+# hyphens). Unknown values map to None — defensive, and the column is
+# nullable. A warning is logged once per unknown value (deduped).
+
+from app.modules.stock_transactions.models import PaymentType as _PaymentType
+
+_PAYMENT_TYPE_MAP: dict[str, _PaymentType] = {
+    "stripe":     _PaymentType.STRIPE,
+    "adyen":      _PaymentType.ADYEN,
+    "token":      _PaymentType.TOKEN,
+    "cash":       _PaymentType.CASH,
+    "card":       _PaymentType.CARD,
+    "tap-to-pay": _PaymentType.TAP_TO_PAY,
+    "tap_to_pay": _PaymentType.TAP_TO_PAY,
+    "mixed":      _PaymentType.MIXED,
+}
+_UNKNOWN_PAYMENT_TYPES_SEEN: set[str] = set()
+
+
+def _map_payment_type(slesh_type: str | None) -> _PaymentType | None:
+    if slesh_type is None:
+        return None
+    key = slesh_type.strip().lower()
+    if key in _PAYMENT_TYPE_MAP:
+        return _PAYMENT_TYPE_MAP[key]
+    if key not in _UNKNOWN_PAYMENT_TYPES_SEEN:
+        _UNKNOWN_PAYMENT_TYPES_SEEN.add(key)
+        logger.warning(
+            "ingest: unknown Slesh payment.type %r — column will be NULL. "
+            "Update _PAYMENT_TYPE_MAP in order_ingester.py.",
+            slesh_type,
+        )
+    return None
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Lookup cache
 # ─────────────────────────────────────────────────────────────────────
 # Live polling sees ~5-30 orders per cycle and re-issues the same lookups
@@ -172,13 +212,18 @@ async def ingest_order(
         )
         return result
 
+    # Resolve payment type once per order — same value applies to all cart lines.
+    payment_type = (
+        _map_payment_type(order.payment.type) if order.payment is not None else None
+    )
+
     # Per cart line, build a SaleIngestRequest and delegate.
     for line in order.cart:
         try:
             await _ingest_line(
                 db=db, order=order, line=line, bar=bar,
                 event_id=event_id, tenant_id=tenant_id, service=service,
-                result=result, cache=cache,
+                result=result, cache=cache, payment_type=payment_type,
             )
         except Exception as exc:    # noqa: BLE001 — log everything, never crash the poller
             result.lines_errors += 1
@@ -205,6 +250,7 @@ async def _ingest_line(
     service:   "StockTransactionService",
     result:    IngestResult,
     cache:     _LookupCache,
+    payment_type: _PaymentType | None = None,
 ) -> None:
     """Ingest one cart line. Mutates `result` in place."""
 
@@ -249,6 +295,7 @@ async def _ingest_line(
         price_cents  = int(line.gross_amount),     # already cents (int) per schema
         source       = TransactionSource.SLESH_POS,
         source_idempotency_key = f"slesh:{order.id}:{line.id}",
+        payment_type = payment_type,
     )
 
     sale_result = await service.ingest_sale(tenant_id=tenant_id, data=request)

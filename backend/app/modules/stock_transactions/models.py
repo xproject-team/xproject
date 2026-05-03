@@ -40,6 +40,25 @@ class TransactionSource(str, PyEnum):
     RECONCILIATION_CORRECTION = "reconciliation_correction"
 
 
+class PaymentType(str, PyEnum):
+    """Payment instrument used for a transaction.
+
+    Values mirror Slesh's payment.type vocabulary. The single rename:
+    Slesh's 'tap-to-pay' becomes 'tap_to_pay' (Postgres ENUMs don't
+    support hyphens). Mapping happens in order_ingester.py.
+
+    NULL on the column = unknown (manual adjustments, or rows ingested
+    before B8b migration). Backfill script populates historical rows.
+    """
+    STRIPE     = "stripe"
+    ADYEN      = "adyen"
+    TOKEN      = "token"          # NFC wristband
+    CASH       = "cash"
+    CARD       = "card"
+    TAP_TO_PAY = "tap_to_pay"
+    MIXED      = "mixed"
+
+
 # ─── Model ────────────────────────────────────────────────────────────────────
 
 class StockTransaction(TenantScopedModel):
@@ -131,3 +150,16 @@ class StockTransaction(TenantScopedModel):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # ─── Payment instrument (added in B8b for wristband activity feed) ───
+    payment_type: Mapped["PaymentType | None"] = mapped_column(
+        PgEnum(
+            PaymentType,
+            name="transaction_payment_type",
+            values_callable=lambda enum: [e.value for e in enum],
+            native_enum=True,
+            create_type=False,    # migration n1_add_payment_type creates it
+        ),
+        nullable=True,
+        index=True,
+    )

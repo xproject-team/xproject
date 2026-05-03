@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.stock_transactions.models import (
+    PaymentType,
     StockTransaction,
     TransactionSource,
 )
@@ -119,6 +120,7 @@ class StockTransactionRepository:
         source_idempotency_key: str | None,
         parent_transaction_id: UUID | None,
         note: str | None,
+        payment_type: PaymentType | None = None,
     ) -> StockTransaction:
         """Build (but don't persist) a StockTransaction. Service uses this
         to construct the parent + children set, then flush them together."""
@@ -135,6 +137,7 @@ class StockTransactionRepository:
             source_idempotency_key=source_idempotency_key,
             parent_transaction_id=parent_transaction_id,
             note=note,
+            payment_type=payment_type,
         )
 
     async def insert(self, tx: StockTransaction) -> StockTransaction:

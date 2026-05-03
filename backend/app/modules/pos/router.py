@@ -110,3 +110,91 @@ async def get_freshness(
         is_stale=is_stale,
         brand_id=state.brand_id,
     )
+
+
+
+# ─────────────────────────────────────────────────────────────────────
+# GET /api/v1/pos/wristband-activity
+# ─────────────────────────────────────────────────────────────────────
+class WristbandActivityRow(BaseModel):
+    transaction_id:  str
+    created_at:      datetime
+    bar_id:          str
+    bar_name:        str
+    product_id:      str
+    product_name:    str
+    qty:             float
+    price_cents:     int | None
+
+
+class WristbandActivityResponse(BaseModel):
+    rows:  list[WristbandActivityRow]
+    total: int
+
+
+@router.get(
+    '/wristband-activity',
+    response_model=WristbandActivityResponse,
+)
+async def get_wristband_activity(
+    db:        Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    event_id:  UUID | None = None,
+    limit:     int = 50,
+) -> WristbandActivityResponse:
+    from sqlalchemy.orm import selectinload
+    from app.modules.bars.models     import Bar
+    from app.modules.products.models import Product
+    from app.modules.stock_transactions.models import (
+        PaymentType,
+        StockTransaction,
+        TransactionSource,
+    )
+
+    capped_limit = max(1, min(200, limit))
+
+    stmt = (
+        select(StockTransaction)
+        .where(StockTransaction.tenant_id    == tenant_id)
+        .where(StockTransaction.source       == TransactionSource.SLESH_POS)
+        .where(StockTransaction.payment_type == PaymentType.TOKEN)
+        .where(StockTransaction.parent_transaction_id.is_(None))
+        .order_by(StockTransaction.created_at.desc())
+        .limit(capped_limit)
+    )
+    if event_id is not None:
+        stmt = stmt.where(StockTransaction.event_id == event_id)
+
+    res = await db.execute(stmt)
+    txs = res.scalars().all()
+
+    if not txs:
+        return WristbandActivityResponse(rows=[], total=0)
+
+    bar_ids     = {tx.bar_id for tx in txs}
+    product_ids = {tx.product_id for tx in txs}
+    bars_map = {
+        b.id: b for b in (
+            await db.execute(select(Bar).where(Bar.id.in_(bar_ids)))
+        ).scalars().all()
+    }
+    prods_map = {
+        p.id: p for p in (
+            await db.execute(select(Product).where(Product.id.in_(product_ids)))
+        ).scalars().all()
+    }
+
+    rows: list[WristbandActivityRow] = [
+        WristbandActivityRow(
+            transaction_id = str(tx.id),
+            created_at     = tx.created_at,
+            bar_id         = str(tx.bar_id),
+            bar_name       = bars_map[tx.bar_id].name if tx.bar_id in bars_map else '(unknown bar)',
+            product_id     = str(tx.product_id),
+            product_name   = prods_map[tx.product_id].name if tx.product_id in prods_map else '(unknown product)',
+            qty            = float(tx.qty),
+            price_cents    = tx.price_cents,
+        )
+        for tx in txs
+    ]
+    return WristbandActivityResponse(rows=rows, total=len(rows))

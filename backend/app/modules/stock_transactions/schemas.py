@@ -15,7 +15,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.modules.stock_transactions.models import TransactionSource
+from app.modules.stock_transactions.models import PaymentType, TransactionSource
 
 
 # ─── Ingestion payloads ───────────────────────────────────────────────────────
@@ -38,6 +38,10 @@ class SaleIngestRequest(BaseModel):
     qty: Decimal = Field(default=Decimal("1"), gt=0)
     price_cents: int = Field(..., ge=0, description="Total revenue for this sale in cents")
     source: TransactionSource
+    payment_type: "PaymentType | None" = Field(
+        default=None,
+        description="Payment instrument used. Required for slesh_pos source; optional otherwise.",
+    )
     source_idempotency_key: str | None = Field(
         default=None,
         max_length=255,
