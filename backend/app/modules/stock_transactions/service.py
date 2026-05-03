@@ -279,8 +279,12 @@ class StockTransactionService:
         if children:
             await self.repo.insert_many(children)
 
-        # 8. Commit everything atomically
-        await self.db.commit()
+        # 8. Caller is responsible for the commit boundary.
+        #    Router commits per HTTP request; slesh_poller commits per
+        #    poll cycle (covers many ingests + cursor advance atomically).
+        #    Removing the commit here unblocks batch ingestion: SQLAlchemy
+        #    no longer expires identity-map objects between cart lines,
+        #    eliminating the O(N^2) re-lookup loop seen during B7 backfill.
 
         # 9. Best-effort real-time publishing (failure shouldn't roll back)
         await self._publish_sale_event(tenant_id, data, parent_tx, children)

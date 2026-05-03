@@ -443,3 +443,8 @@ python -m app.scripts.backfill_slesh_event --experience-id <id> --from-ts <iso> 
 ---
 
 **End of roadmap. Update the Status Pointer at the top whenever your position changes.**
+## Token Rotation Reminder
+
+**Pre-Sundance task:** rotate the Slesh API token before June 14, 2026.
+Current token leaked into AI chat scrollback during B7 debugging on 2026-05-03.
+Risk: read-only access only; one private chat exposure. Rotate via email to product@team.slesh.it.

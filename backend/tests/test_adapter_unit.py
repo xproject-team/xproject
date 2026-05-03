@@ -138,9 +138,15 @@ async def test_list_shops_parses_paginated_envelope(slesh_fixture):
 @pytest.mark.asyncio
 async def test_list_shops_walks_multiple_pages(slesh_fixture):
     """Multi-page response: adapter pages until hasNextPage=False."""
+    import copy
     base = slesh_fixture("shop_my")
     page1 = {**base, "hasNextPage": True,  "to": 2}
-    page2 = {**base, "hasNextPage": False, "to": 4}
+    # Page 2 needs DIFFERENT doc ids so the infinite-loop guard
+    # (which detects same-first-doc-as-previous-page) does NOT fire.
+    page2_docs = copy.deepcopy(base["docs"])
+    for i, d in enumerate(page2_docs):
+        d["_id"] = f"page2_doc_{i}"
+    page2 = {**base, "docs": page2_docs, "hasNextPage": False, "to": 4}
     client  = FakeSleshHTTPClient([page1, page2])
     adapter = _make_adapter(client)
 

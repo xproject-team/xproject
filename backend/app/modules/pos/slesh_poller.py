@@ -47,9 +47,9 @@ from app.core.database            import AsyncSessionLocal
 from app.modules.stock_transactions.service import StockTransactionService
 
 from app.modules.pos.adapters.slesh import SleshAdapter
-from app.modules.pos.order_ingester import IngestResult, ingest_order
+from app.modules.pos.order_ingester import IngestResult, ingest_order, _LookupCache
 from app.modules.pos.poll_state     import (
-    PollWindow, get_or_init_state, compute_window,
+    PollWindow, get_or_init_state, compute_window, explicit_window,
     record_success, record_failure,
 )
 from app.modules.pos.poll_state_models import SleshPollState
@@ -95,11 +95,13 @@ class PollResult:
 # ─────────────────────────────────────────────────────────────────────
 async def poll_slesh_orders(
     *,
-    tenant_id:     UUID,
-    event_id:      UUID,
-    brand_id:      str | None = None,
-    experience_id: str | None = None,
-    until_ts:      datetime | None = None,
+    tenant_id:       UUID,
+    event_id:        UUID,
+    brand_id:        str | None = None,
+    experience_id:   str | None = None,
+    since_ts:        datetime | None = None,
+    until_ts:        datetime | None = None,
+    overlap_seconds: int | None = None,
 ) -> PollResult:
     """Run one poll cycle. Catches all exceptions; returns PollResult.
 
@@ -133,8 +135,19 @@ async def poll_slesh_orders(
             anchor_ts=until_ts,    # for backfill: anchor lookback to caller's window upper bound
         )
 
-        # ─── 2. Compute the [since, until] window with overlap ───────
-        window = compute_window(state, until_ts=until_ts)
+        # ─── 2. Compute the [since, until] window ────────────────────
+        # If caller provided BOTH since_ts and until_ts (backfill mode),
+        # bypass the cursor and use explicit bounds — eliminates idempotency
+        # replays on already-ingested orders. Otherwise: cursor-based logic
+        # (live polling, unchanged behavior).
+        if since_ts is not None and until_ts is not None:
+            window = explicit_window(since_ts=since_ts, until_ts=until_ts)
+        else:
+            window = compute_window(
+                state,
+                until_ts=until_ts,
+                **({"overlap_seconds": overlap_seconds} if overlap_seconds is not None else {}),
+            )
         result.window = window
         logger.info(
             "poll_slesh_orders: tenant=%s brand=%s exp=%s window=[%s -> %s] (%.0fs)",
@@ -211,6 +224,10 @@ async def _stream_and_ingest(
     # app/modules/stock_transactions/service.py __init__.
     txn_service = StockTransactionService(db)
 
+    # One cache shared across all orders in this chunk — turns thousands of
+    # repeat product/bar lookups into one lookup per distinct id.
+    cache = _LookupCache()
+
     async with SleshAdapter(
         token              = settings.slesh_api_token,
         brand_id           = brand_id,
@@ -233,6 +250,7 @@ async def _stream_and_ingest(
                 event_id  = event_id,
                 tenant_id = tenant_id,
                 service   = txn_service,
+                cache     = cache,
             )
             result.per_order_results.append(ingest)
 

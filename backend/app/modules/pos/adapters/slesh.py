@@ -287,17 +287,25 @@ class SleshAdapter(BasePOSAdapter):
         Walks pages forward via Slesh's `from` offset. Stops when
         `hasNextPage` is false or the response is malformed.
         """
-        # Slesh's `from` is 1-indexed (minimum 1). Omit it on the first
-        # page so we don't trigger a 400 BAD_REQUEST validation error.
-        offset = 0
-        page   = 0
+        # Slesh's `from` is 1-indexed inclusive (minimum 1). We compute the
+        # next page's offset ourselves rather than trusting `envelope.to`,
+        # which has caused infinite loops in production (Slesh sometimes
+        # ignores `from` if it is mid-page-range and re-serves the same
+        # first 100 docs, producing 778K idempotency-replays for ~300
+        # distinct orders — see B7 debugging journal).
+        total_seen      = 0
+        page            = 0
+        last_first_id: str | None = None
         while True:
             page_params: dict[str, Any] = {
                 **(params or {}),
                 "pageSize": page_size,
             }
-            if offset > 0:
-                page_params["from"] = offset
+            # First page: omit `from` (Slesh requires from >= 1; from=0 errors).
+            # Subsequent pages: 1-indexed start = total_seen + 1.
+            if total_seen > 0:
+                page_params["from"] = total_seen + 1
+
             envelope = await self._call(path, params=page_params, op_name=f"{op_name}#p{page}")
 
             if not isinstance(envelope, dict):
@@ -307,8 +315,25 @@ class SleshAdapter(BasePOSAdapter):
                 )
 
             docs = envelope.get("docs", [])
+
+            # Defensive infinite-loop guard: if Slesh ignores `from` and
+            # re-serves the same first doc as the previous page, stop.
+            if docs and page > 0:
+                first_id = docs[0].get("_id") if isinstance(docs[0], dict) else None
+                if first_id is not None and first_id == last_first_id:
+                    logger.warning(
+                        "%s pagination loop detected at page %d: "
+                        "first doc id %s repeated. Stopping to avoid loop.",
+                        op_name, page, first_id,
+                    )
+                    return
+                last_first_id = first_id
+            elif docs:
+                last_first_id = docs[0].get("_id") if isinstance(docs[0], dict) else None
+
             for d in docs:
                 yield d
+            total_seen += len(docs)
 
             if not envelope.get("hasNextPage"):
                 logger.debug("%s pagination complete: %d pages, total=%s",
@@ -316,7 +341,6 @@ class SleshAdapter(BasePOSAdapter):
                 return
 
             page  += 1
-            offset = envelope.get("to") or (offset + len(docs))
             if not docs:
                 # Defensive: hasNextPage=true but no docs returned.
                 # Stop to avoid an infinite loop.

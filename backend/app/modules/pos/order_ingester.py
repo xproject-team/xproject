@@ -58,6 +58,39 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Lookup cache
+# ─────────────────────────────────────────────────────────────────────
+# Live polling sees ~5-30 orders per cycle and re-issues the same lookups
+# for repeat products/bars. Backfill sees thousands of orders, with many
+# (food/supply) lines that we skip after the lookup. Without a cache,
+# each line = 1 DB roundtrip. With a cache, each *distinct* product/bar
+# = 1 DB roundtrip per ingest_order session.
+#
+# Cache lives for ONE ingest_order call (per-order). The caller (B6
+# polling worker) creates a fresh cache per chunk via the optional
+# `cache` parameter. If no cache is passed, we make one locally — keeps
+# the function safe to call standalone.
+
+class _LookupCache:
+    """Per-batch cache keyed by external_id (Slesh _id strings).
+
+    Two maps: products and bars. Values are SQLAlchemy ORM objects or
+    None (negative caching — remembers IDs that don't exist in our DB
+    so we don't re-query for them either).
+    """
+    def __init__(self) -> None:
+        self.products: dict[str, "Product | None"] = {}
+        self.bars:     dict[str, "Bar | None"]     = {}
+
+    @property
+    def stats(self) -> str:
+        return (
+            f"products: {len(self.products)} cached, "
+            f"bars: {len(self.bars)} cached"
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Result type
 # ─────────────────────────────────────────────────────────────────────
 @dataclass
@@ -93,6 +126,7 @@ async def ingest_order(
     event_id:  UUID,
     tenant_id: UUID,
     service:   "StockTransactionService",
+    cache:     "_LookupCache | None" = None,
 ) -> IngestResult:
     """Ingest a single Slesh Order into stock_transactions.
 
@@ -111,6 +145,8 @@ async def ingest_order(
     on the aggregate IngestResult.
     """
     result = IngestResult(order_id=order.id, lines_total=len(order.cart))
+    if cache is None:
+        cache = _LookupCache()
 
     # Resolve our local bar from the Slesh shop reference.
     # If the order has no shop or we can't match it, skip the whole order.
@@ -121,7 +157,11 @@ async def ingest_order(
         logger.warning("ingest_order %s: skipped — no shop reference", order.id)
         return result
 
-    bar = await _find_bar_by_slesh_id(db, tenant_id, shop_ref.id)
+    if shop_ref.id in cache.bars:
+        bar = cache.bars[shop_ref.id]
+    else:
+        bar = await _find_bar_by_slesh_id(db, tenant_id, shop_ref.id)
+        cache.bars[shop_ref.id] = bar
     if bar is None:
         result.lines_skipped += result.lines_total
         result.skip_reasons.append(f"no bar matched shop {shop_ref.id}")
@@ -138,7 +178,7 @@ async def ingest_order(
             await _ingest_line(
                 db=db, order=order, line=line, bar=bar,
                 event_id=event_id, tenant_id=tenant_id, service=service,
-                result=result,
+                result=result, cache=cache,
             )
         except Exception as exc:    # noqa: BLE001 — log everything, never crash the poller
             result.lines_errors += 1
@@ -164,6 +204,7 @@ async def _ingest_line(
     tenant_id: UUID,
     service:   "StockTransactionService",
     result:    IngestResult,
+    cache:     _LookupCache,
 ) -> None:
     """Ingest one cart line. Mutates `result` in place."""
 
@@ -175,7 +216,11 @@ async def _ingest_line(
         return
 
     # Resolve product. Skip if not in our catalog (run reference sync).
-    product = await _find_product_by_external_id(db, tenant_id, line.product)
+    if line.product in cache.products:
+        product = cache.products[line.product]
+    else:
+        product = await _find_product_by_external_id(db, tenant_id, line.product)
+        cache.products[line.product] = product
     if product is None:
         result.lines_skipped += 1
         result.skip_reasons.append(f"line {line.id}: no product matched {line.product}")
@@ -243,4 +288,4 @@ async def _find_product_by_external_id(
     return res.scalar_one_or_none()
 
 
-__all__ = ["IngestResult", "ingest_order"]
+__all__ = ["IngestResult", "ingest_order", "_LookupCache"]

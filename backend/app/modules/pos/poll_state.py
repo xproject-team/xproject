@@ -181,10 +181,31 @@ async def record_failure(
     await db.flush()
 
 
+
+def explicit_window(
+    since_ts: datetime,
+    until_ts: datetime,
+) -> PollWindow:
+    """Construct a PollWindow with explicit bounds, bypassing the cursor.
+
+    Used by historical backfill: each chunk has deterministic bounds, so
+    cursor-derived overlap windows would just cause idempotency replays
+    on already-ingested orders.
+    """
+    if since_ts.tzinfo is None:
+        since_ts = since_ts.replace(tzinfo=timezone.utc)
+    if until_ts.tzinfo is None:
+        until_ts = until_ts.replace(tzinfo=timezone.utc)
+    if since_ts >= until_ts:
+        raise ValueError(f"since_ts ({since_ts}) must be < until_ts ({until_ts})")
+    return PollWindow(since_ts=since_ts, until_ts=until_ts)
+
+
 __all__ = [
     "PollWindow",
     "get_or_init_state",
     "compute_window",
+    "explicit_window",
     "record_success",
     "record_failure",
 ]

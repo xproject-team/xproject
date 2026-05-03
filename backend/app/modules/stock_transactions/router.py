@@ -117,6 +117,10 @@ async def ingest_sale(
     service = StockTransactionService(db)
     try:
         result = await service.ingest_sale(tenant_id, payload)
+        # ingest_sale no longer commits internally — caller's responsibility.
+        # Skip commit if it was an idempotency replay (no new writes).
+        if not result.idempotency_replay:
+            await db.commit()
     except EventNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
