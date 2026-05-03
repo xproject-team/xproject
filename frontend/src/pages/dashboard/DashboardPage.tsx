@@ -21,6 +21,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
+import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
 import {
@@ -496,7 +497,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
         <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
+                <FreshnessBadge />
+              </div>
               <p className="text-xs text-[#4A5568] mt-0.5">
                 {eventName} · {eventStatusLabel} · {barKpis.length} {barKpis.length === 1 ? 'bar' : 'bars'}
               </p>
