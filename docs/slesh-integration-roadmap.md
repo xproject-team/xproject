@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B8 — Frontend Freshness Indicator + Wristband Activity
-**Current step:** ⏳ Not started — B7 done, ready for B8.1
-**Branch:** `develop` (will switch to `feat/slesh-b8-frontend-freshness` at B8.1)
+**Phase:** B8 — Wristband Activity Feed (freshness indicator already shipped)
+**Current step:** ⏳ Freshness done (commit 2e9aeea). Wristband feed next.
+**Branch:** `develop` (will switch to `feat/slesh-b8-wristband-activity` next)
 **Last update:** 2026-05-02
 **Blockers:** None
 
@@ -27,7 +27,8 @@
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ✅ Done (e9e25e8) |
 | **B6** | `feat/slesh-b6-order-poller` | The polling worker (core: B6.1-B6.6) | High | ~10 h | ✅ Core done (3876248) — tests deferred |
 | **B7** | `feat/slesh-b7-historical-backfill` | Replay past event + 4 root-cause perf fixes | Medium | ~5 h | ✅ Done (7b6c11b) |
-| **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | 🔵 Next |
+| **B8a** | `feat/slesh-b8-frontend-freshness` | Freshness indicator | Low | ~3 h | ✅ Done (2e9aeea) |
+| **B8b** | `feat/slesh-b8-wristband-activity` | Wristband Activity feed | Low | ~5 h | 🔵 Next |
 
 **Total estimated effort:** ~43 hours (~9 working days at 5 h/day, ~6 days at 7 h/day)
 
