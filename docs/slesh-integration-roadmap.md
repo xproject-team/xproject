@@ -6,9 +6,9 @@
 
 ## 🧭 Status Pointer (UPDATE AS YOU GO)
 
-**Phase:** B7 — Historical Backfill of One Past Event
-**Current step:** ⏳ Not started — B6 core done (tests B6.7-B6.14 deferred), ready for B7.1
-**Branch:** `develop` (will switch to `feat/slesh-b7-historical-backfill` at B7.1)
+**Phase:** B8 — Frontend Freshness Indicator + Wristband Activity
+**Current step:** ⏳ Not started — B7 done, ready for B8.1
+**Branch:** `develop` (will switch to `feat/slesh-b8-frontend-freshness` at B8.1)
 **Last update:** 2026-05-02
 **Blockers:** None
 
@@ -26,8 +26,8 @@
 | **B4** | `feat/slesh-b4-schema-migrations` | `external_pos_id` migrations | Low | ~1 h | ✅ Done (7fad547) |
 | **B5** | `feat/slesh-b5-reference-sync` | Sync shops/products/categories from Slesh | Medium | ~5 h | ✅ Done (e9e25e8) |
 | **B6** | `feat/slesh-b6-order-poller` | The polling worker (core: B6.1-B6.6) | High | ~10 h | ✅ Core done (3876248) — tests deferred |
-| **B7** | `feat/slesh-b7-historical-backfill` | Replay one past Sundance event | Medium | ~5 h | 🔵 Next |
-| **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | ⏸ Pending |
+| **B7** | `feat/slesh-b7-historical-backfill` | Replay past event + 4 root-cause perf fixes | Medium | ~5 h | ✅ Done (7b6c11b) |
+| **B8** | `feat/slesh-b8-frontend-freshness` | Freshness indicator + Wristband Activity | Low | ~8 h | 🔵 Next |
 
 **Total estimated effort:** ~43 hours (~9 working days at 5 h/day, ~6 days at 7 h/day)
 
