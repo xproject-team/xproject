@@ -9,7 +9,7 @@ from enum import Enum as PyEnum
 from uuid import UUID
 
 from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import UUID as PgUUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.tenancy import TenantScopedModel
@@ -55,5 +55,17 @@ class Event(TenantScopedModel):
         DateTime(timezone=True), nullable=True,
     )
     ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    # ─── Weather snapshot (added Phase B — weather integration) ──────────
+    # Full Open-Meteo response (current + hourly arrays). NULL for events
+    # whose weather has not yet been synced. JSONB rather than normalised
+    # rows because the snapshot is always read whole and we want to keep
+    # the raw API response for future ML / explainability work.
+    weather_snapshot: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True,
+    )
+    weather_fetched_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )

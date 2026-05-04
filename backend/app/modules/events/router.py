@@ -12,6 +12,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import datetime, timezone
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
@@ -258,3 +260,51 @@ async def end_event(
         _raise_http(e)
     response_dict = await service.build_response_dict(event)
     return EventResponse.model_validate(response_dict)
+
+
+
+# ─── Weather (B.10) ───────────────────────────────────────────────────────────
+class EventWeatherResponse(BaseModel):
+    """Slim shape for the dashboard weather pill + post-event reports.
+
+    `snapshot` is the raw Open-Meteo response (JSONB column dumped as-is)
+    when present, or None if the weather sync has not run for this event.
+    The frontend reads `snapshot.current` for the pill and `snapshot.hourly`
+    for the upcoming-hours strip.
+    """
+    event_id:           UUID
+    weather_fetched_at: datetime | None = None
+    snapshot:           dict | None      = None
+    is_stale:           bool             = False    # >2h since fetch
+
+
+@router.get("/{event_id}/weather", response_model=EventWeatherResponse)
+async def get_event_weather(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> EventWeatherResponse:
+    """Return the most recent weather snapshot persisted on the event row.
+
+    Behavior:
+      - 404 if the event does not exist for this tenant.
+      - 200 with snapshot=None if the event exists but weather was never synced.
+      - 200 with the full snapshot otherwise.
+    """
+    service = EventService(db)
+    try:
+        event = await service.get_event(tenant_id, event_id)
+    except EventNotFoundError as e:
+        _raise_http(e)
+
+    is_stale = False
+    if event.weather_fetched_at is not None:
+        age = datetime.now(tz=timezone.utc) - event.weather_fetched_at
+        is_stale = age.total_seconds() > 7200    # 2 hours
+
+    return EventWeatherResponse(
+        event_id           = event.id,
+        weather_fetched_at = event.weather_fetched_at,
+        snapshot           = event.weather_snapshot,
+        is_stale           = is_stale,
+    )

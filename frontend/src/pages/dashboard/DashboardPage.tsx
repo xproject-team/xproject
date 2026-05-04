@@ -22,6 +22,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
+import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
@@ -501,6 +502,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
               <div className="flex items-center gap-3">
                 <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
                 <FreshnessBadge />
+                <WeatherPill eventId={eventId} />
               </div>
               <p className="text-xs text-[#4A5568] mt-0.5">
                 {eventName} · {eventStatusLabel} · {barKpis.length} {barKpis.length === 1 ? 'bar' : 'bars'}
