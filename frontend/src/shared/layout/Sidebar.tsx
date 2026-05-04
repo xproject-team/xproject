@@ -159,6 +159,8 @@ function getNavItems(role: MockUser['role']): NavItem[] {
       return [
         { label: 'Dashboard',   path: '/dashboard',   icon: ICONS.grid },
         { label: 'Events',      path: '/events',       icon: ICONS.calendar },
+        { label: 'Bars',       path: '/bars',         icon: ICONS.bell },
+        { label: 'Products',   path: '/products',     icon: ICONS.bell },
         { label: 'Inventory',   path: '/inventory',    icon: ICONS.package },
         { label: 'Alerts',      path: '/alerts',       icon: ICONS.bell },
         { label: 'Warehouse',   path: '/warehouse',    icon: ICONS.warehouse },

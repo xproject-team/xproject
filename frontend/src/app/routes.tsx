@@ -12,6 +12,12 @@ import EventCreatePage       from '@/pages/events/EventCreatePage'
 import EventDetailPage       from '@/pages/events/EventDetailPage'
 import InventoryPage         from '@/pages/inventory/InventoryPage'
 import AlertsPage            from '@/pages/alerts/AlertsPage'
+import BarsListPage          from '@/pages/bars/BarsListPage'
+import BarDetailPage         from '@/pages/bars/BarDetailPage'
+import BarCreatePage         from '@/pages/bars/BarCreatePage'
+import ProductsListPage      from '@/pages/products/ProductsListPage'
+import ProductDetailPage     from '@/pages/products/ProductDetailPage'
+import ProductCreatePage     from '@/pages/products/ProductCreatePage'
 import WarehousePage          from '@/pages/warehouse/WarehousePage'
 import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReviewPage'
@@ -145,6 +151,65 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canCreateEvent">
             <EventCreatePage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /bars — Owner (canViewAllBars) and Manager
+       * Manager sees all bars for the tenant; Bartender sees only their bar
+       * via the existing dashboard (BarDashboardView) — not this page.
+       */}
+      <Route
+        path="/bars"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <BarsListPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/bars/new"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <BarCreatePage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/bars/:id"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <BarDetailPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /products — Owner only (canViewAllBars used as the 'admin-y' gate;
+       * Manager and Bartender don't manage product catalog from the UI).
+       * /products/new must be declared before /products/:id so the static
+       * 'new' segment is not swallowed by the dynamic :id param.
+       */}
+      <Route
+        path="/products"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <ProductsListPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/products/new"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <ProductCreatePage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/products/:id"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <ProductDetailPage />
           </RequirePermission>
         }
       />
