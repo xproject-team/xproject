@@ -29,6 +29,7 @@ from app.modules.recipes.schemas import (
     RecipeItemCreate,
     RecipeItemUpdate,
     RecipeUpdate,
+    RecipeWithItemsCreate,
 )
 
 
@@ -169,6 +170,106 @@ class RecipeService:
         recipe = await self.get_recipe(tenant_id, recipe_id)
         await self.repo.delete_recipe(recipe)
         await self.db.commit()
+
+    # ─── Atomic create-with-items (F.7b) ─────────────────────────────────────
+
+    async def create_recipe_with_items(
+        self,
+        tenant_id: UUID,
+        data: RecipeWithItemsCreate,
+    ) -> Recipe:
+        """Create a recipe header + every ingredient line in ONE transaction.
+
+        Re-runs every validation that the separate endpoints would have run:
+        - drink exists, not archived, is product_type=DRINK
+        - no existing recipe for this drink
+        - each ingredient_product_id exists, is not archived
+        - no ingredient equals the drink (self-reference)
+        - no duplicate ingredient_product_id within the payload (Pydantic-checked)
+
+        On any failure the SQLAlchemy session is rolled back and a typed
+        exception is raised — no half-created recipe is left in the DB.
+        """
+        # ── 1. Validate the drink (same as create_recipe) ──
+        drink = await self.products.get_by_id(tenant_id, data.drink_product_id)
+        if drink is None:
+            raise DrinkProductNotFoundError(
+                f"Product {data.drink_product_id} not found"
+            )
+        if drink.is_archived:
+            raise ProductArchivedError(
+                f"Cannot create a recipe for archived product '{drink.name}'",
+                product_role="drink",
+            )
+        if drink.product_type is not ProductType.DRINK:
+            raise NotADrinkError(
+                f"Product '{drink.name}' is a {drink.product_type.value}, "
+                f"not a drink. Recipes can only be created for drinks.",
+                actual_type=drink.product_type.value,
+            )
+        existing_recipe = await self.repo.get_by_drink_product_id(
+            tenant_id, data.drink_product_id,
+        )
+        if existing_recipe is not None:
+            raise DuplicateRecipeError(
+                f"A recipe already exists for '{drink.name}'. "
+                f"Update the existing one or delete it first.",
+                existing=existing_recipe,
+            )
+
+        # ── 2. Pre-validate every ingredient BEFORE any write ──
+        # We do this up front so a bad ingredient at index 4 doesn't leave
+        # a recipe + 3 valid items in flight before we discover the failure.
+        for item in data.items:
+            ingredient = await self.products.get_by_id(
+                tenant_id, item.ingredient_product_id,
+            )
+            if ingredient is None:
+                raise IngredientProductNotFoundError(
+                    f"Ingredient product {item.ingredient_product_id} not found"
+                )
+            if ingredient.is_archived:
+                raise ProductArchivedError(
+                    f"Cannot use archived product '{ingredient.name}' as an ingredient",
+                    product_role="ingredient",
+                )
+            if item.ingredient_product_id == data.drink_product_id:
+                raise SelfReferenceError(
+                    "A recipe cannot contain itself as an ingredient."
+                )
+
+        # ── 3. Persist header + items in one transaction ──
+        # We bypass create_recipe()'s internal commit by calling repo
+        # directly. The single commit at the end ensures atomicity.
+        try:
+            recipe_create = RecipeCreate(
+                drink_product_id = data.drink_product_id,
+                yield_qty        = data.yield_qty,
+                yield_unit       = data.yield_unit,
+                notes            = data.notes,
+                display_name     = data.display_name,
+                template_id      = data.template_id,
+            )
+            recipe = await self.repo.create_recipe(tenant_id, recipe_create)
+            # flush so we have recipe.id for the items
+            await self.db.flush()
+
+            for item in data.items:
+                item_create = RecipeItemCreate(
+                    ingredient_product_id = item.ingredient_product_id,
+                    qty                   = item.qty,
+                    unit                  = item.unit,
+                    note                  = item.note,
+                )
+                await self.repo.create_item(tenant_id, recipe.id, item_create)
+
+            await self.db.commit()
+        except Exception:
+            await self.db.rollback()
+            raise
+
+        # Re-fetch to materialize the items relationship for the response
+        return await self.get_recipe(tenant_id, recipe.id)
 
     # ─── Item add / update / delete ───────────────────────────────────────────
 

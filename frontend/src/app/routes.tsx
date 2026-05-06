@@ -18,6 +18,9 @@ import BarCreatePage         from '@/pages/bars/BarCreatePage'
 import ProductsListPage      from '@/pages/products/ProductsListPage'
 import ProductDetailPage     from '@/pages/products/ProductDetailPage'
 import ProductCreatePage     from '@/pages/products/ProductCreatePage'
+import CatalogPage           from '@/pages/catalog/CatalogPage'
+import RecipeDetailPage      from '@/pages/recipes/RecipeDetailPage'
+import RecipeCreatePage      from '@/pages/recipes/RecipeCreatePage'
 import WarehousePage          from '@/pages/warehouse/WarehousePage'
 import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReviewPage'
@@ -210,6 +213,37 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canViewAllBars">
             <ProductDetailPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /catalog — unified Products + Recipes admin page (Owner).
+       * Top-tabbed shell that mounts ProductsListPage and RecipesListPage.
+       * Detail/create pages for products keep their /products/* routes;
+       * recipes get their own /catalog/recipes/* segment so the user can
+       * always tell which entity they\'re editing from the URL alone.
+       */}
+      <Route
+        path="/catalog"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <CatalogPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/catalog/recipes/new"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <RecipeCreatePage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/catalog/recipes/:id"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <RecipeDetailPage />
           </RequirePermission>
         }
       />

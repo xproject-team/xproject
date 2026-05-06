@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "source": "IBA Official Cocktails — curated subset for XProject seed",
+  "license": "Recipe data is factual / standard bartending reference; ml values are industry consensus.",
+  "templates": [
+    {
+      "slug": "long_island_iced_tea",
+      "name": "Long Island Iced Tea",
+      "category": "contemporary",
+      "description": "Strong long drink combining five base spirits topped with cola.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "vodka",      "label": "Vodka",       "qty": 15, "unit": "ml"},
+        {"role": "gin",        "label": "Gin",         "qty": 15, "unit": "ml"},
+        {"role": "rum_white",  "label": "White Rum",   "qty": 15, "unit": "ml"},
+        {"role": "tequila",    "label": "Tequila",     "qty": 15, "unit": "ml"},
+        {"role": "triple_sec", "label": "Triple Sec",  "qty": 15, "unit": "ml"},
+        {"role": "lemon_juice","label": "Lemon Juice", "qty": 25, "unit": "ml"},
+        {"role": "syrup_sugar","label": "Sugar Syrup", "qty": 30, "unit": "ml"},
+        {"role": "cola",       "label": "Cola top",    "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "mojito",
+      "name": "Mojito",
+      "category": "contemporary",
+      "description": "Cuban highball — white rum, lime, mint, sugar, soda.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "rum_white",   "label": "White Rum",      "qty": 45, "unit": "ml"},
+        {"role": "lime_juice",  "label": "Lime Juice",     "qty": 20, "unit": "ml"},
+        {"role": "syrup_sugar", "label": "Sugar Syrup",    "qty": 10, "unit": "ml"},
+        {"role": "mint_leaves", "label": "Mint Leaves",    "qty": 6,  "unit": "piece"},
+        {"role": "soda_water",  "label": "Soda Water",     "qty": 60, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "negroni",
+      "name": "Negroni",
+      "category": "unforgettable",
+      "description": "Classic Italian aperitivo — equal parts gin, Campari, sweet vermouth.",
+      "glass_type": "rocks",
+      "items": [
+        {"role": "gin",            "label": "Gin",            "qty": 30, "unit": "ml"},
+        {"role": "campari",        "label": "Campari",        "qty": 30, "unit": "ml"},
+        {"role": "vermouth_sweet", "label": "Sweet Vermouth", "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "margarita",
+      "name": "Margarita",
+      "category": "unforgettable",
+      "description": "Tequila, triple sec, lime juice, salt rim.",
+      "glass_type": "margarita",
+      "items": [
+        {"role": "tequila",     "label": "Tequila",     "qty": 35, "unit": "ml"},
+        {"role": "triple_sec",  "label": "Triple Sec",  "qty": 20, "unit": "ml"},
+        {"role": "lime_juice",  "label": "Lime Juice",  "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "espresso_martini",
+      "name": "Espresso Martini",
+      "category": "new_era",
+      "description": "Vodka, coffee liqueur, fresh espresso — shaken hard.",
+      "glass_type": "martini",
+      "items": [
+        {"role": "vodka",            "label": "Vodka",            "qty": 50, "unit": "ml"},
+        {"role": "liqueur_coffee",   "label": "Coffee Liqueur",   "qty": 10, "unit": "ml"},
+        {"role": "espresso",         "label": "Fresh Espresso",   "qty": 30, "unit": "ml"},
+        {"role": "syrup_sugar",      "label": "Sugar Syrup",      "qty": 10, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "aperol_spritz",
+      "name": "Aperol Spritz",
+      "category": "contemporary",
+      "description": "Italian aperitivo — Aperol, prosecco, soda, orange slice.",
+      "glass_type": "wine",
+      "items": [
+        {"role": "aperol",     "label": "Aperol",     "qty": 60, "unit": "ml"},
+        {"role": "prosecco",   "label": "Prosecco",   "qty": 90, "unit": "ml"},
+        {"role": "soda_water", "label": "Soda Water", "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "old_fashioned",
+      "name": "Old Fashioned",
+      "category": "unforgettable",
+      "description": "Bourbon or rye, sugar, bitters, orange peel.",
+      "glass_type": "rocks",
+      "items": [
+        {"role": "whiskey_bourbon",  "label": "Bourbon",            "qty": 45, "unit": "ml"},
+        {"role": "syrup_sugar",      "label": "Sugar Syrup",        "qty": 10, "unit": "ml"},
+        {"role": "bitters_angostura","label": "Angostura Bitters",  "qty": 2,  "unit": "dash"}
+      ]
+    },
+    {
+      "slug": "manhattan",
+      "name": "Manhattan",
+      "category": "unforgettable",
+      "description": "Rye whiskey, sweet vermouth, bitters.",
+      "glass_type": "martini",
+      "items": [
+        {"role": "whiskey_rye",       "label": "Rye Whiskey",       "qty": 50, "unit": "ml"},
+        {"role": "vermouth_sweet",    "label": "Sweet Vermouth",    "qty": 20, "unit": "ml"},
+        {"role": "bitters_angostura", "label": "Angostura Bitters", "qty": 1,  "unit": "dash"}
+      ]
+    },
+    {
+      "slug": "martini_dry",
+      "name": "Dry Martini",
+      "category": "unforgettable",
+      "description": "Gin and dry vermouth, lemon twist or olive.",
+      "glass_type": "martini",
+      "items": [
+        {"role": "gin",         "label": "Gin",         "qty": 60, "unit": "ml"},
+        {"role": "vermouth_dry","label": "Dry Vermouth","qty": 10, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "moscow_mule",
+      "name": "Moscow Mule",
+      "category": "contemporary",
+      "description": "Vodka, lime, ginger beer in a copper mug.",
+      "glass_type": "copper_mug",
+      "items": [
+        {"role": "vodka",       "label": "Vodka",        "qty": 45, "unit": "ml"},
+        {"role": "lime_juice",  "label": "Lime Juice",   "qty": 15, "unit": "ml"},
+        {"role": "ginger_beer", "label": "Ginger Beer",  "qty": 120,"unit": "ml"}
+      ]
+    },
+    {
+      "slug": "daiquiri",
+      "name": "Daiquiri",
+      "category": "unforgettable",
+      "description": "White rum, lime juice, sugar — shaken.",
+      "glass_type": "coupe",
+      "items": [
+        {"role": "rum_white",   "label": "White Rum",   "qty": 45, "unit": "ml"},
+        {"role": "lime_juice",  "label": "Lime Juice",  "qty": 25, "unit": "ml"},
+        {"role": "syrup_sugar", "label": "Sugar Syrup", "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "whiskey_sour",
+      "name": "Whiskey Sour",
+      "category": "unforgettable",
+      "description": "Whiskey, lemon juice, sugar, optional egg white.",
+      "glass_type": "rocks",
+      "items": [
+        {"role": "whiskey_bourbon","label": "Bourbon",     "qty": 45, "unit": "ml"},
+        {"role": "lemon_juice",   "label": "Lemon Juice", "qty": 30, "unit": "ml"},
+        {"role": "syrup_sugar",   "label": "Sugar Syrup", "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "cosmopolitan",
+      "name": "Cosmopolitan",
+      "category": "contemporary",
+      "description": "Vodka, triple sec, lime, cranberry.",
+      "glass_type": "martini",
+      "items": [
+        {"role": "vodka",         "label": "Vodka",         "qty": 40, "unit": "ml"},
+        {"role": "triple_sec",    "label": "Triple Sec",    "qty": 15, "unit": "ml"},
+        {"role": "lime_juice",    "label": "Lime Juice",    "qty": 15, "unit": "ml"},
+        {"role": "cranberry_juice","label": "Cranberry Juice","qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "caipirinha",
+      "name": "Caipirinha",
+      "category": "contemporary",
+      "description": "Brazilian — cachaça, lime, sugar.",
+      "glass_type": "rocks",
+      "items": [
+        {"role": "cachaca",     "label": "Cachaça",       "qty": 60, "unit": "ml"},
+        {"role": "lime_fresh",  "label": "Fresh Lime",    "qty": 1,  "unit": "piece"},
+        {"role": "syrup_sugar", "label": "Sugar Syrup",   "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "pina_colada",
+      "name": "Piña Colada",
+      "category": "unforgettable",
+      "description": "White rum, coconut cream, pineapple juice.",
+      "glass_type": "hurricane",
+      "items": [
+        {"role": "rum_white",        "label": "White Rum",        "qty": 50, "unit": "ml"},
+        {"role": "coconut_cream",    "label": "Coconut Cream",    "qty": 30, "unit": "ml"},
+        {"role": "pineapple_juice",  "label": "Pineapple Juice",  "qty": 90, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "mai_tai",
+      "name": "Mai Tai",
+      "category": "unforgettable",
+      "description": "Tiki classic — rum, orange curaçao, orgeat, lime.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "rum_white",     "label": "White Rum",       "qty": 30, "unit": "ml"},
+        {"role": "rum_dark",      "label": "Dark Rum",        "qty": 30, "unit": "ml"},
+        {"role": "orange_curacao","label": "Orange Curaçao",  "qty": 15, "unit": "ml"},
+        {"role": "syrup_orgeat",  "label": "Orgeat Syrup",    "qty": 15, "unit": "ml"},
+        {"role": "lime_juice",    "label": "Lime Juice",      "qty": 25, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "tom_collins",
+      "name": "Tom Collins",
+      "category": "unforgettable",
+      "description": "Gin, lemon juice, sugar, soda.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "gin",         "label": "Gin",         "qty": 45, "unit": "ml"},
+        {"role": "lemon_juice", "label": "Lemon Juice", "qty": 30, "unit": "ml"},
+        {"role": "syrup_sugar", "label": "Sugar Syrup", "qty": 15, "unit": "ml"},
+        {"role": "soda_water",  "label": "Soda Water",  "qty": 90, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "gin_tonic",
+      "name": "Gin & Tonic",
+      "category": "contemporary",
+      "description": "Highball — gin and tonic over ice with lime.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "gin",         "label": "Gin",         "qty": 50, "unit": "ml"},
+        {"role": "tonic_water", "label": "Tonic Water", "qty": 150,"unit": "ml"}
+      ]
+    },
+    {
+      "slug": "cuba_libre",
+      "name": "Cuba Libre",
+      "category": "contemporary",
+      "description": "Rum and cola with a lime squeeze.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "rum_white", "label": "White Rum",  "qty": 50, "unit": "ml"},
+        {"role": "cola",      "label": "Cola",       "qty": 120,"unit": "ml"},
+        {"role": "lime_juice","label": "Lime Juice", "qty": 10, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "screwdriver",
+      "name": "Screwdriver",
+      "category": "contemporary",
+      "description": "Vodka and orange juice over ice.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "vodka",       "label": "Vodka",       "qty": 50, "unit": "ml"},
+        {"role": "orange_juice","label": "Orange Juice","qty": 100,"unit": "ml"}
+      ]
+    },
+    {
+      "slug": "sex_on_the_beach",
+      "name": "Sex on the Beach",
+      "category": "contemporary",
+      "description": "Vodka, peach schnapps, orange + cranberry juice.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "vodka",          "label": "Vodka",            "qty": 40, "unit": "ml"},
+        {"role": "peach_schnapps", "label": "Peach Schnapps",   "qty": 20, "unit": "ml"},
+        {"role": "orange_juice",   "label": "Orange Juice",     "qty": 40, "unit": "ml"},
+        {"role": "cranberry_juice","label": "Cranberry Juice",  "qty": 40, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "bloody_mary",
+      "name": "Bloody Mary",
+      "category": "contemporary",
+      "description": "Vodka, tomato juice, lemon, spices.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "vodka",        "label": "Vodka",         "qty": 45, "unit": "ml"},
+        {"role": "tomato_juice", "label": "Tomato Juice",  "qty": 90, "unit": "ml"},
+        {"role": "lemon_juice",  "label": "Lemon Juice",   "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "vodka_tonic",
+      "name": "Vodka Tonic",
+      "category": "contemporary",
+      "description": "Highball — vodka and tonic over ice.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "vodka",       "label": "Vodka",       "qty": 50, "unit": "ml"},
+        {"role": "tonic_water", "label": "Tonic Water", "qty": 150,"unit": "ml"}
+      ]
+    },
+    {
+      "slug": "gimlet",
+      "name": "Gimlet",
+      "category": "unforgettable",
+      "description": "Gin and lime cordial — short and tart.",
+      "glass_type": "coupe",
+      "items": [
+        {"role": "gin",        "label": "Gin",         "qty": 50, "unit": "ml"},
+        {"role": "lime_juice", "label": "Lime Juice",  "qty": 25, "unit": "ml"},
+        {"role": "syrup_sugar","label": "Sugar Syrup", "qty": 10, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "white_russian",
+      "name": "White Russian",
+      "category": "contemporary",
+      "description": "Vodka, coffee liqueur, cream.",
+      "glass_type": "rocks",
+      "items": [
+        {"role": "vodka",          "label": "Vodka",          "qty": 50, "unit": "ml"},
+        {"role": "liqueur_coffee", "label": "Coffee Liqueur", "qty": 20, "unit": "ml"},
+        {"role": "cream",          "label": "Heavy Cream",    "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "tequila_sunrise",
+      "name": "Tequila Sunrise",
+      "category": "contemporary",
+      "description": "Tequila, orange juice, grenadine — layered.",
+      "glass_type": "highball",
+      "items": [
+        {"role": "tequila",      "label": "Tequila",       "qty": 45, "unit": "ml"},
+        {"role": "orange_juice", "label": "Orange Juice",  "qty": 90, "unit": "ml"},
+        {"role": "grenadine",    "label": "Grenadine",     "qty": 15, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "shot_tequila",
+      "name": "Tequila Shot",
+      "category": "shooter",
+      "description": "Single tequila shot, salt and lime.",
+      "glass_type": "shot",
+      "items": [
+        {"role": "tequila", "label": "Tequila", "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "shot_jagermeister",
+      "name": "Jägermeister Shot",
+      "category": "shooter",
+      "description": "Single Jägermeister shot — served chilled.",
+      "glass_type": "shot",
+      "items": [
+        {"role": "jagermeister", "label": "Jägermeister", "qty": 30, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "wine_pour_red",
+      "name": "Red Wine Pour",
+      "category": "wine",
+      "description": "Standard 5oz red wine pour.",
+      "glass_type": "wine",
+      "items": [
+        {"role": "wine_red", "label": "Red Wine", "qty": 150, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "wine_pour_white",
+      "name": "White Wine Pour",
+      "category": "wine",
+      "description": "Standard 5oz white wine pour.",
+      "glass_type": "wine",
+      "items": [
+        {"role": "wine_white", "label": "White Wine", "qty": 150, "unit": "ml"}
+      ]
+    },
+    {
+      "slug": "beer_draft",
+      "name": "Draft Beer",
+      "category": "beer",
+      "description": "Standard 16oz draft pour.",
+      "glass_type": "pint",
+      "items": [
+        {"role": "beer", "label": "Draft Beer", "qty": 470, "unit": "ml"}
+      ]
+    }
+  ]
+}

@@ -390,7 +390,9 @@ class AlertsOrchestrator:
         # Late import avoids a circular import at module load (detectors
         # import alerts.service, which imports this module transitively).
         from app.modules.alerts.detectors.demand_spike import DemandSpikeDetector
+        from app.modules.alerts.detectors.recipe_deviation import RecipeDeviationDetector
         self.demand_spike = DemandSpikeDetector(db)
+        self.recipe_deviation = RecipeDeviationDetector(db)
 
     async def run_all(
         self,
@@ -416,6 +418,10 @@ class AlertsOrchestrator:
         # dedup key no longer matches. No per-detector auto-resolve needed.
         spike = await self.demand_spike.evaluate(tenant_id, event_id, name_maps=name_maps)
         for k, v in spike.items():
+            totals[k] = totals.get(k, 0) + v
+
+        deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
+        for k, v in deviation.items():
             totals[k] = totals.get(k, 0) + v
 
         return totals
