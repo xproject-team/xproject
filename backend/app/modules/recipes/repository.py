@@ -85,6 +85,8 @@ class RecipeRepository:
             yield_qty=data.yield_qty,
             yield_unit=data.yield_unit,
             notes=data.notes,
+            display_name=data.display_name,
+            template_id=data.template_id,
         )
         self.db.add(recipe)
         await self.db.flush()

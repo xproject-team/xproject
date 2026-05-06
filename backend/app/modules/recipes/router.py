@@ -26,6 +26,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -39,7 +40,8 @@ from app.modules.recipes.schemas import (
     RecipeResponse,
     RecipeUpdate,
     RecipeWithItemsResponse,
-)
+    RecipeWithItemsCreate,
+    RecipeTemplateResponse)
 from app.modules.recipes.service import (
     DrinkProductNotFoundError,
     DuplicateIngredientError,
@@ -74,6 +76,35 @@ async def list_recipes(
     service = RecipeService(db)
     recipes = await service.list_recipes(tenant_id)
     return [RecipeWithItemsResponse.model_validate(r) for r in recipes]
+
+
+# ─── Recipe templates (read-only catalog, F.8d) ──────────────────────────────
+
+@router.get(
+    "/templates",
+    response_model=list[RecipeTemplateResponse],
+    summary="List the system-wide IBA cocktail catalog.",
+)
+async def list_recipe_templates(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    category: str | None = None,
+) -> list[RecipeTemplateResponse]:
+    """Return the canonical recipe templates (system-seeded, read-only).
+
+    Optionally filter by category (contemporary, unforgettable, new_era,
+    shooter, wine, beer). Items are eager-loaded so this is one round-trip.
+
+    Tenant-free — same catalog for every tenant.
+    """
+    from app.modules.recipes.template_models import RecipeTemplate
+
+    stmt = select(RecipeTemplate).order_by(RecipeTemplate.name.asc())
+    if category is not None:
+        stmt = stmt.where(RecipeTemplate.category == category)
+
+    res = await db.execute(stmt)
+    templates = res.scalars().unique().all()
+    return [RecipeTemplateResponse.model_validate(t) for t in templates]
 
 
 @router.get("/{recipe_id}", response_model=RecipeWithItemsResponse)
@@ -277,3 +308,42 @@ async def delete_recipe_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "recipe_item_not_found", "message": str(e)},
         )
+
+
+# ─── Atomic create-with-items (F.7b) ──────────────────────────────────────────
+@router.post(
+    "/with-items",
+    response_model=RecipeWithItemsResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a recipe + all its ingredient lines in a single transaction.",
+)
+async def create_recipe_with_items(
+    payload: RecipeWithItemsCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> RecipeWithItemsResponse:
+    """Atomic create — header + items, one transaction.
+
+    Use this from forms that gather everything before a single Save click.
+    For step-by-step UIs that add ingredients later, use POST /recipes
+    + POST /recipes/{id}/items instead.
+
+    Response body shape is identical to GET /recipes/{id} (RecipeWithItemsResponse).
+    """
+    service = RecipeService(db)
+    try:
+        recipe = await service.create_recipe_with_items(tenant_id, payload)
+    except DrinkProductNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except IngredientProductNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ProductArchivedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except NotADrinkError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except DuplicateRecipeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except SelfReferenceError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    return RecipeWithItemsResponse.model_validate(recipe)
