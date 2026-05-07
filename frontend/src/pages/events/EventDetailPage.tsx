@@ -289,7 +289,7 @@ function EventDetailContent({ event }: { event: Event }) {
             <StatusBadge status={effective.status} />
           </div>
           <p className="text-sm text-[#4A5568] mt-1">
-            {formatDate(effective.scheduled_date)} \u00b7 {effective.venue.name}
+            {formatDate(effective.scheduled_date)} · {effective.venue.name}
           </p>
         </div>
 
