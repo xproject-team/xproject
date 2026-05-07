@@ -638,3 +638,41 @@ Key facts for future sessions:
 ---
 
 **End of roadmap. v1.0. Living document. Update Status Pointer as you go.**
+
+<!-- phase-2-progress -->
+
+## Phase 2 — Owner experience audit (in progress)
+
+Recon performed via Claude in Chrome on 2026-05-07. 11 owner-visible pages
+walked. Findings triaged into batches:
+
+### Batch A — Data hygiene ✅ DONE 2026-05-07
+- Deleted 4 test events (new event, Lifecycle Test, Backend Test Event TEST,
+  Sundance June 66) — cascaded out 3 bars, 2 reports, 1 event_product, 1 bar_stock
+- Deleted 2 in-event test bars (Chat Hook Test Bar, Smoke Test Bar 1776418247)
+  — cascaded 2 channels, 5 alerts, 3 bar_stock, 12 stock_transactions
+- Deleted 29 test chat messages across two sweeps
+- Renamed live event "Browser Created Test" → "Sundance 2026"
+  (date 2026-06-19, expected_guest_count 5000)
+- Active event UUID e7866455-b721-419e-8d10-e5e157ff50d6 unchanged
+- Final state: 1 event, 23 bars, 11 channels, 21 chat messages
+- Backup: backups/xproject_dev_pre_cleanup_20260507_181107.sql
+- Verified end-to-end via Claude-in-Chrome 5-check pass
+
+### Batch D — One-liners (next)
+- Literal `\u00b7` rendered as text on Event detail header
+- Reports stat math (TOTAL EVENTS, AVG/EVENT, BEST EVENT)
+
+### Batch C — Dashboard polish (queued)
+- "Polling stalled · 89h ago" pill — leave as-is (real signal until POS connects)
+- All-zeros bar cards need empty-state copy ("Event has not started yet")
+
+### Batch B — Inventory rewrite (queued)
+- /inventory page is wired to mock data (Main Bar, VIP Lounge, Pool Bar, DJ Booth)
+- Rewire to /api/v1/bar-stock for real Sundance 2026 data
+
+### Deferred (post-Sundance)
+- URL state for tabs (Catalog Products/Recipes, Alerts filter, Chat channel)
+- Loading skeletons on F5 (all 11 pages)
+- Alerts "Warning" filter scope inconsistency
+- Multiple "ships in v1.1" footnotes
