@@ -9,11 +9,18 @@ import { createContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import { clearToken, getToken, setToken } from '@/lib/auth'
 
+export type UserRole = 'owner' | 'manager' | 'bartender' | 'warehouse'
+
 export interface AuthUser {
   id:           string
   email:        string
   full_name:    string
-  role:         'owner' | 'manager' | 'bartender' | 'warehouse'
+  /** Legacy single-role field. Equals activeRole. Kept for backward compat. */
+  role:         UserRole
+  /** Role this session was logged in as (from JWT active_role claim). */
+  activeRole:   UserRole
+  /** Every role this user is authorized for (from /auth/roles-for-email). */
+  assignedRoles: UserRole[]
   is_active:    boolean
   /** Manager / Bartender only. Null for Owner / Warehouse. */
   assignedBarId: string | null
@@ -22,7 +29,9 @@ export interface AuthUser {
 interface AuthContextValue {
   user:    AuthUser | null
   loading: boolean                                           // true while hydrating on reload
-  login:   (email: string, password: string) => Promise<void>
+  login:   (email: string, password: string, requestedRole?: UserRole) => Promise<void>
+  /** Look up authorized roles for an email (Step 1 of two-step login). */
+  rolesForEmail: (email: string) => Promise<UserRole[]>
   logout:  () => void
 }
 
@@ -34,16 +43,30 @@ export const AuthContext = createContext<AuthContextValue | null>(null)
 async function fetchCurrentUser(): Promise<AuthUser> {
   const me = await api.get('/auth/me')
 
-  // bar_id isn't in /auth/me response — decode from JWT claims
+  // bar_id + active_role come from JWT claims (not in /me response)
   const token = getToken()
   let assignedBarId: string | null = null
+  let activeRole: UserRole = me.data.role  // fallback to legacy claim
   if (token) {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]))
       assignedBarId = payload.bar_id ?? null
+      activeRole = (payload.active_role ?? payload.role) as UserRole
     } catch {
       // malformed token — let the user re-login next 401
     }
+  }
+
+  // Load every role this user is authorized for. Used by TopBar to decide
+  // whether to show the "Switch Role" item in the profile dropdown.
+  let assignedRoles: UserRole[] = [activeRole]
+  try {
+    const r = await api.post('/auth/roles-for-email', { email: me.data.email })
+    if (Array.isArray(r.data?.roles) && r.data.roles.length > 0) {
+      assignedRoles = r.data.roles as UserRole[]
+    }
+  } catch {
+    // Non-blocking — fall back to just the active role
   }
 
   return {
@@ -51,6 +74,8 @@ async function fetchCurrentUser(): Promise<AuthUser> {
     email:         me.data.email,
     full_name:     me.data.full_name,
     role:          me.data.role,
+    activeRole,
+    assignedRoles,
     is_active:     me.data.is_active,
     assignedBarId,
   }
@@ -79,11 +104,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false))
   }, [])
 
-  async function login(email: string, password: string): Promise<void> {
+  async function login(
+    email: string,
+    password: string,
+    requestedRole?: UserRole,
+  ): Promise<void> {
     // OAuth2 password flow — form-encoded body, not JSON
     const form = new URLSearchParams()
     form.append('username', email)      // backend expects 'username' per OAuth2 spec
     form.append('password', password)
+    if (requestedRole) {
+      form.append('requested_role', requestedRole)
+      // Persist last role used so session-expiry re-login can skip the picker
+      try { localStorage.setItem('lastRole', requestedRole) } catch { /* quota */ }
+    }
 
     const res = await api.post('/auth/login', form, {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -95,13 +129,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(current)
   }
 
+  async function rolesForEmail(email: string): Promise<UserRole[]> {
+    const res = await api.post('/auth/roles-for-email', { email })
+    return (res.data?.roles ?? []) as UserRole[]
+  }
+
   function logout(): void {
     clearToken()
     setUser(null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, rolesForEmail }}>
       {children}
     </AuthContext.Provider>
   )

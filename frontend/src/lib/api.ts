@@ -39,10 +39,12 @@ api.interceptors.response.use(
       // Bad credentials. Let the caller (LoginForm) handle the error.
       return Promise.reject(error)
     }
-    // Real session-expired path: try refresh once, then bounce to login.
+    // Real session-expired path: try refresh once, then notify the app.
+    // The SessionExpiredModal listens for this event and handles the UX
+    // (modal + lastPath persistence + soft navigation via React Router).
     const refreshed = await refreshToken()
     if (!refreshed) {
-      window.location.href = '/login'
+      window.dispatchEvent(new CustomEvent('auth:session-expired'))
     }
     return Promise.reject(error)
   },

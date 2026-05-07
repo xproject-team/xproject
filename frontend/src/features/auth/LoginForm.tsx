@@ -1,209 +1,281 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './useAuth'
+import type { UserRole } from './AuthContext'
 
-// ─── Quick-login accounts (dev shortcut — hidden in production) ──────────
 
-const DEV_ACCOUNTS = [
-  { email: 'omar@nomagroup.it',               password: 'xproject2026', label: 'Omar',        role: 'Owner',     color: '#1E5A8D' },
-  { email: 'manager.cocktail@nomagroup.it',   password: 'manager123',   label: 'M. Cocktail', role: 'Manager',   color: '#6B21A8' },
-  { email: 'manager.focacceria@nomagroup.it', password: 'manager123',   label: 'M. Focacc.',  role: 'Manager',   color: '#6B21A8' },
-  { email: 'manager.malandrino@nomagroup.it', password: 'manager123',   label: 'M. Malandr.', role: 'Manager',   color: '#6B21A8' },
-  { email: 'bartender.marco@nomagroup.it',    password: 'bartender123', label: 'Marco',       role: 'Bartender', color: '#059669' },
-  { email: 'warehouse.keeper@nomagroup.it',   password: 'warehouse123', label: 'Giorgio',     role: 'Warehouse', color: '#DD6B20' },
-]
+const ROLE_LANDING: Record<UserRole, string> = {
+  owner:     '/dashboard',
+  manager:   '/dashboard',
+  bartender: '/dashboard',
+  warehouse: '/warehouse',
+}
 
-// Role -> default landing route map. Warehouse staff land on the warehouse
-// dashboard since /dashboard isn't usable for that role. Other roles see
-// /dashboard which is the operations overview for them.
-const LANDING_BY_ROLE: Record<string, string> = {
-  owner:      '/dashboard',
-  manager:    '/dashboard',
-  bartender:  '/dashboard',
-  warehouse:  '/warehouse',
+const ROLE_LABEL: Record<UserRole, string> = {
+  owner:     'Owner',
+  manager:   'Manager',
+  bartender: 'Bartender',
+  warehouse: 'Warehouse Staff',
+}
+
+const ROLE_DESCRIPTION: Record<UserRole, string> = {
+  owner:     'Full operational control across all bars and events',
+  manager:   'Manage one bar during a live event',
+  bartender: 'Pour, scan, and track at your bar',
+  warehouse: 'Dispatch goods from warehouse to bars',
+}
+
+const ROLE_COLOR: Record<UserRole, string> = {
+  owner:     '#1E5A8D',
+  manager:   '#6B21A8',
+  bartender: '#059669',
+  warehouse: '#DD6B20',
 }
 
 // ─── Component ───────────────────────────────────────────────────────────
 
+type Step = 'email' | 'role' | 'password'
+
 export function LoginForm() {
   const navigate = useNavigate()
-  const { login, user } = useAuth()
+  const { login } = useAuth()
 
-  // Empty defaults in production. Dev gets the convenience pre-fill via
-  // the quick-login buttons (one click instead of one autofill).
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [step, setStep]                   = useState<Step>('email')
+  const [email, setEmail]                 = useState('')
+  const [password, setPassword]           = useState('')
+  const [selectedRole, setSelectedRole]   = useState<UserRole | null>(null)
+  const [loading, setLoading]             = useState(false)
+  const [error, setError]                 = useState<string | null>(null)
 
-  const emailRef = useRef<HTMLInputElement>(null)
-  const isDev = import.meta.env.DEV
+  const emailRef    = useRef<HTMLInputElement>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
 
-  // Focus the email field on mount only. Don't re-fire on error changes
-  // — that races with React Router state and can cause unexpected navigation.
-  // Post-error focus is handled inline in the catch block via requestAnimationFrame
-  // so it runs AFTER React has finished applying the state change.
+  // Focus management per step
   useEffect(() => {
-    emailRef.current?.focus()
-  }, [])
+    if (step === 'email')    emailRef.current?.focus()
+    if (step === 'password') passwordRef.current?.focus()
+  }, [step])
 
-  async function handleSubmit(e: React.FormEvent) {
+  // ─── Step 1: email → role picker (no backend call yet) ──────────────
+  // We do NOT query roles-for-email here — that would leak which roles are
+  // assigned to which email (account-existence enumeration). The user picks
+  // a role they INTEND to use; the backend judges authorization at /login.
+  function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!email) return
+    setError(null)
+    setStep('role')
+  }
+
+  // ─── Step 2: pick role → go to password ──────────────────────────────
+  function handleRolePick(role: UserRole) {
+    setSelectedRole(role)
+    setStep('password')
+    setError(null)
+  }
+
+  // ─── Step 3: password → login ────────────────────────────────────────
+  async function handlePasswordSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedRole) return
     setError(null)
     setLoading(true)
     try {
-      await login(email, password)
-      // Role-aware landing. After login() resolves, useAuth().user is
-      // populated by AuthProvider on the same tick. Use the new user's
-      // role to pick the right landing route.
-      const role = user?.role
-      const dest = (role && LANDING_BY_ROLE[role]) || '/dashboard'
+      await login(email, password, selectedRole)
+      // Honor lastPath set by SessionExpiredModal. One-shot restore.
+      let dest = ROLE_LANDING[selectedRole]
+      try {
+        const lastPath = localStorage.getItem('lastPath')
+        if (lastPath && lastPath !== '/login') {
+          dest = lastPath
+          localStorage.removeItem('lastPath')
+        }
+      } catch { /* storage disabled */ }
       navigate(dest)
     } catch (err: unknown) {
       const errResp = err as {
         response?: { data?: { detail?: unknown }; status?: number }
         request?: unknown
       }
-      const detail = errResp?.response?.data?.detail
       const status = errResp?.response?.status
+      const detail = errResp?.response?.data?.detail
 
-      // Pydantic v2 returns 'detail' as an ARRAY of validation-error objects
-      // (shape: { type, loc, msg, input }) — NOT a string. Rendering an array/object
-      // as a React child crashes the app (the bug we hit on empty-submit).
-      // Normalize all shapes into a human string before setError().
-      let message: string
-      if (typeof detail === 'string') {
-        message = detail
-      } else if (Array.isArray(detail) && detail.length > 0) {
-        // Pydantic 422 — show the first field's message + path. Friendly enough
-        // for v1.0; future polish could map field paths to user-facing labels.
-        const first = detail[0] as { msg?: string; loc?: unknown[] }
-        const fieldPath = Array.isArray(first.loc) ? first.loc.slice(1).join('.') : ''
-        message = fieldPath
-          ? `${fieldPath}: ${first.msg ?? 'invalid value'}`
-          : (first.msg ?? 'Invalid input')
-      } else if (status === 422) {
-        // 422 with a non-array shape — fallback for safety
-        message = 'Invalid email or password format.'
-      } else if (errResp?.request) {
-        // Request was made but no response — likely network or server down.
-        message = "Can't reach the server. Check your connection and try again."
-      } else {
-        // Setup error or something we didn't anticipate.
-        message = 'Sign in failed. Please try again.'
-      }
+      let message = 'Sign in failed. Please try again.'
+      if (status === 401)      message = 'Incorrect email or password.'
+      else if (status === 403) message = 'You are not authorized for this role.'
+      else if (typeof detail === 'string') message = detail
+      else if (errResp?.request) message = "Can't reach the server. Check your connection."
+
       setError(message)
-      // Clear password on error so the user re-enters intentionally.
-      // Email stays so they don't have to retype it.
       setPassword('')
-      // Defer focus until after React commits the state change. Doing it
-      // synchronously can race with router state updates and cause spurious
-      // navigation.
-      requestAnimationFrame(() => emailRef.current?.focus())
+      requestAnimationFrame(() => passwordRef.current?.focus())
     } finally {
       setLoading(false)
     }
   }
 
-  function applyQuickLogin(acc: (typeof DEV_ACCOUNTS)[number]) {
-    setEmail(acc.email)
-    setPassword(acc.password)
+  // ─── Back button ─────────────────────────────────────────────────────
+  function handleBack() {
     setError(null)
+    setPassword('')
+    if (step === 'password') {
+      setStep('role')
+      setSelectedRole(null)
+    } else if (step === 'role') {
+      setStep('email')
+      setSelectedRole(null)
+    }
   }
 
+
+  // ─── Render ──────────────────────────────────────────────────────────
   return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-      {/* Email */}
-      <div>
-        <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-email">
-          Email
-        </label>
-        <input
-          ref={emailRef}
-          id="login-email"
-          type="email"
-          required
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
-          placeholder="you@nomagroup.it"
-        />
+    <div className="space-y-5">
+
+      {/* Step indicator */}
+      <div className="flex items-center justify-center gap-2 text-[11px] text-[#718096]">
+        <span className={step === 'email' ? 'font-bold text-[#1E5A8D]' : ''}>1. Email</span>
+        <span>·</span>
+        <span className={step === 'role' ? 'font-bold text-[#1E5A8D]' : ''}>2. Role</span>
+        <span>·</span>
+        <span className={step === 'password' ? 'font-bold text-[#1E5A8D]' : ''}>3. Password</span>
       </div>
 
-      {/* Password */}
-      <div>
-        <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-password">
-          Password
-        </label>
-        <input
-          id="login-password"
-          type="password"
-          required
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
-          placeholder="••••••••"
-        />
-      </div>
+      {/* ─── Step 1: Email ─── */}
+      {step === 'email' && (
+        <form onSubmit={handleEmailSubmit} className="space-y-5" noValidate>
+          <div>
+            <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-email">
+              Email
+            </label>
+            <input
+              ref={emailRef}
+              id="login-email"
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
+              placeholder="you@nomagroup.it"
+            />
+          </div>
 
-      {/* Error — announced to screen readers via role=alert + aria-live */}
-      {error && (
-        <div
-          role="alert"
-          aria-live="assertive"
-          className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5"
-        >
-          {error}
+          {error && (
+            <div role="alert" aria-live="assertive" className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !email}
+            className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
+          >
+            {loading ? 'Checking…' : 'Continue'}
+          </button>
+        </form>
+      )}
+
+      {/* ─── Step 2: Role picker — all 4 roles always visible ─── */}
+      {step === 'role' && (
+        <div className="space-y-4">
+          <div className="text-center">
+            <p className="text-base font-semibold text-[#1A202C]">Sign in as</p>
+            <p className="text-xs text-[#718096] mt-1 truncate">{email}</p>
+          </div>
+
+          <div className="space-y-2.5">
+            {(['owner', 'manager', 'bartender', 'warehouse'] as UserRole[]).map((role) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => handleRolePick(role)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-[#E2E8F0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC] focus:outline-none focus:border-[#1E5A8D] focus:bg-[#F7FAFC] transition-colors text-left"
+              >
+                <span
+                  className="w-3 h-3 rounded-full shrink-0"
+                  style={{ backgroundColor: ROLE_COLOR[role] }}
+                />
+                <span className="flex-1 min-w-0">
+                  <span className="block font-semibold text-sm text-[#1A202C]">{ROLE_LABEL[role]}</span>
+                  <span className="block text-xs text-[#718096] mt-0.5">{ROLE_DESCRIPTION[role]}</span>
+                </span>
+                <span className="text-[#A0AEC0] text-lg leading-none shrink-0">›</span>
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
+          >
+            ← Back
+          </button>
         </div>
       )}
 
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
-      >
-        {loading ? 'Signing in…' : 'Sign in'}
-      </button>
+      {/* ─── Step 3: Password ─── */}
+      {step === 'password' && selectedRole && (
+        <form onSubmit={handlePasswordSubmit} className="space-y-5" noValidate>
+          <div className="text-xs text-[#4A5568] bg-[#F7FAFC] rounded-xl px-3 py-2 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ROLE_COLOR[selectedRole] }} />
+            <span className="font-medium text-[#1A202C]">{email}</span>
+            <span className="text-[#CBD5E0]">·</span>
+            <span>{ROLE_LABEL[selectedRole]}</span>
+          </div>
 
-      {/* Forgot password — inert in v1.0 per auth-and-roles-spec §4.3.
-          Renders so the affordance exists; full reset flow ships later. */}
+          <div>
+            <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-password">
+              Password
+            </label>
+            <input
+              ref={passwordRef}
+              id="login-password"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <div role="alert" aria-live="assertive" className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !password}
+            className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleBack}
+            className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
+          >
+            ← Back
+          </button>
+        </form>
+      )}
+
+      {/* Forgot password — same as before, available on every step */}
       <button
         type="button"
-        onClick={() => {
-          window.alert(
-            'Password reset will be available soon. For now, please contact your tenant admin.',
-          )
-        }}
+        onClick={() => window.alert('Password reset will be available soon. For now, please contact your tenant admin.')}
         className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
       >
         Forgot password?
       </button>
 
-      {/* Dev quick-login shortcuts — hidden in production builds */}
-      {isDev && (
-        <div className="pt-2 border-t border-[#E2E8F0]">
-          <p className="text-[10px] font-semibold text-[#718096] uppercase tracking-wide mb-2">
-            Quick login (dev only)
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {DEV_ACCOUNTS.map((acc) => (
-              <button
-                key={acc.email}
-                type="button"
-                onClick={() => applyQuickLogin(acc)}
-                className="text-[11px] px-2.5 py-1 rounded-full border bg-white hover:bg-[#F7FAFC] transition-colors"
-                style={{ borderColor: `${acc.color}55`, color: acc.color }}
-                title={acc.email}
-              >
-                {acc.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </form>
+    </div>
   )
 }

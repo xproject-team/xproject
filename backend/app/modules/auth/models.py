@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.tenancy import TenantScopedModel, _utcnow
@@ -72,4 +72,55 @@ class User(TenantScopedModel):
         ForeignKey("bars.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+
+    # Multi-role: every role this user is authorized to act as.
+    # The user's *active* role at any given moment lives in the JWT (Phase 1B).
+    # The legacy `role` column above is kept until Phase 1D for backward compat.
+    role_assignments: Mapped[list["UserRoleAssignment"]] = relationship(
+        "UserRoleAssignment",
+        primaryjoin="User.id == foreign(UserRoleAssignment.user_id)",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        single_parent=True,
+    )
+
+
+class UserRoleAssignment(Base):
+    """One row per (user, role) authorization grant.
+
+    Companion to the legacy `User.role` column — that column tracks the user's
+    *primary* role for backward compatibility; this table tracks every role a
+    user is *authorized* to act as. A user with both Owner and Manager rights
+    has two rows here.
+
+    Created by migration `p1_add_user_roles_table`. Not tenant-scoped: a user
+    already belongs to exactly one tenant via `User.tenant_id`, and that
+    scoping cascades naturally through the foreign key.
+    """
+    __tablename__ = "user_roles"
+
+    id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role", native_enum=True, create_type=False),
+        nullable=False,
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow,
+    )
+    # Owner who granted this role. NULL for system-assigned (initial backfill).
+    assigned_by_user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )

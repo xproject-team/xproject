@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password, verify_password
-from app.modules.auth.models import User
+from app.modules.auth.models import User, UserRole
 
 
 class AuthService:
@@ -38,23 +38,30 @@ class AuthService:
     def create_user_token(
         self,
         user: User,
+        active_role: UserRole | None = None,
         expires_delta: timedelta | None = None,
     ) -> str:
         """Issue a JWT containing this user's identity claims.
 
         Claims:
-          sub:        user UUID (subject)
-          email:      user email
-          role:       user role (owner/manager/bartender/warehouse)
-          tenant_id:  tenant UUID (scopes all subsequent queries)
-          bar_id:     bar UUID or None (managers/bartenders only)
+          sub:          user UUID (subject)
+          email:        user email
+          role:         legacy claim — user's primary role (kept for backward compat)
+          active_role:  the role this token authorizes (Phase 1B); falls back to role
+          tenant_id:    tenant UUID (scopes all subsequent queries)
+          bar_id:       bar UUID or None (managers/bartenders only)
+
+        active_role defaults to user.role when omitted, preserving old call-site
+        behavior. Phase 1D will drop the legacy `role` claim entirely.
         """
+        chosen = active_role.value if active_role is not None else user.role.value
         claims = {
-            "sub":       str(user.id),
-            "email":     user.email,
-            "role":      user.role.value,
-            "tenant_id": str(user.tenant_id),
-            "bar_id":    str(user.bar_id) if user.bar_id else None,
+            "sub":         str(user.id),
+            "email":       user.email,
+            "role":        user.role.value,
+            "active_role": chosen,
+            "tenant_id":   str(user.tenant_id),
+            "bar_id":      str(user.bar_id) if user.bar_id else None,
         }
         return create_access_token(claims, expires_delta=expires_delta)
 

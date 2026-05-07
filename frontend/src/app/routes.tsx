@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { SessionExpiredModal } from '@/shared/SessionExpiredModal'
 import { type ReactNode } from 'react'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAuth } from '@/features/auth/useAuth'
@@ -107,6 +108,7 @@ export function AppRoutes() {
           }
         />
       </Routes>
+      <SessionExpiredModal />
     </BrowserRouter>
   )
 }

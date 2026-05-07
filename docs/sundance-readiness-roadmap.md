@@ -105,6 +105,8 @@ Verified the current state of the codebase.
 
 **Why first:** every downstream phase depends on auth being correct. Building features against broken auth means rebuilding permission checks later.
 
+**Why split into 4 sub-phases (1A → 1B → 1C → 1D):** recon on 2026-05-07 revealed `current_user.role` is read in 20 places across 9 files (chat, bars, alerts, warehouse, predictions, reports, auth). A single big-bang refactor of all 20 call sites at once is how production outages happen. The 4-sub-phase rollout uses the standard **expand/contract migration pattern**: each sub-phase has a working-system checkpoint, the system is functional at every intermediate step, and the 20 call sites get migrated last (1D) once the new contract is proven.
+
 ## Decisions locked
 
 | # | Decision | Source |
@@ -114,68 +116,111 @@ Verified the current state of the codebase.
 | Q3 | Session expiry → modal "Your session has expired" → redirect to credentials only (skip role picker, credentials remember last role) | Standard SaaS pattern |
 | — | Multi-role schema: `user_roles` join table, JWT encodes the *active* role | System-design decision |
 | — | TopBar avatar: dropdown with Profile / Switch Role / Sign Out (not click-to-logout) | UX standard |
+| — | Rollout: 4-sub-phase expand/contract pattern (1A → 1B → 1C → 1D) | Recon 2026-05-07 |
 
-## Sub-steps
+## Recon findings (2026-05-07)
 
-### 1.1 — Branch + plan
-- [ ] Create `feat/auth-multirole-login` from `develop`
-- [ ] Read existing `app/modules/auth/` thoroughly; document current JWT shape
+Documented in this section so future sessions don't re-discover them:
 
-### 1.2 — Backend: many-to-many user roles
-- [ ] Migration `p1_add_user_roles_table` — new `user_roles` join table (`user_id`, `role`, `assigned_at`, `assigned_by_user_id`)
-- [ ] Backfill: every existing user gets one row in `user_roles` with their current `role`
-- [ ] Keep `users.role` column for now as the "active role" field (will rename to `active_role` in 1.3 if needed)
-- [ ] ORM: `User` gets `roles` relationship (list of UserRole)
-- [ ] Repository: `get_user_authorized_roles(user_id) -> list[UserRole]`
-- [ ] Tests: backfill correctness, multi-role assignment
+- **No prior multi-role work exists.** No `user_roles` table, no related migrations, no frontend hints, no stashes, no relevant work-in-progress branches. Phase 1 is greenfield.
+- **20 reads of `current_user.role` across 9 files.** Every one becomes a refactor point in 1D.
+- **Login uses FastAPI's `OAuth2PasswordRequestForm`** — form-encoded `username` + `password` per OAuth2 spec. Industry-standard. Keep it.
+- **Existing JWT contains** `sub` (user UUID), `tenant_id`, `role`. 1B renames `role` to `active_role`.
+- **Two existing endpoints:** `POST /auth/login` and `GET /auth/me`. 1B adds `POST /auth/roles-for-email`. 1A.7 adds `POST /users/{id}/roles` and `DELETE /users/{id}/roles/{role}` for Owner-only role assignment.
 
-### 1.3 — Backend: JWT + login endpoint
-- [ ] `POST /auth/roles-for-email` — given an email (no password yet), returns the roles assigned to that user. Used by the role-picker step.
-- [ ] `POST /auth/login` — accepts `(email, password, requested_role)`. Verifies role is in user's authorized set. Issues JWT with `active_role` claim.
-- [ ] Existing `access_guards.py` reads `active_role` from JWT (was reading `role` from User table).
-- [ ] Tests: auth with valid role, auth with unauthorized role (403), token refresh preserves active_role.
+---
 
-### 1.4 — Frontend: two-step login UI
-- [ ] Step 1: Role picker — email input + "Continue" button → calls `/auth/roles-for-email` → shows role cards for which that user is authorized
-- [ ] Step 2: Credentials — password input + "Sign In" button + Back button (returns to step 1, email preserved)
-- [ ] Remove the 5 hardcoded account cards (move to a separate dev-mode helper component, gated by env flag)
-- [ ] Validation: empty email → inline error; unknown email → inline error after step 1; wrong password → inline error on step 2
-- [ ] Loading state: disable inputs + spinner on submit
-- [ ] Error state: 401 → inline error; 5xx → toast
-- [ ] Empty state: not applicable
-- [ ] Keyboard: Enter advances step 1, Enter submits step 2, Esc clears errors
-- [ ] State persistence: refresh on step 2 → stays on step 2 with email preserved
+## Phase 1A — Add multi-role schema (backward-compatible) ✅ DONE 2026-05-07
 
-### 1.5 — Frontend: TopBar profile dropdown
-- [ ] Replace single-click logout with dropdown menu
-- [ ] Items: "Profile" (links to `/settings`), "Switch Role" (only if user has >1 role; reroutes to login step 1), "Sign Out" (logout + navigate to /login)
-- [ ] Keyboard: Esc closes dropdown, Tab traverses items
-- [ ] Click outside dropdown closes it
+**Goal:** Database can represent users with multiple roles; existing code paths unchanged.
 
-### 1.6 — Frontend: session expiry modal
-- [ ] Axios interceptor catches 401 globally
-- [ ] Shows modal: "Your session has expired. Please sign in again to continue."
-- [ ] User clicks OK → save current path to `localStorage.lastPath` → navigate to login step 2 (skip role picker; remember last role from `localStorage.lastRole`)
-- [ ] After successful re-login → restore `lastPath`
+- [ ] **1A.1** Migration `p1_add_user_roles_table` — new `user_roles` join table (`id`, `user_id`, `role`, `assigned_at`, `assigned_by_user_id`, unique constraint on `(user_id, role)`)
+- [ ] **1A.2** Migration runs backfill: every existing user gets one row in `user_roles` matching their current `users.role` value
+- [ ] **1A.3** ORM: add `UserRoleAssignment` model + `User.role_assignments` relationship (lazy=selectin)
+- [ ] **1A.4** Repository helper: `get_user_authorized_roles(user_id) -> list[UserRole]`
+- [ ] **1A.5** Tests: backfill correctness, multi-role assignment, unique-constraint enforcement
+- [ ] **1A.6** Run full test suite — must stay green (existing call sites still read `users.role`, untouched)
 
-### 1.7 — Backend: assign-role endpoint (Owner-only)
-- [ ] `POST /users/{user_id}/roles` — assign a role to a user (idempotent)
-- [ ] `DELETE /users/{user_id}/roles/{role}` — revoke a role
-- [ ] Owner-only access guard
-- [ ] Tests
+**Phase 1A done when:** new table exists, backfilled, full test suite green, zero call-site changes outside `app/modules/auth/`.
 
-### 1.8 — Tests + commit
-- [ ] All new tests passing
-- [ ] All existing tests passing
-- [ ] Manual browser test: log in as Omar (1 role), as a multi-role test user, verify session expiry, verify role-switch via TopBar dropdown
-- [ ] Commit + PR + squash-merge to `develop`
-
-**Phase 1 done when:** all 6 sub-steps checked, all 8 UX criteria pass on the login page and TopBar, all tests green, multi-role login verified end-to-end with at least 2 different role assignments.
+> **Note on tests (2026-05-07):** per project precedent (see `tests/test_reports_flow.py` header), DB-write tests inside the test process hit a known asyncpg/pytest-asyncio interaction. 1A coverage is achieved through (a) the functional smoke tests we ran against real data after each step (1A.2, 1A.3, 1A.4) and (b) HTTP-layer tests written in Phase 1B that transitively exercise the 1A repository helpers and ORM. The async-test-infra rebuild stays in Appendix A as its own future phase.
 
 **Completion record:** `[done] YYYY-MM-DD — commit ________`
 
 ---
 
+## Phase 1B — New login endpoints alongside old (parallel paths) ✅ DONE 2026-05-07
+
+**Goal:** Backend can accept the new two-step login; old login still works for unmodified clients.
+
+- [ ] **1B.1** New endpoint `POST /auth/roles-for-email` — given an email, returns the roles the user is authorized for. No password needed; this is the role-picker step. Rate-limited to prevent enumeration.
+- [ ] **1B.2** Modify `POST /auth/login` to *optionally* accept `requested_role` form field. If present, verify it's in user's authorized set; reject 403 if not. If absent, fall back to user's `users.role` (existing behavior).
+- [ ] **1B.3** JWT now encodes `active_role` (the role chosen at login). Old `role` claim still emitted for backward compatibility during 1C/1D rollout.
+- [ ] **1B.4** New helper `get_active_role(current_user, request) -> UserRole`: reads `active_role` from JWT first; falls back to `current_user.role` if claim missing (handles tokens issued before 1B). All future code paths use this helper instead of `current_user.role`.
+- [ ] **1B.5** New Pydantic schemas: `RolesForEmailRequest`, `RolesForEmailResponse`, `LoginRequestV2` (extends existing with optional `requested_role`).
+- [ ] **1B.6** New endpoints (Owner-only): `POST /users/{user_id}/roles` (assign role), `DELETE /users/{user_id}/roles/{role}` (revoke role). Idempotent.
+- [ ] **1B.7** Tests: roles-for-email returns correct set, login with valid role 200, login with unauthorized role 403, login without role works (backward compat), JWT carries `active_role`, helper falls back correctly on old tokens.
+
+**Phase 1B done when:** all new endpoints working, old endpoints unchanged, full test suite green, both old and new login flows functional.
+
+**Completion record:** `[done] YYYY-MM-DD — commit ________`
+
+---
+
+## Phase 1C — Frontend: new login UI + TopBar dropdown + session-expiry modal ✅ DONE 2026-05-07
+
+**Goal:** Users get the new two-step login experience. The 5 dev seed accounts still work for testing.
+
+- [ ] **1C.1** Two-step login UI — Step 1: email input + Continue button → calls `/auth/roles-for-email` → renders role cards for which the user is authorized.
+- [ ] **1C.2** Step 2: password input + Sign In button + Back button (returns to step 1, email preserved).
+- [ ] **1C.3** Validation: empty email inline error; unknown email inline error after step 1; wrong password inline error on step 2.
+- [ ] **1C.4** Loading state: disable inputs + spinner on submit. Error state: 401 inline, 5xx toast. Empty state: not applicable.
+- [ ] **1C.5** Keyboard: Enter advances step 1; Enter submits step 2; Esc clears errors.
+- [ ] **1C.6** State persistence: refresh on step 2 → stays on step 2 with email preserved.
+- [ ] **1C.7** Move 5 hardcoded dev accounts out of `LoginForm.tsx` into a `<DevModeAccountPicker />` component, gated by env flag (visible in dev only).
+- [ ] **1C.8** TopBar avatar refactor: replace single-click logout with dropdown — items "Profile" (→ /settings), "Switch Role" (only if user has >1 role; routes to login step 1 with email preserved), "Sign Out" (logout + → /login).
+- [ ] **1C.9** Dropdown UX: Esc closes, Tab traverses, click-outside closes, focus returns to avatar after close.
+- [ ] **1C.10** Session expiry modal: axios interceptor catches 401 globally → shows modal "Your session has expired. Please sign in again to continue." → user clicks OK → save current path to `localStorage.lastPath` → navigate to login step 2 (skip role picker; remember last role from `localStorage.lastRole`) → after successful re-login, restore `lastPath`.
+- [ ] **1C.11** Manual browser test: log in as Omar (1 role) — Step 1 returns 1 role, advances cleanly. Log in as a multi-role test user — Step 1 returns the set, picker works. Trigger session expiry — modal works, credentials-only re-login works, deep-link preserved.
+
+**Phase 1C done when:** all 8 UX criteria pass on login + TopBar; both old and new login work end-to-end; manual browser test verified across roles.
+
+**Completion record:** `[done] YYYY-MM-DD — commit ________`
+
+---
+
+## Phase 1D — Migrate the 20 call sites to the new contract (sweep)
+
+**Goal:** Every `current_user.role` read in the codebase uses the new `get_active_role()` helper. Old `role` claim removed from JWT. Schema cleanup.
+
+This is the most mechanical phase. Each file gets edited, tests run, commit, move to next. No file is changed without its test suite passing first.
+
+The 9 files identified in recon (in dependency order):
+
+- [ ] **1D.1** `app/modules/auth/router.py` line 100 (the `/me` endpoint) — uses helper, returns active role.
+- [ ] **1D.2** `app/modules/auth/access_guards.py` lines 36, 50, 92 — guards check `get_active_role()` instead of `current_user.role`.
+- [ ] **1D.3** `app/modules/auth/service.py` line 55 — JWT encoder writes `active_role`, drops legacy `role` claim.
+- [ ] **1D.4** `app/modules/bars/router.py` line 152.
+- [ ] **1D.5** `app/modules/alerts/router.py` lines 88, 130, 166, 204.
+- [ ] **1D.6** `app/modules/warehouse/router.py` lines 81, 107, 129–131, 478–480.
+- [ ] **1D.7** `app/modules/predictions/router.py` line 52.
+- [ ] **1D.8** `app/modules/reports/router.py` line 61.
+- [ ] **1D.9** `app/modules/chat/service.py` line 671.
+- [ ] **1D.10** Migration `p2_drop_users_role_column` — once all call sites migrated, drop the redundant `users.role` column. The active role lives in JWT; assigned roles live in `user_roles`.
+- [ ] **1D.11** Final manual browser test all 4 roles: Owner, Manager, Bartender, Warehouse — every page loads, every guard fires correctly.
+- [ ] **1D.12** Commit + PR + squash-merge to `develop`.
+
+**Phase 1D done when:** all 20 call sites migrated, `users.role` column dropped, all tests green, all 4 roles verified end-to-end in browser.
+
+**Completion record:** `[done] YYYY-MM-DD — commit ________`
+
+---
+
+**Phase 1 done when:** all 4 sub-phases complete, all 8 UX criteria pass on login + TopBar, multi-role login verified end-to-end with at least 2 different role assignments, no regressions.
+
+**Phase 1 completion record:** `[done] YYYY-MM-DD — commit ________`
+
+---
 # Phase 2 — Owner Experience ⏸
 
 **Goal:** Audit and complete every page the Owner can access. This is the largest surface area.

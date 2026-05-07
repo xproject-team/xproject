@@ -6,15 +6,24 @@ Endpoints:
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
-from app.modules.auth.models import User
-from app.modules.auth.schemas import TokenResponse, UserResponse
+from app.modules.auth.models import User, UserRole
+from app.modules.auth.repository import (
+    get_user_authorized_roles,
+    get_user_by_email_with_roles,
+)
+from app.modules.auth.schemas import (
+    RolesForEmailRequest,
+    RolesForEmailResponse,
+    TokenResponse,
+    UserResponse,
+)
 from app.modules.auth.service import AuthService
 
 
@@ -58,6 +67,20 @@ async def get_current_user(
 
     service = AuthService(db)
     user = await service.get_user_by_id(user_id)
+
+    # ─── 1D-min: honor JWT active_role over DB users.role ────────────────
+    # The JWT records the role the user authenticated with at /auth/login.
+    # We override the in-memory User.role so every downstream guard sees
+    # the JWT-correct role, not whichever role happens to be in users.role.
+    # Falls back to user.role (legacy) when the claim is absent (old tokens).
+    if user is not None:
+        active_role_str = payload.get("active_role")
+        if active_role_str:
+            try:
+                user.role = UserRole(active_role_str)
+            except ValueError:
+                # Token contains an invalid role string — treat as expired
+                raise credentials_exc
     if user is None:
         raise credentials_exc
     return user
@@ -68,13 +91,20 @@ async def get_current_user(
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
-    db:        Annotated[AsyncSession, Depends(get_db)],
+    form_data:      Annotated[OAuth2PasswordRequestForm, Depends()],
+    db:             Annotated[AsyncSession, Depends(get_db)],
+    requested_role: Annotated[str | None, Form()] = None,
 ) -> TokenResponse:
-    """Exchange email (sent as 'username' per OAuth2 spec) and password for a JWT.
+    """Exchange email + password (+ optional requested_role) for a JWT.
 
-    Returns 401 on invalid credentials. Same response for unknown email and wrong
-    password (prevents user enumeration attacks).
+    Backward compatible: omitting requested_role behaves exactly as before
+    (token's active_role defaults to the user's primary users.role).
+
+    When requested_role is provided, the user must be authorized for that
+    role in the user_roles table. 403 otherwise.
+
+    Returns 401 on invalid credentials. Same response for unknown email and
+    wrong password (prevents user enumeration attacks).
     """
     service = AuthService(db)
     user = await service.authenticate_user(form_data.username, form_data.password)
@@ -84,8 +114,48 @@ async def login(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token = service.create_user_token(user)
+
+    active: UserRole | None = None
+    if requested_role is not None:
+        # Validate the requested role string parses to a known enum value
+        try:
+            active = UserRole(requested_role.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown role: {requested_role!r}",
+            )
+        # Validate the user is authorized for this role
+        authorized = await get_user_authorized_roles(db, user.id)
+        if active not in authorized:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not authorized for the requested role",
+            )
+
+    token = service.create_user_token(user, active_role=active)
     return TokenResponse(access_token=token, token_type="bearer")
+
+
+@router.post("/roles-for-email", response_model=RolesForEmailResponse)
+async def roles_for_email(
+    payload: RolesForEmailRequest,
+    db:      Annotated[AsyncSession, Depends(get_db)],
+) -> RolesForEmailResponse:
+    """Step 1 of the two-step login flow.
+
+    Given an email, return the roles that user is authorized for. Used by
+    the frontend role-picker before showing the password screen.
+
+    Returns an empty list (with the same email echoed back) for unknown
+    emails, to prevent enumeration. The frontend treats empty list as
+    "no roles available — please check your email."
+    """
+    user = await get_user_by_email_with_roles(db, payload.email)
+    if user is None or not user.is_active:
+        return RolesForEmailResponse(email=payload.email, roles=[])
+    roles = sorted({ra.role.value for ra in user.role_assignments})
+    return RolesForEmailResponse(email=payload.email, roles=roles)
 
 
 @router.get("/me", response_model=UserResponse)

@@ -27,3 +27,19 @@ class TokenResponse(BaseModel):
 class LoginRequest(BaseModel):
     username: str  # OAuth2PasswordRequestForm uses 'username' for the email field
     password: str
+
+
+
+class RolesForEmailRequest(BaseModel):
+    """Step 1 of the two-step login flow: user enters email, we return roles."""
+    email: EmailStr
+
+
+class RolesForEmailResponse(BaseModel):
+    """The list of roles the given email is authorized for.
+
+    Empty list = email exists but has no roles (shouldn't happen post-1A backfill)
+    OR email doesn't exist (we don't distinguish, to prevent enumeration).
+    """
+    email: str
+    roles: list[str]  # ["owner"], ["manager", "bartender"], etc.

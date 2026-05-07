@@ -36,3 +36,5 @@ coverage.xml
 data/
 *.xlsx
 *.xls
+*.bak
+backups/
