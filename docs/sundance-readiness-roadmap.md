@@ -659,9 +659,12 @@ walked. Findings triaged into batches:
 - Backup: backups/xproject_dev_pre_cleanup_20260507_181107.sql
 - Verified end-to-end via Claude-in-Chrome 5-check pass
 
-### Batch D — One-liners (next)
-- Literal `\u00b7` rendered as text on Event detail header
-- Reports stat math (TOTAL EVENTS, AVG/EVENT, BEST EVENT)
+### Batch D — One-liners ✅ DONE 2026-05-07
+- Literal `\u00b7` rendered as text on Event detail header → fixed at
+  EventDetailPage.tsx:292 (replaced literal with actual `·`)
+- Reports stat math → auto-resolved by Batch A (zero completed events
+  now correctly displays 0/€0/—; empty-state copy improvement moved
+  to Batch C)
 
 ### Batch C — Dashboard polish (queued)
 - "Polling stalled · 89h ago" pill — leave as-is (real signal until POS connects)
