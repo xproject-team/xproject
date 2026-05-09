@@ -345,7 +345,12 @@ function AuthenticatedRoutes() {
       <Route
         path="/reports"
         element={
-          <RequirePermission flag={['canGenerateReport', 'canGenerateBarReport']}>
+          /* Owner-only: ReportPage is the event-wide archive. The
+             canGenerateBarReport flag (managers) will gate a separate
+             Manager-scoped bar report page when that's built. Until
+             then, /reports is Owner-only and Managers redirect to
+             /dashboard like every other Owner route. */
+          <RequirePermission flag="canGenerateReport">
             <ReportPage />
           </RequirePermission>
         }
