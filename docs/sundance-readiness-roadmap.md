@@ -684,3 +684,37 @@ walked. Findings triaged into batches:
 - Loading skeletons on F5 (all 11 pages)
 - Alerts "Warning" filter scope inconsistency
 - Multiple "ships in v1.1" footnotes
+
+<!-- phase-3-progress -->
+
+## Phase 3 — Manager experience audit (in progress)
+
+Recon performed via Claude in Chrome on 2026-05-08 with
+manager.cocktail@nomagroup.it (assigned to Cocktail Bar — the only bar
+with real Phase F seed data). Manager experience already mostly correct:
+sidebar trimmed to 5 items, anomaly/owner-only alerts hidden correctly,
+chat scoped, settings own-account-only, 5 of 6 owner routes already
+guarded. Two real issues found, batched as E + F.
+
+### Batch E — /reports route guard ✅ DONE 2026-05-08
+- /reports route accepted canGenerateReport OR canGenerateBarReport,
+  letting Managers land on broken Owner chrome (KPI tiles stuck loading
+  because backend correctly returned 403).
+- Tightened to canGenerateReport only. Managers now redirect to
+  /dashboard, matching the 5 other Owner routes.
+- canGenerateBarReport flag preserved in usePermissions for future use
+  when a Manager-scoped bar report page is built.
+
+### Batch F — Inventory page Manager scoping (queued)
+- /inventory currently shows the same Owner-grade event-wide view to
+  Managers: 23 bar pills, 23 bar summary cards, "Export CSV", header
+  reads "X products across 23 bars".
+- Largest role-correctness leak in the platform.
+- Plan: when usePermissions.assignedBarId is non-null, scope the
+  selectors to that bar only and hide multi-bar UI affordances.
+
+### Polish-week items (deferred)
+- "ACTIVE ALERTS 0 all clear" KPI on My Bar contradicts visible
+  acknowledged CRITICAL alert below — relabel to "0 unacknowledged"
+- Self-DM channel "Manager Cocktail Bar ↔ …" (seed data hygiene)
+- Bottom-left sidebar swap-icon dev affordance still visible
