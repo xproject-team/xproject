@@ -6,7 +6,10 @@ import {
   useUpdateProduct,
   useArchiveProduct,
   type ProductUpdatePayload,
-  type ProductType,
+  type ProductCategory,
+  type ProductUnit,
+  CATEGORY_OPTIONS,
+  UNIT_OPTIONS,
 } from '@/features/products/hooks'
 import type { ProductRow } from '@/lib/mockData'
 
@@ -37,27 +40,29 @@ function ProductDetailContent({ product }: { product: ProductRow }) {
   const archiveMutation = useArchiveProduct()
 
   const [name,             setName]             = useState(product.name)
-  const [category,         setCategory]         = useState(product.category ?? '')
-  const [unit,             setUnit]             = useState(product.unit)
+  const [category,         setCategory]         = useState<ProductCategory | ''>((product.category as ProductCategory | null) ?? '')
+  const [unit,             setUnit]             = useState<ProductUnit>(product.unit as ProductUnit)
   const [priceCents,       setPriceCents]       = useState<string>(
     product.default_price_cents != null ? String(product.default_price_cents / 100) : '',
   )
+  const [barcode,           setBarcode]           = useState(product.barcode ?? '')
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
-
   const dirty =
-    name        !== product.name        ||
-    (category || null) !== (product.category ?? null) ||
-    unit        !== product.unit        ||
-    parsePriceCents(priceCents) !== product.default_price_cents
+    name !== product.name
+    || (category || null) !== (product.category ?? null)
+    || unit !== product.unit
+    || parsePriceCents(priceCents) !== product.default_price_cents
+    || barcode !== (product.barcode ?? '')
 
   const handleSave = async () => {
     if (!dirty) return
     const payload: ProductUpdatePayload = {}
     if (name        !== product.name)                payload.name      = name.trim()
-    if ((category || null) !== (product.category ?? null)) payload.category = category.trim() || null
-    if (unit        !== product.unit)                payload.unit      = unit.trim()
+    if ((category || null) !== (product.category ?? null)) payload.category = category || null
+    if (unit        !== product.unit)                payload.unit      = unit
     const newPrice = parsePriceCents(priceCents)
     if (newPrice !== product.default_price_cents)    payload.default_price_cents = newPrice
+    if (barcode    !== (product.barcode ?? ''))      payload.barcode   = barcode.trim() || null
     try {
       await updateMutation.mutateAsync({ id: product.id, payload })
     } catch (err) {
@@ -117,14 +122,44 @@ function ProductDetailContent({ product }: { product: ProductRow }) {
           <Field label="Name">
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" />
           </Field>
-          <Field label="Category">
-            <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" placeholder="e.g. cocktail, beer, soft" />
-          </Field>
-          <Field label="Unit" hint="e.g. glass, bottle, kg, piece">
-            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" />
+          {product.product_type === 'drink' && (
+            <Field label="Category" hint="Drives the default tier rank.">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as ProductCategory | '')}
+                className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
+              >
+                <option value="">— none —</option>
+                {CATEGORY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Unit">
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as ProductUnit)}
+              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
+            >
+              {UNIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </Field>
           <Field label="Default price (EUR)" hint="Used as fallback when Slesh order doesn't include line price">
             <input type="number" min="0" step="0.01" value={priceCents} onChange={(e) => setPriceCents(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" placeholder="e.g. 10" />
+          </Field>
+          <Field label="Barcode" hint="Optional. EAN-13 / UPC-A / Code-128. Scanner uses this to identify the product.">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
+              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm font-mono"
+              placeholder="e.g. 7501055309603"
+              maxLength={64}
+            />
           </Field>
 
           <div className="pt-4 border-t border-[#E2E8F0]">

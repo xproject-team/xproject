@@ -702,6 +702,7 @@ export interface ProductRow {
   unit: string
   default_price_cents: number | null
   is_archived: boolean
+  barcode?: string | null
 }
 
 // ─── ASSEMBLED VIEW: what BarCard consumes ────────────────────────────────────

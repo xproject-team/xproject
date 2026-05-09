@@ -14,6 +14,50 @@ import type { ProductRow } from '@/lib/mockData'
 
 export type ProductType = 'drink' | 'food' | 'ingredient' | 'supply'
 
+// ─── Backend enum mirrors (kept in sync with backend ProductCategory + ProductUnit) ─
+
+export type ProductCategory =
+  | 'beer_draft'
+  | 'beer_bottle'
+  | 'basic_cocktail'
+  | 'premium_cocktail'
+  | 'wine_red'
+  | 'wine_white'
+  | 'wine_sparkling'
+  | 'soft_drink'
+
+export const CATEGORY_OPTIONS: { value: ProductCategory; label: string }[] = [
+  { value: 'beer_draft',       label: 'Beer (draft)' },
+  { value: 'beer_bottle',      label: 'Beer (bottle)' },
+  { value: 'basic_cocktail',   label: 'Basic cocktail' },
+  { value: 'premium_cocktail', label: 'Premium cocktail' },
+  { value: 'wine_red',         label: 'Wine — red' },
+  { value: 'wine_white',       label: 'Wine — white' },
+  { value: 'wine_sparkling',   label: 'Wine — sparkling' },
+  { value: 'soft_drink',       label: 'Soft drink' },
+]
+
+export type ProductUnit =
+  | 'bottle'
+  | 'glass'
+  | 'can'
+  | 'draft_glass'
+  | 'shot'
+  | 'piece'
+  | 'gram'
+  | 'ml'
+
+export const UNIT_OPTIONS: { value: ProductUnit; label: string }[] = [
+  { value: 'bottle',      label: 'Bottle' },
+  { value: 'glass',       label: 'Glass' },
+  { value: 'can',         label: 'Can' },
+  { value: 'draft_glass', label: 'Draft glass' },
+  { value: 'shot',        label: 'Shot' },
+  { value: 'piece',       label: 'Piece' },
+  { value: 'gram',        label: 'Gram' },
+  { value: 'ml',          label: 'Milliliter (ml)' },
+]
+
 // ─── Request payloads ─────────────────────────────────────────────
 
 export interface ProductCreatePayload {
@@ -23,6 +67,8 @@ export interface ProductCreatePayload {
   unit:                  string
   default_price_cents?:  number | null
   external_pos_id?:      string | null
+  /** EAN-13 / UPC-A / Code-128 barcode for scanner lookup. Per-tenant unique. */
+  barcode?:              string | null
 }
 
 export interface ProductUpdatePayload {
@@ -31,6 +77,8 @@ export interface ProductUpdatePayload {
   unit?:                 string
   default_price_cents?:  number | null
   external_pos_id?:      string | null
+  /** EAN-13 / UPC-A / Code-128 barcode for scanner lookup. Per-tenant unique. */
+  barcode?:              string | null
   is_archived?:          boolean
 }
 

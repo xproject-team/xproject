@@ -1,7 +1,15 @@
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 
-import { useCreateProduct, type ProductCreatePayload, type ProductType } from '@/features/products/hooks'
+import {
+  useCreateProduct,
+  type ProductCreatePayload,
+  type ProductType,
+  type ProductCategory,
+  type ProductUnit,
+  CATEGORY_OPTIONS,
+  UNIT_OPTIONS,
+} from '@/features/products/hooks'
 
 const TYPE_OPTIONS: { value: ProductType; label: string }[] = [
   { value: 'drink',      label: 'Drink'      },
@@ -21,9 +29,10 @@ export default function ProductCreatePage() {
 
   const [name,        setName]        = useState('')
   const [productType, setProductType] = useState<ProductType>('drink')
-  const [category,    setCategory]    = useState('')
-  const [unit,        setUnit]        = useState('glass')
+  const [category,    setCategory]    = useState<ProductCategory | ''>('')
+  const [unit,        setUnit]        = useState<ProductUnit>('glass')
   const [priceEur,    setPriceEur]    = useState('')
+  const [barcode,         setBarcode]         = useState('')
   const [errors,      setErrors]      = useState<FormErrors>({})
 
   const validate = (): FormErrors => {
@@ -44,9 +53,10 @@ export default function ProductCreatePage() {
     const payload: ProductCreatePayload = {
       name:                name.trim(),
       product_type:        productType,
-      category:            category.trim() || null,
-      unit:                unit.trim(),
+      category:            productType === 'drink' && category ? category : null,
+      unit:                unit,
       default_price_cents: priceCents,
+      barcode:             barcode.trim() || null,
     }
     try {
       const created = await createMutation.mutateAsync(payload)
@@ -84,16 +94,47 @@ export default function ProductCreatePage() {
             </select>
           </Field>
 
-          <Field label="Category">
-            <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" placeholder="e.g. cocktail, beer" />
-          </Field>
+          {productType === 'drink' && (
+            <Field label="Category" hint="Drives the default tier rank.">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as ProductCategory | '')}
+                className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
+              >
+                <option value="">— select —</option>
+                {CATEGORY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
+          )}
 
-          <Field label="Unit" error={errors.unit} required hint="e.g. glass, bottle, kg, piece">
-            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" />
+          <Field label="Unit" error={errors.unit} required>
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as ProductUnit)}
+              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
+            >
+              {UNIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </Field>
 
           <Field label="Default price (EUR)" hint="Optional. Used as fallback when Slesh doesn't include line price.">
             <input type="number" min="0" step="0.01" value={priceEur} onChange={(e) => setPriceEur(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" placeholder="e.g. 10" />
+          </Field>
+
+          <Field label="Barcode" hint="Optional. EAN-13 / UPC-A / Code-128. Scanner uses this to identify the product.">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
+              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm font-mono"
+              placeholder="e.g. 7501055309603"
+              maxLength={64}
+            />
           </Field>
         </div>
       </div>
