@@ -38,6 +38,7 @@ class ProductResponse(BaseModel):
     unit: ProductUnit
     default_price_cents: int | None = Field(default=None, ge=0)
     external_pos_id: str | None = None
+    barcode: str | None = None
     is_archived: bool
 
 
@@ -57,6 +58,11 @@ class ProductCreate(BaseModel):
     unit: ProductUnit
     default_price_cents: int | None = Field(default=None, ge=0)
     external_pos_id: str | None = Field(default=None, max_length=128)
+    barcode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="EAN-13/UPC-A/Code-128 barcode for scanner lookup. Per-tenant unique.",
+    )
 
     @field_validator("name")
     @classmethod
@@ -87,6 +93,7 @@ class ProductUpdate(BaseModel):
     unit: ProductUnit | None = None
     default_price_cents: int | None = Field(default=None, ge=0)
     external_pos_id: str | None = Field(default=None, max_length=128)
+    barcode: str | None = Field(default=None, max_length=64)
 
     @field_validator("name")
     @classmethod

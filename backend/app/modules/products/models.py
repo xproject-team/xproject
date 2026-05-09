@@ -165,6 +165,15 @@ class Product(TenantScopedModel):
         String(128), nullable=True, index=True,
     )
 
+    # Barcode (EAN-13, UPC-A, Code-128, etc.) — used by ScanService for
+    # barcode-driven product resolution. NULL for non-bottle products
+    # (drinks, garnishes, supplies). Per-tenant unique via partial index
+    # ix_products_barcode_unique declared in __table_args__.
+    barcode: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
     is_archived: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
