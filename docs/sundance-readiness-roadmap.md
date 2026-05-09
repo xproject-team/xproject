@@ -687,7 +687,7 @@ walked. Findings triaged into batches:
 
 <!-- phase-3-progress -->
 
-## Phase 3 — Manager experience audit (in progress)
+## Phase 3 — Manager experience audit ✅ COMPLETE 2026-05-08
 
 Recon performed via Claude in Chrome on 2026-05-08 with
 manager.cocktail@nomagroup.it (assigned to Cocktail Bar — the only bar
@@ -705,13 +705,16 @@ guarded. Two real issues found, batched as E + F.
 - canGenerateBarReport flag preserved in usePermissions for future use
   when a Manager-scoped bar report page is built.
 
-### Batch F — Inventory page Manager scoping (queued)
-- /inventory currently shows the same Owner-grade event-wide view to
-  Managers: 23 bar pills, 23 bar summary cards, "Export CSV", header
-  reads "X products across 23 bars".
-- Largest role-correctness leak in the platform.
-- Plan: when usePermissions.assignedBarId is non-null, scope the
-  selectors to that bar only and hide multi-bar UI affordances.
+### Batch F — Inventory page Manager scoping ✅ DONE 2026-05-08
+- usePermissions().assignedBarId now drives a single-bar collapse on
+  InventoryPage. When non-null:
+    * bars[] and products[] selectors filter to that bar
+    * bar filter pills hidden
+    * 4-card summary grid hidden
+    * header subtitle reads 'X products at <bar name>'
+- Owner / Warehouse (null assignedBarId) see the full view, unchanged.
+- Export CSV intentionally kept (role-neutral 'save current view'
+  affordance, not Owner-privileged).
 
 ### Polish-week items (deferred)
 - "ACTIVE ALERTS 0 all clear" KPI on My Bar contradicts visible
