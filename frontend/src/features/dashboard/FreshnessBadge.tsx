@@ -78,7 +78,7 @@ export function FreshnessBadge() {
   return (
     <span
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs ring-1 ${bgColor}`}
-      title={last_error ? `Error: ${last_error}` : 'Slesh polling status'}
+      title={last_error ? `Error: ${last_error}` : "Live order data status. Green = streaming from Slesh POS. Red = not yet connected (sandbox credentials pending)."}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${dotColor} ${animate}`} />
       {label}

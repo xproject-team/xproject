@@ -521,16 +521,28 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
               No bars set up for this event yet. Add bars from the event detail page.
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {barKpis.map((kpi) => (
-                <BarCard
-                  key={kpi.id}
-                  bar={kpi}
-                  criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
-                  onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
-                />
-              ))}
-            </div>
+            <>
+              {barKpis.length > 0 && barKpis.filter((b) => b.revenue_cents === 0 && b.drinks_sold === 0).length / barKpis.length >= 0.8 && (
+                <div className="bg-[#F0F7FF] border border-[#1E5A8D]/20 rounded-xl px-4 py-3 mb-4 text-xs text-[#1E5A8D] flex items-start gap-2">
+                  <svg className="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+                  </svg>
+                  <span>
+                    Most bars are still awaiting their first order. Cards populate as transactions stream in from Slesh POS — bars with activity are shown with live numbers below.
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {barKpis.map((kpi) => (
+                  <BarCard
+                    key={kpi.id}
+                    bar={kpi}
+                    criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
+                    onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </main>
       </div>

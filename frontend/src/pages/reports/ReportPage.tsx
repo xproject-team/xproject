@@ -75,9 +75,13 @@ function PortfolioStrip({ kpis }: { kpis: PortfolioKpis | undefined }) {
       <PortfolioStripTile
         label="Total Events"
         value={isLoading ? '…' : String(kpis!.total_events_completed)}
-        hint={kpis && kpis.events_delta_vs_last_quarter !== 0
-          ? `${kpis.events_delta_vs_last_quarter > 0 ? '+' : ''}${kpis.events_delta_vs_last_quarter} vs last quarter`
-          : undefined}
+        hint={
+          kpis && kpis.total_events_completed === 0
+            ? 'After your first event ends'
+            : kpis && kpis.events_delta_vs_last_quarter !== 0
+              ? `${kpis.events_delta_vs_last_quarter > 0 ? '+' : ''}${kpis.events_delta_vs_last_quarter} vs last quarter`
+              : undefined
+        }
       />
       <PortfolioStripTile
         label="Lifetime Revenue"
