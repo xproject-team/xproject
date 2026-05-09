@@ -666,9 +666,13 @@ walked. Findings triaged into batches:
   now correctly displays 0/€0/—; empty-state copy improvement moved
   to Batch C)
 
-### Batch C — Dashboard polish (queued)
-- "Polling stalled · 89h ago" pill — leave as-is (real signal until POS connects)
-- All-zeros bar cards need empty-state copy ("Event has not started yet")
+### Batch C — Dashboard polish ✅ DONE 2026-05-07
+- 'Most bars quiet' banner: appears above bar grid when ≥80% of bars
+  have zero revenue/drinks. Auto-hides once enough bars are active.
+- FreshnessBadge tooltip: 2-word label → full explanatory sentence
+  mentioning Slesh POS + sandbox credentials.
+- Reports TOTAL EVENTS tile: 'After your first event ends' hint when
+  zero completed events.
 
 ### Batch B — Inventory rewrite (queued)
 - /inventory page is wired to mock data (Main Bar, VIP Lounge, Pool Bar, DJ Booth)
