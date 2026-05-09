@@ -1,4 +1,10 @@
 /**
+ * SUPERSEDED 2026-05-07: This hook called a /inventory endpoint that was
+ * never built on the backend. The InventoryPage now uses the dashboard
+ * hooks (useBarsForEvent + useBarStockForEvent + useAllProducts) and the
+ * selectors in features/inventory/selectors.ts.
+ */
+/**
  * useInventory — TanStack Query hook for fetching inventory items for a bar.
  * Components never call axios directly; always use this hook.
  */

@@ -1,6 +1,16 @@
-import { useState, useCallback } from 'react'
-import { MOCK_BARS, MOCK_PRODUCTS } from '@/lib/mockData'
-import type { ProductCategory, ProductStatus } from '@/lib/mockData'
+import { useState, useCallback, useMemo } from 'react'
+import {
+  useLiveEvent,
+  useBarsForEvent,
+  useBarStockForEvent,
+  useAllProducts,
+} from '@/features/dashboard/hooks'
+import {
+  selectInventoryBars,
+  selectInventoryProducts,
+  type ProductCategory,
+  type ProductStatus,
+} from '@/features/inventory/selectors'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +59,7 @@ const CATEGORIES: ProductCategory[] = ['Spirits', 'Beer', 'Wine', 'Mixers', 'Oth
 
 // ─── Bar lookup map ───────────────────────────────────────────────────────────
 
-const BAR_BY_ID = Object.fromEntries(MOCK_BARS.map((b) => [b.id, b]))
+// BAR_BY_ID built dynamically from real data inside the component
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -96,8 +106,44 @@ export default function InventoryPage() {
     setTimeout(() => setToastVisible(false), 3000)
   }, [])
 
+  // ── Real data via the dashboard hooks ───────────────────────────────────────
+  // Same hooks Dashboard uses → single source of truth, consistent polling,
+  // shared cache. Inventory only adds a per-product aggregation.
+  const liveEvent = useLiveEvent()
+  const eventId   = liveEvent.data?.id ?? null
+  const eventName = liveEvent.data?.name ?? '—'
+  const barsQ     = useBarsForEvent(eventId)
+  const stockQ    = useBarStockForEvent(eventId)
+  const productsQ = useAllProducts()
+
+  const isLoading = liveEvent.isLoading || barsQ.isLoading || stockQ.isLoading || productsQ.isLoading
+  const isError   = liveEvent.isError   || barsQ.isError   || stockQ.isError   || productsQ.isError
+  const hasData   = !!barsQ.data && !!stockQ.data && !!productsQ.data
+
+  // ── Selectors: turn raw backend rows into the view model ────────────────────
+  const bars = useMemo(
+    () => hasData ? selectInventoryBars({
+      bars:     barsQ.data!,
+      barStock: stockQ.data!,
+      products: productsQ.data!,
+    }) : [],
+    [hasData, barsQ.data, stockQ.data, productsQ.data],
+  )
+  const products = useMemo(
+    () => hasData ? selectInventoryProducts({
+      bars:     barsQ.data!,
+      barStock: stockQ.data!,
+      products: productsQ.data!,
+    }) : [],
+    [hasData, barsQ.data, stockQ.data, productsQ.data],
+  )
+  const BAR_BY_ID = useMemo(
+    () => Object.fromEntries(bars.map((b) => [b.id, b])),
+    [bars],
+  )
+
   // ── Filtered + sorted product list ──────────────────────────────────────────
-  const filtered = MOCK_PRODUCTS
+  const filtered = products
     .filter((p) => selectedBarId === null || p.bar_id === selectedBarId)
     .filter((p) => selectedCategory === 'all' || p.category === selectedCategory)
     .slice()
@@ -108,13 +154,54 @@ export default function InventoryPage() {
     (p) => p.status === 'warning' || p.status === 'critical' || p.status === 'depleted',
   ).length
 
+  // ── Three-state UX: loading / error / empty ─────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
+        <div className="mt-8 text-center text-sm text-[#718096]">Loading inventory…</div>
+      </div>
+    )
+  }
+  if (isError) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
+        <div className="mt-8 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          Couldn't load inventory data. Refresh the page or try again later.
+        </div>
+      </div>
+    )
+  }
+  if (!eventId) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
+        <div className="mt-8 bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-8 text-center text-sm text-[#4A5568]">
+          No live event right now. Inventory tracks the active event in real time.
+        </div>
+      </div>
+    )
+  }
+  if (bars.length === 0) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
+        <p className="text-sm text-[#4A5568] mt-1">{eventName}</p>
+        <div className="mt-8 bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-8 text-center text-sm text-[#4A5568]">
+          No bars configured for this event yet. Add bars from the event detail page.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <p className="text-sm text-[#4A5568] mt-1">Sundance 2026 · Live · {MOCK_PRODUCTS.length} products across {MOCK_BARS.length} bars</p>
+        <p className="text-sm text-[#4A5568] mt-1">{eventName} · Live · {products.length} products across {bars.length} bars</p>
       </div>
 
       {/* ── Filters ───────────────────────────────────────────────────────── */}
@@ -133,7 +220,7 @@ export default function InventoryPage() {
           >
             All Bars
           </button>
-          {MOCK_BARS.map((bar) => (
+          {bars.map((bar) => (
             <button
               key={bar.id}
               onClick={() => setSelectedBarId(bar.id)}
@@ -164,7 +251,7 @@ export default function InventoryPage() {
 
       {/* ── Bar Summary Cards ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {MOCK_BARS.map((bar) => {
+        {bars.map((bar) => {
           const pct = stockPct(bar.current_stock, bar.initial_stock)
           const cfg = BAR_STATUS_CFG[bar.status]
           const isSelected = selectedBarId === bar.id
@@ -289,7 +376,7 @@ export default function InventoryPage() {
 
                       {/* Burn Rate */}
                       <td className="px-4 py-3 text-right text-[#4A5568] tabular-nums whitespace-nowrap">
-                        {p.consumption_rate} btl/hr
+                        {p.consumption_rate > 0 ? `${p.consumption_rate} btl/hr` : '—'}
                       </td>
 
                       {/* Time to Depletion */}
