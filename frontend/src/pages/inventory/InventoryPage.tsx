@@ -11,6 +11,7 @@ import {
   type ProductCategory,
   type ProductStatus,
 } from '@/features/inventory/selectors'
+import { usePermissions } from '@/features/auth/usePermissions'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -116,27 +117,37 @@ export default function InventoryPage() {
   const stockQ    = useBarStockForEvent(eventId)
   const productsQ = useAllProducts()
 
+  // ── Role-aware scoping ──────────────────────────────────────────────────────
+  // Managers and Bartenders have an assignedBarId — they should only see THEIR
+  // bar's stock, not the whole event's. Owner + Warehouse have null and see all.
+  // The single switch below collapses the entire page from event-wide to single-bar.
+  const { assignedBarId } = usePermissions()
+  const isSingleBarView = assignedBarId !== null
+
   const isLoading = liveEvent.isLoading || barsQ.isLoading || stockQ.isLoading || productsQ.isLoading
   const isError   = liveEvent.isError   || barsQ.isError   || stockQ.isError   || productsQ.isError
   const hasData   = !!barsQ.data && !!stockQ.data && !!productsQ.data
 
   // ── Selectors: turn raw backend rows into the view model ────────────────────
-  const bars = useMemo(
-    () => hasData ? selectInventoryBars({
+  const bars = useMemo(() => {
+    if (!hasData) return []
+    const all = selectInventoryBars({
       bars:     barsQ.data!,
       barStock: stockQ.data!,
       products: productsQ.data!,
-    }) : [],
-    [hasData, barsQ.data, stockQ.data, productsQ.data],
-  )
-  const products = useMemo(
-    () => hasData ? selectInventoryProducts({
+    })
+    return assignedBarId === null ? all : all.filter((b) => b.id === assignedBarId)
+  }, [hasData, barsQ.data, stockQ.data, productsQ.data, assignedBarId])
+
+  const products = useMemo(() => {
+    if (!hasData) return []
+    const all = selectInventoryProducts({
       bars:     barsQ.data!,
       barStock: stockQ.data!,
       products: productsQ.data!,
-    }) : [],
-    [hasData, barsQ.data, stockQ.data, productsQ.data],
-  )
+    })
+    return assignedBarId === null ? all : all.filter((p) => p.bar_id === assignedBarId)
+  }, [hasData, barsQ.data, stockQ.data, productsQ.data, assignedBarId])
   const BAR_BY_ID = useMemo(
     () => Object.fromEntries(bars.map((b) => [b.id, b])),
     [bars],
@@ -201,13 +212,19 @@ export default function InventoryPage() {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <p className="text-sm text-[#4A5568] mt-1">{eventName} · Live · {products.length} products across {bars.length} bars</p>
+        <p className="text-sm text-[#4A5568] mt-1">
+          {eventName} · Live · {products.length} {products.length === 1 ? 'product' : 'products'}
+          {isSingleBarView
+            ? ` at ${bars[0]?.name ?? 'your bar'}`
+            : ` across ${bars.length} ${bars.length === 1 ? 'bar' : 'bars'}`}
+        </p>
       </div>
 
       {/* ── Filters ───────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
 
-        {/* Bar filter pills */}
+        {/* Bar filter pills — hidden in single-bar view */}
+        {!isSingleBarView && (
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setSelectedBarId(null)}
@@ -235,6 +252,7 @@ export default function InventoryPage() {
             </button>
           ))}
         </div>
+        )}
 
         {/* Category dropdown */}
         <select
@@ -249,7 +267,8 @@ export default function InventoryPage() {
         </select>
       </div>
 
-      {/* ── Bar Summary Cards ─────────────────────────────────────────────── */}
+      {/* ── Bar Summary Cards — hidden in single-bar view ─────────────── */}
+      {!isSingleBarView && (
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         {bars.map((bar) => {
           const pct = stockPct(bar.current_stock, bar.initial_stock)
@@ -285,6 +304,7 @@ export default function InventoryPage() {
           )
         })}
       </div>
+      )}
 
       {/* ── Product Table ─────────────────────────────────────────────────── */}
       <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
