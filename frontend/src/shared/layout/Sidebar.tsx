@@ -181,9 +181,10 @@ function getNavItems(role: MockUser['role']): NavItem[] {
 
     case 'bartender':
       return [
+        // 'Scan Bottle' removed pending Phase 6 build — was a /scan stub
+        // that read 'coming soon'. Restore once the real scanner UI ships.
         { label: 'My Bar',      path: '/dashboard', icon: ICONS.wineGlass },
         { label: 'Inventory',   path: '/inventory', icon: ICONS.package },
-        { label: 'Scan Bottle', path: '/scan',      icon: ICONS.scan },
         { label: 'Chat',        path: '/chat',      icon: ICONS.messageCircle },
         { label: 'Settings',    path: '/settings',  icon: ICONS.gear },
       ]
@@ -253,10 +254,10 @@ export function Sidebar() {
               {ROLE_INITIAL[role]}
             </div>
 
-            {/* Role info */}
+            {/* Identity info */}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white leading-tight">
-                {ROLE_LABEL[role]}
+              <p className="text-sm font-semibold text-white leading-tight truncate">
+                {user?.full_name ?? ROLE_LABEL[role]}
               </p>
               <span
                 className={[
@@ -268,13 +269,16 @@ export function Sidebar() {
               </span>
             </div>
 
-            {/* Switch user */}
+            {/* Sign out — was mislabeled 'Switch user' but only ever logged out */}
             <button
               onClick={handleSwitch}
-              title="Switch user"
+              title="Sign out"
+              aria-label="Sign out"
               className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
             >
-              {ICONS.swap}
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
             </button>
           </div>
         </div>

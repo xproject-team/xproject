@@ -323,7 +323,13 @@ export default function InventoryPage() {
                   { label: 'Burn Rate',        align: 'text-right' },
                   { label: 'Time to Depletion',align: 'text-right' },
                   { label: 'Unit Price',       align: 'text-right' },
-                ].map(({ label, align }) => (
+                ].filter(({ label }) => {
+                  // In single-bar view (Manager / Bartender), 'Bar' is redundant
+                  // (every row is the same bar) and 'Unit Price' is a manager-
+                  // ish concern the bartender doesn't need to pour drinks.
+                  if (!isSingleBarView) return true
+                  return label !== 'Bar' && label !== 'Unit Price'
+                }).map(({ label, align }) => (
                   <th
                     key={label}
                     className={`px-4 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide whitespace-nowrap ${align}`}
@@ -360,10 +366,12 @@ export default function InventoryPage() {
                         {p.product_name}
                       </td>
 
-                      {/* Bar */}
-                      <td className="px-4 py-3 text-[#4A5568] whitespace-nowrap">
-                        {bar?.name ?? '—'}
-                      </td>
+                      {/* Bar — hidden in single-bar view */}
+                      {!isSingleBarView && (
+                        <td className="px-4 py-3 text-[#4A5568] whitespace-nowrap">
+                          {bar?.name ?? '—'}
+                        </td>
+                      )}
 
                       {/* Category */}
                       <td className="px-4 py-3">
@@ -408,10 +416,12 @@ export default function InventoryPage() {
                         {formatDepletion(p.estimated_depletion_minutes)}
                       </td>
 
-                      {/* Unit Price */}
-                      <td className="px-4 py-3 text-right text-[#4A5568] tabular-nums">
-                        €{p.unit_price.toFixed(2)}
-                      </td>
+                      {/* Unit Price — hidden in single-bar view */}
+                      {!isSingleBarView && (
+                        <td className="px-4 py-3 text-right text-[#4A5568] tabular-nums">
+                          €{p.unit_price.toFixed(2)}
+                        </td>
+                      )}
                     </tr>
                   )
                 })
@@ -437,15 +447,17 @@ export default function InventoryPage() {
             </span>
           </div>
 
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] bg-white hover:bg-[#F7FAFC] px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export CSV
-          </button>
+          {!isSingleBarView && (
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-1.5 text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] bg-white hover:bg-[#F7FAFC] px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
+          )}
         </div>
       </div>
 
