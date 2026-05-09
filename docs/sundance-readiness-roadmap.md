@@ -749,3 +749,44 @@ Real issues found: 4, batched as G.
 - Real /scan UI is Phase 6 territory.
 - Alert text race between two adapter shapes (Mojito alert flickering
   between two copies) — flagged for Phase 7 cross-role bug-hunt.
+
+<!-- phase-5-progress -->
+
+## Phase 5 — Warehouse Staff audit ✅ COMPLETE 2026-05-08
+
+Recon performed via Claude in Chrome with warehouse.keeper@nomagroup.it
+(Giorgio Bianchi). Phase 5 was the cleanest walk yet — privacy boundary
+was already rock-solid: all 11 owner-only direct URL probes redirected
+to /warehouse, no bar-operational data leaked anywhere, sidebar minimal
+(Scan Goods + Settings), Batch G's identity card fix already paid
+forward (full name + role pill + sign-out icon working out of the box).
+
+Real issues found: 2, batched as H.
+
+### Batch H — Warehouse Staff polish (DONE 2026-05-08)
+1. WarehousePage: 'Pending Reviews' KPI tile hidden for Warehouse Staff.
+   The route /warehouse/pending-review is Owner-only (approve/reject
+   unexpected scans) and the tile linked there. Showing the entry
+   point to non-Owners was the bug; the route + page both work for
+   Owner.
+2. TopBar: notification bell hidden for Warehouse Staff. They have no
+   chat surface and cannot be @-mentioned, so the bell was visually
+   present but functionally inert.
+
+Issue 3 from the recon (empty-state copy on /warehouse/scan Pending
+Deliveries) was a recon false positive — the empty state already exists
+in the source. No code change needed.
+
+### Polish-week / deferred (not Sundance-blocking)
+- Settings copy 'Reports are already bilingual' references a feature
+  Warehouse Staff doesn't have. Same bug noted in Phase 4 for Bartender;
+  one-line fix in polish week.
+- Allocations UI: 'Active Allocations' KPI exists but no dedicated UI
+  exists for warehouse staff to allocate stock to bars. Backend is
+  available (POST /api/v1/warehouse/allocations) — genuine missing
+  feature, not a bug. Not Sundance-blocking; allocation can happen via
+  Owner workflow until built.
+- Login role picker offers all 4 roles for warehouse.keeper — anti-
+  enumeration design from Phase 1C.2, working as designed.
+- Inconsistent role labels ('Warehouse' vs 'Warehouse Staff') across
+  topbar pill / sidebar pill / Settings — cosmetic, polish-week.
