@@ -641,7 +641,7 @@ Key facts for future sessions:
 
 <!-- phase-2-progress -->
 
-## Phase 2 — Owner experience audit (in progress)
+## Phase 2 — Owner experience audit ✅ COMPLETE 2026-05-07
 
 Recon performed via Claude in Chrome on 2026-05-07. 11 owner-visible pages
 walked. Findings triaged into batches:
@@ -674,9 +674,10 @@ walked. Findings triaged into batches:
 - Reports TOTAL EVENTS tile: 'After your first event ends' hint when
   zero completed events.
 
-### Batch B — Inventory rewrite (queued)
-- /inventory page is wired to mock data (Main Bar, VIP Lounge, Pool Bar, DJ Booth)
-- Rewire to /api/v1/bar-stock for real Sundance 2026 data
+### Batch B — Inventory rewrite ✅ DONE 2026-05-07
+- /inventory now uses dashboard hooks + new selector at
+  features/inventory/selectors.ts; mock imports removed.
+- 4-state guards added; unwired metrics render '—' consistently.
 
 ### Deferred (post-Sundance)
 - URL state for tabs (Catalog Products/Recipes, Alerts filter, Chat channel)
