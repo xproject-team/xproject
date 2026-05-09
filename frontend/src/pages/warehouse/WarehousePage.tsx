@@ -29,6 +29,7 @@
  */
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '@/features/auth/useAuth'
 
 import {
   useActivityFeed,
@@ -280,6 +281,9 @@ function InventoryRowView({ row }: { row: InventoryRow }) {
 // ─── Main page ───────────────────────────────────────────────────────────────
 
 export default function WarehousePage() {
+  const { user } = useAuth()
+  const isOwner = user?.role === 'owner'
+
   const [search, setSearch] = useState('')
 
   const kpisQuery = useInventoryKpis()
@@ -355,6 +359,7 @@ export default function WarehousePage() {
           value={kpis ? fmtDecimal(kpis.active_allocations, 0) : '…'}
           hint="reserved for events"
         />
+        {isOwner && (
         <Link to="/warehouse/pending-review" className="block hover:shadow-md transition rounded-lg">
           <KpiTile
             label="Pending Reviews"
@@ -363,6 +368,7 @@ export default function WarehousePage() {
             accent={kpis && kpis.pending_reviews > 0 ? 'danger' : 'default'}
           />
         </Link>
+        )}
       </div>
 
       {/* Pending deliveries strip (only if any) */}

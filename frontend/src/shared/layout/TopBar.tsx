@@ -97,7 +97,7 @@ export function TopBar() {
       )}
 
       <div className="flex items-center gap-1.5 shrink-0 relative">
-        <MentionBell />
+        {role !== 'warehouse' && <MentionBell />}
         {role !== 'owner' && (
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
             {badge.label}
