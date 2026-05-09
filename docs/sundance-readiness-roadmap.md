@@ -721,3 +721,31 @@ guarded. Two real issues found, batched as E + F.
   acknowledged CRITICAL alert below — relabel to "0 unacknowledged"
 - Self-DM channel "Manager Cocktail Bar ↔ …" (seed data hygiene)
 - Bottom-left sidebar swap-icon dev affordance still visible
+
+<!-- phase-4-progress -->
+
+## Phase 4 — Bartender experience audit ✅ COMPLETE 2026-05-08
+
+Recon performed via Claude in Chrome with bartender.marco@nomagroup.it
+(Bartender at Cocktail Bar). Bartender experience was already cleaner
+than expected because Batch F's `assignedBarId` work auto-scoped
+Inventory for Bartender at zero additional cost.
+
+All 7 Owner-only direct URL probes redirect to /dashboard correctly.
+Real issues found: 4, batched as G.
+
+### Batch G — Bartender polish (DONE 2026-05-08)
+1. Sidebar: 'Scan Bottle' stub removed from Bartender nav. Route
+   guard preserved for Phase 6 restoration.
+2. Sidebar identity card: shows user.full_name (was role label);
+   icon button replaced with proper Sign Out icon + tooltip.
+3. InventoryPage: BAR + UNIT PRICE columns hidden in single-bar
+   view (benefits Manager too — Batch F + G compose).
+4. InventoryPage: Export CSV hidden in single-bar view.
+
+### Polish-week / deferred (not Sundance-blocking)
+- 'Active Alerts' KPI logic already correct; recon confusion was
+  about the panel below, not the counter.
+- Real /scan UI is Phase 6 territory.
+- Alert text race between two adapter shapes (Mojito alert flickering
+  between two copies) — flagged for Phase 7 cross-role bug-hunt.
