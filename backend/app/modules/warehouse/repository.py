@@ -400,6 +400,55 @@ class ScanRepository:
         )
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
+    async def find_by_client_event_id(
+        self,
+        tenant_id: UUID,
+        client_event_id: UUID,
+    ) -> WarehouseScan | None:
+        """Idempotency lookup. Used by submit_scan to dedupe retries.
+
+        Returns the existing scan with product/bar/scanned_by relationships
+        eagerly loaded so router serialization does not trip greenlet
+        checks. The unique partial index on (tenant_id, client_event_id)
+        makes this an index-only lookup.
+        """
+        stmt = (
+            select(WarehouseScan)
+            .options(
+                selectinload(WarehouseScan.product),
+                selectinload(WarehouseScan.bar),
+                selectinload(WarehouseScan.scanned_by),
+            )
+            .where(
+                WarehouseScan.tenant_id == tenant_id,
+                WarehouseScan.client_event_id == client_event_id,
+            )
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def get_by_id_with_relationships(
+        self,
+        tenant_id: UUID,
+        scan_id: UUID,
+    ) -> WarehouseScan | None:
+        """Same as get_by_id but eager-loads product/bar/scanned_by so the
+        ORM object is safe to hand to the response serializer. Used by
+        submit_scan to re-fetch the row it just created.
+        """
+        stmt = (
+            select(WarehouseScan)
+            .options(
+                selectinload(WarehouseScan.product),
+                selectinload(WarehouseScan.bar),
+                selectinload(WarehouseScan.scanned_by),
+            )
+            .where(
+                WarehouseScan.tenant_id == tenant_id,
+                WarehouseScan.id == scan_id,
+            )
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def list_activity_feed(
         self,
         tenant_id: UUID,
@@ -484,6 +533,7 @@ class ScanRepository:
         is_unexpected: bool = False,
         pending_review: bool = False,
         scanned_by_user_id: UUID | None = None,
+        client_event_id: UUID | None = None,
     ) -> WarehouseScan:
         """Append a scan row. The hot write path.
 
@@ -503,6 +553,7 @@ class ScanRepository:
             is_unexpected=is_unexpected,
             pending_review=pending_review,
             scanned_by_user_id=scanned_by_user_id,
+            client_event_id=client_event_id,
             scanned_at=datetime.now(timezone.utc),
         )
         self.db.add(scan)

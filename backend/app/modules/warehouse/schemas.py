@@ -220,6 +220,10 @@ class ScanCreate(BaseModel):
     # DISPATCH / RETURN / CONSUMED linkage
     event_id: UUID | None = None
     bar_id: UUID | None = None
+    # Idempotency key — UUID generated client-side at scan-event time so
+    # retries (network blip, double-tap, queue replay) collapse to one row.
+    # Recommended for all clients; required-by-policy for new scanner pages.
+    client_event_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_identification(self) -> ScanCreate:

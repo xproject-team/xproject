@@ -327,6 +327,15 @@ class WarehouseScan(TenantScopedModel):
         default=None,  # Migration default is now(); Python default handled server-side
     )
 
+    # Idempotency key — UUID generated client-side at scan-event time.
+    # Server dedupes by (tenant_id, client_event_id) via partial unique index.
+    # NULL allowed for backward compatibility with pre-Step-6.3 clients
+    # and for legacy rows; new client code always sends one.
+    client_event_id = Column(
+        PgUUID(as_uuid=True),
+        nullable=True,
+    )
+
     # Relationships
     invoice = relationship("DeliveryInvoice", back_populates="scans", foreign_keys=[invoice_id])
     product = relationship("Product", foreign_keys=[product_id])

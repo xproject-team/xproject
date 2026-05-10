@@ -147,6 +147,17 @@ class ScanService:
 
         Per-scan-type workflows documented inline below.
         """
+        # 0. Idempotency early-out: if the same client_event_id was already
+        #    persisted for this tenant, return that row without writing or
+        #    mutating inventory. Critical Sundance-safety property — retries
+        #    (network blip, double-tap, queue replay) collapse to one row.
+        if data.client_event_id is not None:
+            existing = await self.scan_repo.find_by_client_event_id(
+                tenant_id, data.client_event_id,
+            )
+            if existing is not None:
+                return existing
+
         # 1. Role permission gate
         allowed_types = _ROLE_SCAN_PERMISSIONS.get(scanned_by_role, set())
         if data.scan_type not in allowed_types:
@@ -232,9 +243,15 @@ class ScanService:
             is_unexpected=is_unexpected,
             pending_review=pending_review,
             scanned_by_user_id=scanned_by_user_id,
+            client_event_id=data.client_event_id,
         )
         await self.db.commit()
-        return scan
+        # Re-fetch with relationships eager-loaded so the router's response
+        # serializer doesn't trigger lazy-loads on a closed async session.
+        loaded = await self.scan_repo.get_by_id_with_relationships(
+            tenant_id, scan.id,
+        )
+        return loaded if loaded is not None else scan
 
     # ─── Pending-review workflow (Owner approves/rejects unexpected scans) ───
 
