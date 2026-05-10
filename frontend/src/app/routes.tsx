@@ -76,16 +76,6 @@ function RequirePermission({
   return <>{children}</>
 }
 
-// ─── Placeholder for routes whose pages are not built yet ─────────────────────
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold text-[#1A202C]">{title}</h1>
-      <p className="text-sm text-[#4A5568] mt-2">This page is coming soon.</p>
-    </div>
-  )
-}
 
 // ─── App router ───────────────────────────────────────────────────────────────
 
@@ -377,18 +367,6 @@ function AuthenticatedRoutes() {
         }
       />
 
-      {/*
-       * /scan — Bartender only (canScanBottleAtBar)
-       * All others → redirect to home
-       */}
-      <Route
-        path="/scan"
-        element={
-          <RequirePermission flag="canScanBottleAtBar">
-            <ComingSoon title="Scan Bottle" />
-          </RequirePermission>
-        }
-      />
 
       {/* Fallback — any unknown path → role home */}
       {/*

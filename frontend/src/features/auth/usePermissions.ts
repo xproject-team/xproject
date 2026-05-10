@@ -18,7 +18,8 @@ export interface Permissions {
   /** Warehouse only — crate/box intake and dispatch scanning */
   canScan: boolean
   /** Bartender only — scanning a bottle when opening it at the bar */
-  canScanBottleAtBar: boolean
+  canScanArrivalsAtBar: boolean
+  canScanEmptiesAtBar:  boolean
   /** Owner only — full event report with AI narrative */
   canGenerateReport: boolean
   /** Manager only — their own bar's performance report */
@@ -52,7 +53,8 @@ export function usePermissions(): Permissions {
     canSeeOperationalAlerts: role === 'owner' || role === 'manager',
     canSeeRevenue:           role === 'owner',
     canScan:                 role === 'warehouse',
-    canScanBottleAtBar:      role === 'bartender',
+    canScanArrivalsAtBar:    role === 'manager' || role === 'owner',
+    canScanEmptiesAtBar:     role === 'bartender' || role === 'owner',
     canGenerateReport:       role === 'owner',
     canGenerateBarReport:    role === 'manager',
     canViewPredictions:      role === 'owner',
