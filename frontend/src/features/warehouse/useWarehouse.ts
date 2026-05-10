@@ -40,8 +40,16 @@ import {
   useQueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 
 import { api } from '@/lib/api'
+import {
+  drain as drainScanQueue,
+  enqueue as enqueueScan,
+  isNetworkError,
+  newClientEventId,
+  readQueue as readScanQueue,
+} from './scanQueue'
 
 // ─── Types (match backend schemas.py 1:1) ────────────────────────────────────
 
@@ -167,6 +175,9 @@ export interface ScanCreateRequest {
   invoice_id?: string | null
   event_id?: string | null
   bar_id?: string | null
+  /** Idempotency key. If absent, useSubmitScan auto-generates one. Server
+   *  dedupes by (tenant_id, client_event_id) — same UUID twice = same row. */
+  client_event_id?: string
 }
 
 export interface BarcodeResolveResponse {
@@ -489,14 +500,135 @@ export function useSubmitScan() {
   const qc = useQueryClient()
   return useMutation<ScanResponse, Error, ScanCreateRequest>({
     mutationFn: async (body) => {
-      const { data } = await api.post<ScanResponse>('/warehouse/scans', body)
+      // Always send a client_event_id — guarantees idempotency end-to-end
+      // even when callers don't bother to set one explicitly. The server
+      // dedupes by (tenant_id, client_event_id), so a retry of the exact
+      // same body never double-counts.
+      const enriched: ScanCreateRequest = {
+        ...body,
+        client_event_id: body.client_event_id ?? newClientEventId(),
+      }
+      const { data } = await api.post<ScanResponse>(
+        '/warehouse/scans',
+        enriched,
+      )
       return data
     },
     onSuccess: () => {
-      // Invalidate everything — scans affect KPIs, inventory, activity, invoices
       qc.invalidateQueries({ queryKey: warehouseKeys.all })
     },
   })
+}
+
+/**
+ * useSubmitScanWithQueue — Sundance-safe wrapper around useSubmitScan.
+ *
+ * Behaviour:
+ *   - Always generates a client_event_id at the moment of submit.
+ *   - On success: behaves exactly like useSubmitScan.
+ *   - On network failure (no server reachable): stashes the body in
+ *     localStorage queue, returns a synthetic ScanResponse-shaped object
+ *     so the UI can show optimistic confirmation.
+ *   - On server reject (400/403/422): does NOT queue — that scan will
+ *     never succeed; we surface the error to the caller.
+ *
+ * Queue drains automatically when 'online' fires. The retry uses the
+ * same client_event_id as the original, so the server dedupes if the
+ * scan actually did land before the connection died.
+ */
+export function useSubmitScanWithQueue(tenantId: string | null | undefined) {
+  const qc = useQueryClient()
+  return useMutation<ScanResponse | { queued: true; client_event_id: string }, Error, ScanCreateRequest>({
+    mutationFn: async (body) => {
+      const uuid = body.client_event_id ?? newClientEventId()
+      const enriched: ScanCreateRequest = { ...body, client_event_id: uuid }
+      try {
+        const { data } = await api.post<ScanResponse>(
+          '/warehouse/scans',
+          enriched,
+        )
+        return data
+      } catch (err: unknown) {
+        // Only queue genuine network failures. Server-side rejects propagate.
+        if (isNetworkError(err) && tenantId) {
+          const msg = err instanceof Error ? err.message : 'network unreachable'
+          enqueueScan(tenantId, enriched as unknown as Record<string, unknown>, uuid, msg)
+          return { queued: true, client_event_id: uuid }
+        }
+        throw err
+      }
+    },
+    onSuccess: (result) => {
+      // Don't invalidate caches when we only queued — there's no new server state yet.
+      if ('id' in result) {
+        qc.invalidateQueries({ queryKey: warehouseKeys.all })
+      }
+    },
+  })
+}
+
+/**
+ * useScanQueueStatus — small hook for the scanner UI to display
+ * "N pending sync" / "M failed" badges. Recomputes on storage events.
+ */
+export function useScanQueueStatus(tenantId: string | null | undefined): {
+  pending: number
+  failed: number
+} {
+  const [snapshot, setSnapshot] = useState({ pending: 0, failed: 0 })
+  useEffect(() => {
+    if (!tenantId) return
+    const recompute = () => {
+      const q = readScanQueue(tenantId)
+      setSnapshot({
+        pending: q.filter((e) => !e.failed).length,
+        failed: q.filter((e) => e.failed).length,
+      })
+    }
+    recompute()
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('xproject:scanQueue:')) recompute()
+    }
+    window.addEventListener('storage', onStorage)
+    const i = setInterval(recompute, 5000)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      clearInterval(i)
+    }
+  }, [tenantId])
+  return snapshot
+}
+
+/**
+ * useScanQueueAutoDrain — call once at app level (or in scanner pages).
+ * Drains the queue when the browser comes back online and on mount.
+ * Idempotent on the server, so re-draining is safe.
+ */
+export function useScanQueueAutoDrain(tenantId: string | null | undefined): void {
+  const qc = useQueryClient()
+  useEffect(() => {
+    if (!tenantId) return
+    const submit = async (body: Record<string, unknown>) => {
+      await api.post('/warehouse/scans', body)
+    }
+    const tryDrain = async () => {
+      try {
+        const result = await drainScanQueue(tenantId, submit)
+        if (result.succeeded > 0) {
+          qc.invalidateQueries({ queryKey: warehouseKeys.all })
+        }
+      } catch {
+        // Per-entry errors are already accounted for inside drainScanQueue.
+      }
+    }
+    // Drain once on mount in case the page reloaded while offline.
+    void tryDrain()
+    const onOnline = () => { void tryDrain() }
+    window.addEventListener('online', onOnline)
+    return () => {
+      window.removeEventListener('online', onOnline)
+    }
+  }, [tenantId, qc])
 }
 
 export function useResolveBarcode() {
