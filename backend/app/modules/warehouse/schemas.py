@@ -257,6 +257,10 @@ class ScanResponse(BaseModel):
     scanned_by_user_name: str | None = None
     scanned_by_role: ScannerRole
     scanned_at: datetime
+    # Void state — set after Federico-style undo within 5min window.
+    voided_at: datetime | None = None
+    voided_by_user_id: UUID | None = None
+    voided_by_user_name: str | None = None
 
 
 class BarcodeResolveRequest(BaseModel):

@@ -336,12 +336,27 @@ class WarehouseScan(TenantScopedModel):
         nullable=True,
     )
 
+    # Void columns — set when a scan is undone within the 5-minute window.
+    # See docs/scanner-architecture.md (principle: undo safety net).
+    # When voided_at IS NOT NULL the inventory delta has already been reversed
+    # by ScanService.void_scan(); the row stays for audit purposes.
+    voided_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    voided_by_user_id = Column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Relationships
     invoice = relationship("DeliveryInvoice", back_populates="scans", foreign_keys=[invoice_id])
     product = relationship("Product", foreign_keys=[product_id])
     event = relationship("Event", foreign_keys=[event_id])
     bar = relationship("Bar", foreign_keys=[bar_id])
     scanned_by = relationship("User", foreign_keys=[scanned_by_user_id])
+    voided_by = relationship("User", foreign_keys=[voided_by_user_id])
 
     __table_args__ = (
         CheckConstraint(

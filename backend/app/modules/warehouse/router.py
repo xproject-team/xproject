@@ -49,6 +49,7 @@ from app.modules.warehouse.scan_service import (
     ScanPermissionError,
     ScanService,
     ScanValidationError,
+    ScanVoidError,
 )
 from app.modules.warehouse.schemas import (
     ActivityFeedRow,
@@ -552,6 +553,56 @@ async def reject_pending_scan(
     return _scan_response_from_orm(scan)
 
 
+@router.post(
+    "/scans/{scan_id}/void",
+    response_model=ScanResponse,
+)
+async def void_scan(
+    scan_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ScanResponse:
+    """Undo a recent DISPATCH or CONSUMED scan.
+
+    Allowed within 5 minutes of the original scan. Either the original
+    scanner OR an Owner can void. Reverses the inventory delta atomically;
+    keeps the scan row with voided_at + voided_by_user_id audit fields.
+
+    Returns 200 + the (now voided) scan on success, including idempotent
+    re-voids. Returns 409 with a structured error for: too old, wrong
+    scan_type, pending_review, or insufficient permissions.
+    """
+    svc = ScanService(db)
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    ).lower()
+    try:
+        scan = await svc.void_scan(
+            current_user.tenant_id,
+            scan_id,
+            voiding_user_id=current_user.id,
+            voiding_user_role=role_value,
+        )
+    except ScanValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "scan_not_found", "message": str(e)},
+        )
+    except ScanPermissionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "void_permission_denied", "message": str(e)},
+        )
+    except ScanVoidError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "scan_not_voidable", "message": str(e)},
+        )
+    return _scan_response_from_orm(scan)
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # ALLOCATIONS — event reservations against warehouse stock
 # ═════════════════════════════════════════════════════════════════════════════
@@ -712,6 +763,11 @@ def _scan_response_from_orm(scan) -> ScanResponse:
         scanned_by_user_name=getattr(user, "full_name", None) if user else None,
         scanned_by_role=scan.scanned_by_role,
         scanned_at=scan.scanned_at,
+        voided_at=scan.voided_at,
+        voided_by_user_id=scan.voided_by_user_id,
+        voided_by_user_name=getattr(
+            getattr(scan, "voided_by", None), "full_name", None,
+        ),
     )
 
 

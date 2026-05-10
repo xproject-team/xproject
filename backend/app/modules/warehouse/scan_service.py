@@ -68,6 +68,12 @@ class AllocationNotFoundError(Exception):
 # Keys = scanner role, values = set of allowed scan_types for that role.
 # Backend enforces AT SERVICE LAYER so it's not just cosmetic frontend security.
 
+class ScanVoidError(Exception):
+    """Cannot void this scan — too old, already voided, scan_type not
+    supported by the undo path, or scan is in pending_review state.
+    Maps to 409 in the router."""
+
+
 _ROLE_SCAN_PERMISSIONS: dict[str, set[str]] = {
     "owner": {"INTAKE", "DISPATCH", "RETURN", "ADJUSTMENT", "INSPECT", "CONSUMED"},
     "warehouse_keeper": {"INTAKE", "DISPATCH", "RETURN"},
@@ -414,3 +420,102 @@ class ScanService:
             tenant_id, resolved_product_id, data.qty
         )
         await self.alloc_repo.increment_dispatched(allocation, -data.qty)
+
+    # ─── Undo (Federico's safety net) ────────────────────────────────────────
+
+    VOIDABLE_SCAN_TYPES: frozenset[str] = frozenset({"DISPATCH", "CONSUMED"})
+    VOID_WINDOW_SECONDS: int = 300  # 5 minutes (UI shows 5s; server is generous)
+
+    async def void_scan(
+        self,
+        tenant_id: UUID,
+        scan_id: UUID,
+        *,
+        voiding_user_id: UUID,
+        voiding_user_role: str,
+    ) -> WarehouseScan:
+        """Reverse the inventory effect of a scan and mark it voided.
+
+        Guards (in order — service is authoritative even if UI is buggy):
+          1. Scan exists in this tenant
+          2. Scan is one of VOIDABLE_SCAN_TYPES (DISPATCH, CONSUMED)
+          3. Scan is not already voided (idempotent: returns same row)
+          4. Scan is not in pending_review (Owner approval flow takes precedence)
+          5. Scan is younger than VOID_WINDOW_SECONDS (5 minutes)
+          6. Voider is either the original scanner OR an Owner
+
+        Atomicity: the inventory reversal + voided_at set happen in the
+        same transaction. If anything fails, NEITHER lands.
+        """
+        scan = await self.scan_repo.get_by_id_with_relationships(tenant_id, scan_id)
+        if scan is None:
+            raise ScanValidationError(f"Scan {scan_id} not found")
+
+        # Idempotency — already voided is OK, return the row
+        if scan.voided_at is not None:
+            return scan
+
+        # Authorization
+        is_owner = voiding_user_role.lower() == "owner"
+        is_original_scanner = scan.scanned_by_user_id == voiding_user_id
+        if not (is_owner or is_original_scanner):
+            raise ScanPermissionError(
+                "Only the original scanner or an Owner can void a scan"
+            )
+
+        # Type guard — DISPATCH and CONSUMED only in v1
+        if scan.scan_type not in self.VOIDABLE_SCAN_TYPES:
+            raise ScanVoidError(
+                f"scan_type={scan.scan_type} cannot be undone via this endpoint. "
+                f"Owner adjustments / invoice corrections use a separate flow."
+            )
+
+        # Pending-review guard — Owner approval flow owns this row
+        if scan.pending_review:
+            raise ScanVoidError(
+                "Scan is awaiting Owner review; resolve via approve/reject instead of void"
+            )
+
+        # 5-minute window guard
+        from datetime import datetime, timezone
+        age_seconds = (datetime.now(timezone.utc) - scan.scanned_at).total_seconds()
+        if age_seconds > self.VOID_WINDOW_SECONDS:
+            raise ScanVoidError(
+                f"Scan is {int(age_seconds)}s old (> {self.VOID_WINDOW_SECONDS}s window). "
+                f"Use Owner adjustment to correct older scans."
+            )
+
+        # ─── Reverse inventory by scan_type ─────────────────────────────────
+        if scan.scan_type == "DISPATCH":
+            # Forward: inv -= qty, allocation.dispatched_qty += qty
+            # Reverse: inv += qty, allocation.dispatched_qty -= qty
+            if scan.product_id is None or scan.event_id is None:
+                raise ScanVoidError("DISPATCH scan missing product/event context")
+            await self.inv_repo.upsert_delta(
+                tenant_id, scan.product_id, scan.qty,  # positive = restore
+            )
+            allocation = await self.alloc_repo.get_by_event_product(
+                tenant_id, scan.event_id, scan.product_id,
+            )
+            if allocation is not None:
+                await self.alloc_repo.increment_dispatched(allocation, -scan.qty)
+            # If allocation is None (e.g. deleted by Owner mid-event), we still
+            # reverse the inventory delta — the warehouse is the source of truth.
+        elif scan.scan_type == "CONSUMED":
+            # Forward: inv -= qty (only)
+            # Reverse: inv += qty
+            if scan.product_id is None:
+                raise ScanVoidError("CONSUMED scan missing product context")
+            await self.inv_repo.upsert_delta(
+                tenant_id, scan.product_id, scan.qty,
+            )
+
+        # Mark voided
+        scan.voided_at = datetime.now(timezone.utc)
+        scan.voided_by_user_id = voiding_user_id
+        await self.db.flush()
+        await self.db.commit()
+
+        # Re-fetch with relationships eager-loaded for response serialization
+        loaded = await self.scan_repo.get_by_id_with_relationships(tenant_id, scan_id)
+        return loaded if loaded is not None else scan
