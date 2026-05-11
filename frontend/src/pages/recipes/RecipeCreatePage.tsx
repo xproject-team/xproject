@@ -14,7 +14,6 @@ import {
   type RecipeTemplateItem,
 } from '@/features/recipes/useRecipeTemplates'
 import { useProducts } from '@/features/products/hooks'
-import type { ProductRow } from '@/lib/mockData'
 
 const UNITS: ProductUnit[] = [
   'glass', 'shot', 'ml', 'oz', 'bottle', 'can', 'piece', 'dash',
