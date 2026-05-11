@@ -172,21 +172,21 @@ function getNavItems(role: MockUser['role']): NavItem[] {
 
     case 'manager':
       return [
-        { label: 'My Bar',     path: '/dashboard', icon: ICONS.wineGlass },
-        { label: 'Inventory',  path: '/inventory', icon: ICONS.package },
-        { label: 'Alerts',     path: '/alerts',    icon: ICONS.bell },
-        { label: 'Chat',       path: '/chat',      icon: ICONS.messageCircle },
-        { label: 'Settings',   path: '/settings',  icon: ICONS.gear },
+        { label: 'My Bar',         path: '/dashboard',      icon: ICONS.wineGlass },
+        { label: 'Inventory',      path: '/inventory',      icon: ICONS.package },
+        { label: 'Scan Arrivals',  path: '/scan/arrivals',  icon: ICONS.scan },
+        { label: 'Alerts',         path: '/alerts',         icon: ICONS.bell },
+        { label: 'Chat',           path: '/chat',           icon: ICONS.messageCircle },
+        { label: 'Settings',       path: '/settings',       icon: ICONS.gear },
       ]
 
     case 'bartender':
       return [
-        // 'Scan Bottle' removed pending Phase 6 build — was a /scan stub
-        // that read 'coming soon'. Restore once the real scanner UI ships.
-        { label: 'My Bar',      path: '/dashboard', icon: ICONS.wineGlass },
-        { label: 'Inventory',   path: '/inventory', icon: ICONS.package },
-        { label: 'Chat',        path: '/chat',      icon: ICONS.messageCircle },
-        { label: 'Settings',    path: '/settings',  icon: ICONS.gear },
+        { label: 'My Bar',        path: '/dashboard',     icon: ICONS.wineGlass },
+        { label: 'Scan Empties',  path: '/scan/empties',  icon: ICONS.scan },
+        { label: 'Inventory',     path: '/inventory',     icon: ICONS.package },
+        { label: 'Chat',          path: '/chat',          icon: ICONS.messageCircle },
+        { label: 'Settings',      path: '/settings',      icon: ICONS.gear },
       ]
 
     case 'warehouse':

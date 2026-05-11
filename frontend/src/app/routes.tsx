@@ -25,6 +25,8 @@ import RecipeCreatePage      from '@/pages/recipes/RecipeCreatePage'
 import WarehousePage          from '@/pages/warehouse/WarehousePage'
 import WarehouseScanPage      from '@/pages/warehouse/WarehouseScanPage'
 import WarehousePendingReviewPage from '@/pages/warehouse/WarehousePendingReviewPage'
+import { BarScanArrivalsPage } from '@/pages/scan/BarScanArrivalsPage'
+import { BarScanEmptiesPage } from '@/pages/scan/BarScanEmptiesPage'
 import PredictionPage        from '@/pages/predictions/PredictionPage'
 import ReportPage            from '@/pages/reports/ReportPage'
 import ReportDetailPage      from '@/pages/reports/ReportDetailPage'
@@ -367,6 +369,31 @@ function AuthenticatedRoutes() {
         }
       />
 
+
+      {/*
+       * /scan/arrivals — Mode B (Manager DISPATCH). Manager + Owner.
+       * /scan/empties  — Mode C (Bartender CONSUMED). Bartender + Owner.
+       *
+       * Backend independently enforces scan_type permissions via the
+       * _ROLE_SCAN_PERMISSIONS matrix in scan_service.py (defense in
+       * depth — UI gate is convenience, backend is the boundary).
+       */}
+      <Route
+        path="/scan/arrivals"
+        element={
+          <RequirePermission flag="canScanArrivalsAtBar">
+            <BarScanArrivalsPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/scan/empties"
+        element={
+          <RequirePermission flag="canScanEmptiesAtBar">
+            <BarScanEmptiesPage />
+          </RequirePermission>
+        }
+      />
 
       {/* Fallback — any unknown path → role home */}
       {/*
