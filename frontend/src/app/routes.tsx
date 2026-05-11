@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { SessionExpiredModal } from '@/shared/SessionExpiredModal'
+import { PermissionDeniedToast } from '@/shared/PermissionDeniedToast'
 import { type ReactNode } from 'react'
 import { AppShell } from '@/shared/layout/AppShell'
 import { useAuth } from '@/features/auth/useAuth'
@@ -69,12 +70,25 @@ function RequirePermission({
 }) {
   const { user } = useAuth()
   const perms   = usePermissions()
+  const location = useLocation()
   const home    = getHomeRoute(user?.role ?? 'owner')
 
   const flags     = Array.isArray(flag) ? flag : [flag]
   const permitted = flags.some((f) => perms[f])
 
-  if (!permitted) return <Navigate to={home} replace />
+  if (!permitted) {
+    // Defer the event dispatch to a microtask so it fires AFTER React's
+    // render-time work for this component finishes — dispatching during
+    // render would warn about state updates in the listener mid-render.
+    queueMicrotask(() => {
+      window.dispatchEvent(
+        new CustomEvent('permission:denied', {
+          detail: { attemptedPath: location.pathname },
+        }),
+      )
+    })
+    return <Navigate to={home} replace />
+  }
   return <>{children}</>
 }
 
@@ -101,6 +115,7 @@ export function AppRoutes() {
         />
       </Routes>
       <SessionExpiredModal />
+      <PermissionDeniedToast />
     </BrowserRouter>
   )
 }
