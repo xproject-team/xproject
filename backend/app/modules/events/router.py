@@ -15,9 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.modules.auth.models import User
+from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
 from app.modules.events.schemas import EventCreate, EventResponse, EventUpdate
+from app.modules.events.reconciliation_schemas import ReconciliationReport
+from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.service import (
     EventNotFoundError,
     EventService,
@@ -308,3 +310,53 @@ async def get_event_weather(
         snapshot           = event.weather_snapshot,
         is_stale           = is_stale,
     )
+
+
+# ─── Reconciliation report ───────────────────────────────────────────────────
+# Phase 6.11: per-(bar, product) reconciliation grid + per-product event-level
+# delivery-gap detection. Owner-only — Manager-scoped variant ships later if
+# Omar requests it.
+#
+# Sundance-safety: single SQL roundtrip (no inter-row race during live event),
+# event-window bounded, voided scans excluded, tenant-scoped at every CTE,
+# Decimal precision preserved across the wire.
+
+@router.get(
+    "/{event_id}/reconciliation-report",
+    response_model=ReconciliationReport,
+    summary="Reconciliation report (Owner only)",
+)
+async def get_reconciliation_report(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ReconciliationReport:
+    """Return the reconciliation grid for one event.
+
+    Compares per-(bar, product) DISPATCH and CONSUMED scan totals against
+    per-product warehouse_allocations.dispatched_qty. Surfaces three gap
+    severities (MINOR/MODERATE/MAJOR) and the catastrophic "stock
+    dispatched but zero arrivals" pattern.
+
+    POS data is not yet wired (Slesh sandbox pending) — summary.totals.
+    missing_pos_data is True for now; will flip when the integration lands.
+    """
+    if current_user.role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Owners can view the reconciliation report.",
+        )
+
+    try:
+        return await compute_report(
+            db,
+            tenant_id=tenant_id,
+            event_id=event_id,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        _raise_http(exc)
+        raise   # _raise_http always raises; keeps mypy happy
+
