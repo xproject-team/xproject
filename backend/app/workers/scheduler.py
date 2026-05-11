@@ -36,8 +36,10 @@ from app.workers.tasks import (
     cron_close_paused_invoices,
     cron_evaluate_all_live_events,
     cron_generate_reports_for_completed_events,
+    cron_poll_slesh_for_all_live_events,
     evaluate_alerts,
     generate_report,
+    poll_slesh_for_event,
     run_predictions,
 )
 
@@ -52,9 +54,11 @@ class WorkerSettings:
         run_predictions,
         evaluate_alerts,
         generate_report,
+        poll_slesh_for_event,
         cron_evaluate_all_live_events,
         cron_generate_reports_for_completed_events,
         cron_close_paused_invoices,
+        cron_poll_slesh_for_all_live_events,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -83,6 +87,14 @@ class WorkerSettings:
             cron_close_paused_invoices,
             minute={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
             run_at_startup=False,  # No need to fire on boot — 48h cutoff is slow
+        ),
+        # Slesh POS polling. Off-minute slot {3, 8, 13, ...} keeps it clear
+        # of the three other crons. One enqueue per live event; ingester
+        # work happens in worker slots in parallel.
+        cron(
+            cron_poll_slesh_for_all_live_events,
+            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            run_at_startup=True,  # Fire on boot so a freshly-started worker catches up immediately
         ),
     ]
 

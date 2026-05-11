@@ -16,6 +16,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal as async_session_factory
 from app.modules.auth.models import User  # noqa: F401 (needed for ORM mapper init)
 from app.modules.alerts.engine import AlertsOrchestrator
@@ -343,3 +344,123 @@ async def cron_close_paused_invoices(ctx: dict) -> dict:
         "closed": closed,
         "failed": failed,
     }
+
+# ─── Slesh POS polling (one job per live event) ───────────────────────────────
+
+
+async def poll_slesh_for_event(
+    ctx: dict,
+    tenant_id: str,
+    event_id: str,
+) -> dict:
+    """Run one Slesh polling cycle for one tenant × event.
+
+    Enqueued by ``cron_poll_slesh_for_all_live_events`` every 5 minutes.
+    Wraps ``poll_slesh_orders()`` from ``app/modules/pos/slesh_poller.py``
+    so the cron + arq machinery don't need to know about Slesh internals.
+
+    Returns a counters dict for observability:
+        {'status': 'ok' | 'error' | 'circuit_open',
+         'orders_seen': N, 'orders_ingested': M, 'lines_ingested': L,
+         'lines_replayed': R, 'lines_skipped': S, 'lines_errors': E,
+         'error_msg': '...'}
+    """
+    # Local import (not top-level) to avoid pulling the whole POS module
+    # into every task module's import path on worker boot. tasks.py is
+    # imported by scheduler.py at startup, so heavy module imports here
+    # would slow worker startup with no benefit.
+    from app.modules.pos.slesh_poller import poll_slesh_orders
+
+    try:
+        result = await poll_slesh_orders(
+            tenant_id=UUID(tenant_id),
+            event_id=UUID(event_id),
+        )
+        return {
+            "status":           result.status,
+            "orders_seen":      result.orders_seen,
+            "orders_ingested":  result.orders_ingested,
+            "lines_ingested":   result.lines_ingested,
+            "lines_replayed":   result.lines_replayed,
+            "lines_skipped":    result.lines_skipped,
+            "lines_errors":     result.lines_errors,
+            "error_msg":        result.error_msg or "",
+        }
+    except Exception as e:  # noqa: BLE001 — arq must never see a raise
+        logger.exception(
+            "poll_slesh_for_event: tenant=%s event=%s unexpected failure",
+            tenant_id, event_id,
+        )
+        return {
+            "status":    "error",
+            "error_msg": f"{type(e).__name__}: {e}",
+        }
+
+
+async def cron_poll_slesh_for_all_live_events(ctx: dict) -> dict:
+    """Cron entry point: enumerate every live event and enqueue one
+    ``poll_slesh_for_event`` job per (tenant, event).
+
+    Runs every 5 minutes on off-minute slots {3, 8, 13, ...} so it never
+    collides with cron_evaluate_all_live_events {0,5,10,...},
+    cron_generate_reports_for_completed_events {1,6,11,...}, or
+    cron_close_paused_invoices {2,7,12,...}.
+
+    If SLESH_API_TOKEN is not configured, returns immediately — useful
+    for developer machines without Slesh credentials.
+
+    Mirrors cron_evaluate_all_live_events structurally so the pattern
+    stays consistent across all our crons.
+    """
+    # Short-circuit if Slesh isn't configured (developer envs, CI, etc.)
+    if not settings.slesh_api_token:
+        logger.debug("cron_poll_slesh: skipped (SLESH_API_TOKEN not configured)")
+        return {"status": "skipped", "reason": "no_token", "enqueued": 0}
+
+    enqueued = 0
+    skipped  = 0
+
+    async with async_session_factory() as session:
+        try:
+            stmt = select(Event.id, Event.tenant_id).where(
+                Event.status == "live",
+            )
+            rows = (await session.execute(stmt)).all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron_poll_slesh: failed to list live events: %s", e)
+            return {"status": "error", "enqueued": 0}
+
+    redis = ctx["redis"]
+    for event_id, tenant_id in rows:
+        try:
+            job = await redis.enqueue_job(
+                "poll_slesh_for_event",
+                str(tenant_id),
+                str(event_id),
+                _job_id=f"slesh:{tenant_id}:{event_id}",
+            )
+            if job is None:
+                # _job_id collision — previous poll for this event hasn't
+                # finished yet. Skip rather than queue two; protects
+                # Slesh's rate limit + prevents duplicate work.
+                skipped += 1
+            else:
+                enqueued += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "cron_poll_slesh: failed to enqueue for event=%s: %s",
+                event_id, e,
+            )
+
+    if enqueued or skipped:
+        logger.info(
+            "cron_poll_slesh: enqueued=%d skipped=%d for %d live events",
+            enqueued, skipped, len(rows),
+        )
+    return {
+        "status":      "ok",
+        "live_events": len(rows),
+        "enqueued":    enqueued,
+        "skipped":     skipped,
+    }
+
