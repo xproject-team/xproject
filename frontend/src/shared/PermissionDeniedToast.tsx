@@ -59,7 +59,7 @@ export function PermissionDeniedToast() {
     <div
       role="status"
       aria-live="assertive"
-      className="fixed top-6 left-1/2 -translate-x-1/2 z-[90]
+      className="fixed top-[68px] left-1/2 -translate-x-1/2 z-[90]
                  bg-[#FEE2E2] border border-[#EF4444] text-[#991B1B]
                  rounded-xl shadow-lg px-4 py-3 max-w-md w-[92%]
                  flex items-start gap-3 cursor-pointer
