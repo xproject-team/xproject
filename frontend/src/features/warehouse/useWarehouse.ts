@@ -708,3 +708,36 @@ export function useUpsertEventAllocations(eventId: string) {
     },
   })
 }
+
+/**
+ * useVoidScan — undo a recent DISPATCH or CONSUMED scan (Step 6.6.0).
+ *
+ * Backed by POST /api/v1/warehouse/scans/{scan_id}/void. Server enforces:
+ *   - scan_type ∈ {DISPATCH, CONSUMED}      (other types → 409)
+ *   - scan younger than 5 minutes            (older → 409)
+ *   - voider is original scanner OR Owner    (otherwise → 403)
+ *   - already-voided returns the same row    (idempotent — 200)
+ *
+ * Inventory rollback happens server-side atomically. Frontend should
+ * call queryClient.invalidateQueries to refresh KPIs after.
+ *
+ * The 5-minute server window is generous; the UI's BottleScanCard
+ * only exposes the Undo button for 5 seconds after the scan lands.
+ * The gap absorbs clock skew + network latency on the undo tap.
+ */
+export function useVoidScan() {
+  const qc = useQueryClient()
+  return useMutation<ScanResponse, Error, string>({
+    mutationFn: async (scanId) => {
+      const { data } = await api.post<ScanResponse>(
+        `/warehouse/scans/${scanId}/void`,
+      )
+      return data
+    },
+    onSuccess: () => {
+      // Inventory + allocation tables were rolled back server-side;
+      // invalidate everything warehouse-shaped so KPIs / grids refresh.
+      qc.invalidateQueries({ queryKey: warehouseKeys.all })
+    },
+  })
+}
