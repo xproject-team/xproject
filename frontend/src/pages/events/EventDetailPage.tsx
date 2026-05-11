@@ -11,6 +11,7 @@ import {
   getApiError,
 } from '@/features/events/hooks'
 import { useVenues } from '@/features/venues/hooks'
+import { usePermissions } from '@/features/auth/usePermissions'
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
@@ -112,12 +113,18 @@ function EventDetailContent({ event }: { event: Event }) {
   const effective = event
 
   // ─── Status-driven flags ────────────────────────────────────────────────────
+  const permissions               = usePermissions()
   const effectiveCanEdit          = effective.status !== 'completed'
   const effectiveCanStart         = effective.status === 'draft' || effective.status === 'active'
   const effectiveCanEnd           = effective.status === 'live'
   const effectiveCanViewDashboard = effective.status === 'active' || effective.status === 'live'
   const effectiveCanViewReport    = effective.status === 'completed'
   const effectiveIsLive           = effective.status === 'live'
+  // Reconciliation is available once the event has gone LIVE at least once
+  // (i.e., status is 'live' or 'completed') AND the user has Owner permission.
+  const effectiveCanViewReconciliation =
+    permissions.canGenerateReport &&
+    (effective.status === 'live' || effective.status === 'completed')
   const products  = effectiveIsLive ? MOCK_PRODUCTS : []
 
   // ─── Inline edit draft ──────────────────────────────────────────────────────
@@ -294,6 +301,16 @@ function EventDetailContent({ event }: { event: Event }) {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Reconciliation report — Owner only, after event has gone LIVE */}
+          {effectiveCanViewReconciliation && (
+            <button
+              type="button"
+              onClick={() => navigate(`/events/${effective.id}/reconciliation`)}
+              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#164d7a] px-4 py-2 rounded-lg transition-colors"
+            >
+              View Reconciliation
+            </button>
+          )}
           {/* Edit / Save / Cancel */}
           {effectiveCanEdit && !isEditing && (
             <button

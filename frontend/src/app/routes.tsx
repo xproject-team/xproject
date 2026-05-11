@@ -12,6 +12,7 @@ import DashboardPage         from '@/pages/dashboard/DashboardPage'
 import EventListPage         from '@/pages/events/EventListPage'
 import EventCreatePage       from '@/pages/events/EventCreatePage'
 import EventDetailPage       from '@/pages/events/EventDetailPage'
+import { EventReconciliationPage } from '@/pages/events/EventReconciliationPage'
 import InventoryPage         from '@/pages/inventory/InventoryPage'
 import AlertsPage            from '@/pages/alerts/AlertsPage'
 import BarsListPage          from '@/pages/bars/BarsListPage'
@@ -261,6 +262,14 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canCreateEvent">
             <EventDetailPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/events/:event_id/reconciliation"
+        element={
+          <RequirePermission flag="canGenerateReport">
+            <EventReconciliationPage />
           </RequirePermission>
         }
       />
