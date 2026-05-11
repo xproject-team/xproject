@@ -98,7 +98,12 @@ function RequirePermission({
 
 export function AppRoutes() {
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
