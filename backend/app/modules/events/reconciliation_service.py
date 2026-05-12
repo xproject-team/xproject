@@ -188,6 +188,25 @@ async def compute_report(
                 SUM(consumed_qty)  AS total_consumed_at_event
             FROM bar_product_agg
             GROUP BY product_id
+        ),
+        pos_sales AS (
+            -- Per-(bar, product) POS consumption from Slesh. Same time window
+            -- as the scanner CTEs above so the three independent data streams
+            -- compare honestly. source filter is the discriminator that
+            -- separates POS sales from manual_bartender / scanner-derived rows.
+            SELECT
+                st.bar_id,
+                st.product_id,
+                SUM(st.qty) AS consumed_via_pos_qty
+            FROM stock_transactions st
+            WHERE st.tenant_id  = :tenant
+              AND st.event_id   = :event_id
+              AND st.source     = 'slesh_pos'
+              AND st.bar_id     IS NOT NULL
+              AND st.product_id IS NOT NULL
+              AND st.created_at >= :window_lower
+              AND st.created_at <= :window_upper
+            GROUP BY st.bar_id, st.product_id
         )
         SELECT
             -- Per-(bar, product) detail
@@ -201,7 +220,21 @@ async def compute_report(
             pa.total_arrived_at_event,
             pa.total_consumed_at_event,
             -- Allocation-side truth (per event, per product)
-            COALESCE(wa.dispatched_qty, 0) AS dispatched_qty
+            COALESCE(wa.dispatched_qty, 0) AS dispatched_qty,
+            -- POS truth: what Slesh says was sold per (bar, product).
+            -- Coalesce to 0 so rows without POS data show "0 sold" rather
+            -- than NULL — the variance computation depends on a numeric
+            -- value, and 0 is the correct mathematical default.
+            COALESCE(ps.consumed_via_pos_qty, 0) AS consumed_via_pos_qty,
+            -- Variance: scanner-observed consumption minus POS-observed
+            -- consumption. Positive value means scanner saw more empties
+            -- than POS saw sales — i.e., stock disappeared without a paid
+            -- sale (over-pour, comp drinks, breakage, theft). Negative value
+            -- means POS saw more sales than scanner saw empties — operator
+            -- under-scanning of empties (data-quality issue, not a loss).
+            -- Sign convention: positive = unaccounted, easier to scan for
+            -- in a dashboard than a negative value as the alarm direction.
+            (bpa.consumed_qty - COALESCE(ps.consumed_via_pos_qty, 0)) AS pos_variance_qty
         FROM bar_product_agg bpa
         JOIN product_agg pa  ON pa.product_id = bpa.product_id
         JOIN bars b          ON b.id = bpa.bar_id
@@ -210,6 +243,9 @@ async def compute_report(
                ON wa.tenant_id = :tenant
               AND wa.event_id  = :event_id
               AND wa.product_id = bpa.product_id
+        LEFT JOIN pos_sales ps
+               ON ps.bar_id     = bpa.bar_id
+              AND ps.product_id = bpa.product_id
         WHERE (bpa.arrived_qty > 0 OR bpa.consumed_qty > 0)   -- only active pairs
         ORDER BY b.name ASC, p.name ASC
     """)

@@ -33,7 +33,14 @@ htmlcov/
 coverage.xml
 
 # ─── Slesh raw exports (PII — never commit) ─────────────────────────
+# Raw Slesh exports contain customer names, emails, IBANs — never commit.
+# Curated extracts via Cowork are PII-stripped (no names, emails, user IDs,
+# wristband tags) and ARE committed under data/sundance-{year}/ for
+# version control + cross-session reproducibility.
 data/
+!data/sundance-2023/
+!data/sundance-2024/
+!data/sundance-2025/
 *.xlsx
 *.xls
 *.bak
