@@ -24,8 +24,13 @@ from typing import Sequence
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.stock_transactions.models import (
+    StockTransaction,
+    TransactionSource,
+)
 
 from app.modules.events.reconciliation_schemas import (
     EventProductGap,
@@ -114,6 +119,12 @@ async def compute_report(
             detail="Event not found",
         )
 
+    # Compute once, reuse in both paths (empty-rows early return + main path).
+    # One COUNT() LIMIT 1 — negligible cost vs the main report SQL.
+    has_pos_data = await _has_slesh_pos_data(
+        db=db, tenant_id=tenant_id, event_id=event_id,
+    )
+
     # ── Step 2: determine the time window for scans ─────────────────────
     # started_at is canonical for "event went LIVE"; ended_at is when it
     # was closed (NULL while still LIVE — use NOW() in that case).
@@ -140,7 +151,7 @@ async def compute_report(
                     total_arrived=Decimal("0"),
                     total_consumed=Decimal("0"),
                     event_delivery_gap_count=0,
-                    missing_pos_data=True,
+                    missing_pos_data=not has_pos_data,
                 ),
             ),
         )
@@ -339,7 +350,7 @@ async def compute_report(
         total_arrived=sum((r.arrived_qty for r in rows), Decimal("0")),
         total_consumed=sum((r.consumed_qty for r in rows), Decimal("0")),
         event_delivery_gap_count=len(gaps),
-        missing_pos_data=True,  # flip to False when Slesh sandbox lands
+        missing_pos_data=not has_pos_data,
     )
 
     return ReconciliationReport(
@@ -355,3 +366,37 @@ async def compute_report(
             totals=totals,
         ),
     )
+
+# ─────────────────────────────────────────────────────────────────────
+# Helper: does this event have ANY Slesh POS data ingested?
+# ─────────────────────────────────────────────────────────────────────
+async def _has_slesh_pos_data(
+    *,
+    db:         AsyncSession,
+    tenant_id:  UUID,
+    event_id:   UUID,
+) -> bool:
+    """Returns True iff at least one stock_transaction row with
+    source=SLESH_POS exists for this (tenant, event).
+
+    Used by compute_report() to populate the missing_pos_data flag.
+    The query is not time-scoped: we want to know if POS data EVER
+    landed for this event, not whether it landed within the report
+    window. Slesh data outside the event window would be a data-
+    quality issue (separate concern), but presence proves the
+    integration is operating.
+
+    Single COUNT() with LIMIT 1 — index lookup on (tenant_id, event_id),
+    negligible cost vs the main report SQL.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(StockTransaction)
+        .where(StockTransaction.tenant_id == tenant_id)
+        .where(StockTransaction.event_id  == event_id)
+        .where(StockTransaction.source    == TransactionSource.SLESH_POS)
+        .limit(1)
+    )
+    res = await db.execute(stmt)
+    return (res.scalar() or 0) > 0
+
