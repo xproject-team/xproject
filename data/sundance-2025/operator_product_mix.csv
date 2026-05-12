@@ -1,0 +1,677 @@
+event_date,operator_name,store_assignment,product_name_it,units_confirmed
+2025-06-15,S2025-beerbar-1@slesh.it,Beer Bar,Raffo,25
+2025-06-15,S2025-beerbar-1@slesh.it,Beer Bar,Acqua,18
+2025-06-15,S2025-beerbar-1@slesh.it,Beer Bar,Bicchiere,126
+2025-06-15,S2025-beerbar-1@slesh.it,Beer Bar,Nastro Azzurro,260
+2025-06-15,S2025-beerbar-2@slesh.it,Beer Bar,Raffo,104
+2025-06-15,S2025-beerbar-2@slesh.it,Beer Bar,Acqua,17
+2025-06-15,S2025-beerbar-2@slesh.it,Beer Bar,Bicchiere,136
+2025-06-15,S2025-beerbar-2@slesh.it,Beer Bar,Nastro Azzurro,299
+2025-06-15,S2025-beerbar-3@slesh.it,Beer Bar,Raffo,14
+2025-06-15,S2025-beerbar-3@slesh.it,Beer Bar,Acqua,7
+2025-06-15,S2025-beerbar-3@slesh.it,Beer Bar,Bicchiere,40
+2025-06-15,S2025-beerbar-3@slesh.it,Beer Bar,Nastro Azzurro,86
+2025-06-15,S2025-beerbar-4@slesh.it,Beer Bar,Raffo,148
+2025-06-15,S2025-beerbar-4@slesh.it,Beer Bar,Acqua,11
+2025-06-15,S2025-beerbar-4@slesh.it,Beer Bar,Bicchiere,85
+2025-06-15,S2025-beerbar-4@slesh.it,Beer Bar,Nastro Azzurro,29
+2025-06-15,S2025-cassa-1@slesh.it,"Merch, Guardaroba, Gelateria",Guardaroba,1
+2025-06-15,S2025-cassa-1@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,10
+2025-06-15,S2025-cassa-3@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,5
+2025-06-15,S2025-cassa-4@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,11
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Acqua,18
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bicchiere,74
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Vino e bolle,5
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail Premium,11
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Soft Drink,8
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bottiglia Vino,11
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Sprtiz,48
+2025-06-15,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail,146
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Acqua,17
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bicchiere,118
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Vino e bolle,18
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail Premium,7
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bottiglia Vino,11
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Sprtiz,25
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail,280
+2025-06-15,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Acqua,2
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bicchiere,89
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Analcolico,5
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Vino e bolle,3
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail Premium,1
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bottiglia Vino,11
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Sprtiz,20
+2025-06-15,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail,123
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Acqua,19
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bicchiere,151
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Vino e bolle,15
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail Premium,5
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Soft Drink,6
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bottiglia Vino,9
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Sprtiz,85
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail,210
+2025-06-15,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail Super premium,3
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Acqua,26
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bicchiere,204
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Analcolico,4
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Vino e bolle,13
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail Premium,15
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Soft Drink,16
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bottiglia Vino,15
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Sprtiz,96
+2025-06-15,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail,301
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Acqua,14
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bicchiere,141
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Vino e bolle,9
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail Premium,5
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Soft Drink,15
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bottiglia Vino,14
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Sprtiz,55
+2025-06-15,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail,246
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Acqua,4
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bicchiere,15
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Vino e bolle,1
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail Premium,2
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Sprtiz,12
+2025-06-15,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail,62
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Acqua,20
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bicchiere,91
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Analcolico,4
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Vino e bolle,13
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail Premium,14
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Soft Drink,11
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bottiglia Vino,6
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Sprtiz,34
+2025-06-15,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail,216
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Acqua,18
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bicchiere,68
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Analcolico,4
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Vino e bolle,13
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail Premium,6
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Soft Drink,14
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Sprtiz,30
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail,255
+2025-06-15,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail Super premium,7
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Acqua,16
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bicchiere,149
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Analcolico,9
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Vino e bolle,6
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail Premium,10
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Soft Drink,19
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bottiglia Vino,24
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Sprtiz,46
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail,254
+2025-06-15,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail Super premium,4
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Acqua,8
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bicchiere,118
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Vino e bolle,9
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail Premium,9
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Soft Drink,7
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bottiglia Vino,12
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Sprtiz,48
+2025-06-15,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail,282
+2025-06-15,S2025_figo-1@slesh.it,Figo ,Cartoccio Misto,3
+2025-06-15,S2025_figo-1@slesh.it,Figo ,Arancine,42
+2025-06-15,S2025_figo-1@slesh.it,Figo ,Calamari e Moscardini,48
+2025-06-15,S2025_figo-1@slesh.it,Figo ,Polletti,21
+2025-06-15,S2025_figo-2@slesh.it,Figo ,Cartoccio Misto,2
+2025-06-15,S2025_figo-2@slesh.it,Figo ,Arancine,8
+2025-06-15,S2025_figo-2@slesh.it,Figo ,Calamari e Moscardini,15
+2025-06-15,S2025_figo-2@slesh.it,Figo ,Polletti,5
+2025-06-15,S2025_focaccia-1@slesh.it,Focacceria ,Porchetta,12
+2025-06-15,S2025_focaccia-1@slesh.it,Focacceria ,Veg,8
+2025-06-15,S2025_focaccia-1@slesh.it,Focacceria ,Mortadella,21
+2025-06-15,S2025_focaccia-1@slesh.it,Focacceria ,Prosciutto,8
+2025-06-15,S2025_focaccia-2@slesh.it,Focacceria ,Porchetta,35
+2025-06-15,S2025_focaccia-2@slesh.it,Focacceria ,Veg,34
+2025-06-15,S2025_focaccia-2@slesh.it,Focacceria ,Mortadella,67
+2025-06-15,S2025_focaccia-2@slesh.it,Focacceria ,Prosciutto,43
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Bu Pork,34
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Nachos,13
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Bu Veggy,7
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Pulled Chicken Burger,3
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Pulled Salmon Burger,4
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Bu Chicken,16
+2025-06-15,S2025_lanina-1@slesh.it,La Nina,Pulled Pork Burger,36
+2025-06-15,S2025_malandrino-1@slesh.it,Malandrino,Patatina Grande,1
+2025-06-15,S2025_malandrino-1@slesh.it,Malandrino,Burger,4
+2025-06-15,S2025_malandrino-1@slesh.it,Malandrino,Patatina Media,1
+2025-06-15,S2025_malandrino-2@slesh.it,Malandrino,Patatina Grande,56
+2025-06-15,S2025_malandrino-2@slesh.it,Malandrino,Burger,82
+2025-06-15,S2025_malandrino-2@slesh.it,Malandrino,Patatina Media,124
+2025-06-29,S2025-cassa-1@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,7
+2025-06-29,S2025-cassa-2@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,10
+2025-06-29,S2025-cassa-3@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,9
+2025-06-29,S2025-cassa-3@slesh.it,"Merch, Guardaroba, Gelateria",maglietta,3
+2025-06-29,S2025_Stravizi-Operator-1@slesh.it,Stravizio ,PULLED SALMON,9
+2025-06-29,S2025_Stravizi-Operator-1@slesh.it,Stravizio ,Gamberi in tempura,17
+2025-06-29,S2025_Stravizi-Operator-1@slesh.it,Stravizio ,Wrap gamberi,15
+2025-06-29,S2025_Stravizi-Operator-1@slesh.it,Stravizio ,FRITTURA,6
+2025-06-29,S2025_Stravizi-Operator-1@slesh.it,Stravizio ,Cartoccio misto,32
+2025-06-29,S2025_Stravizi-Operator-2@slesh.it,Stravizio ,PULLED SALMON,10
+2025-06-29,S2025_Stravizi-Operator-2@slesh.it,Stravizio ,Gamberi in tempura,6
+2025-06-29,S2025_Stravizi-Operator-2@slesh.it,Stravizio ,Wrap gamberi,11
+2025-06-29,S2025_Stravizi-Operator-2@slesh.it,Stravizio ,FRITTURA,1
+2025-06-29,S2025_Stravizi-Operator-2@slesh.it,Stravizio ,Cartoccio misto,17
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Raffo,10
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bicchiere,40
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Sprtiz,11
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Nastro Azzurro,32
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail,118
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Acqua,20
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Vino e bolle,1
+2025-06-29,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Raffo,26
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bicchiere,187
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Sprtiz,40
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bottiglia Vino,15
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Soft Drink,22
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Nastro Azzurro,70
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail,243
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Acqua,36
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Vino e bolle,15
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Analcolico,5
+2025-06-29,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Raffo,38
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bicchiere,107
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Sprtiz,52
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Soft Drink,4
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Nastro Azzurro,36
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Cocktail,191
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Acqua,21
+2025-06-29,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Vino e bolle,7
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Raffo,15
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bicchiere,124
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Sprtiz,59
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bottiglia Vino,11
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Soft Drink,8
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Nastro Azzurro,31
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail,113
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Acqua,23
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Vino e bolle,3
+2025-06-29,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail signature,6
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Raffo,13
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bicchiere,162
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Sprtiz,68
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bottiglia Vino,11
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Soft Drink,12
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Nastro Azzurro,73
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail,218
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Acqua,21
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Vino e bolle,11
+2025-06-29,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Analcolico,3
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Raffo,15
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bicchiere,127
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Sprtiz,58
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bottiglia Vino,12
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Soft Drink,6
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Nastro Azzurro,37
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail,145
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Acqua,14
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Vino e bolle,8
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-29,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail signature,4
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Raffo,18
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bicchiere,121
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Sprtiz,47
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bottiglia Vino,7
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Soft Drink,9
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Nastro Azzurro,27
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail,184
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Acqua,16
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Vino e bolle,9
+2025-06-29,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Analcolico,8
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Raffo,28
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bicchiere,128
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Sprtiz,48
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bottiglia Vino,9
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Soft Drink,8
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Nastro Azzurro,51
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail,152
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Acqua,14
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Vino e bolle,11
+2025-06-29,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail Super premium,2
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Raffo,15
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bicchiere,125
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Sprtiz,53
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bottiglia Vino,7
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Soft Drink,6
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Nastro Azzurro,29
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail,160
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Acqua,6
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Vino e bolle,7
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Analcolico,5
+2025-06-29,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Raffo,12
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bicchiere,48
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Sprtiz,26
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bottiglia Vino,1
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Nastro Azzurro,11
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail,118
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Acqua,8
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Vino e bolle,2
+2025-06-29,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Analcolico,1
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Raffo,6
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bicchiere,115
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Sprtiz,45
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bottiglia Vino,23
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Nastro Azzurro,52
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail,214
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Acqua,8
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Vino e bolle,10
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Analcolico,1
+2025-06-29,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail Super premium,4
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Raffo,11
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bicchiere,65
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Sprtiz,6
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Soft Drink,8
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Nastro Azzurro,21
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail,147
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Acqua,15
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Vino e bolle,2
+2025-06-29,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Analcolico,2
+2025-06-29,S2025_focaccia-1@slesh.it,Focacceria ,Prosciutto,25
+2025-06-29,S2025_focaccia-1@slesh.it,Focacceria ,Veg,146
+2025-06-29,S2025_focaccia-1@slesh.it,Focacceria ,Mortadella,21
+2025-06-29,S2025_focaccia-1@slesh.it,Focacceria ,Porchetta,21
+2025-06-29,S2025_malandrino-2@slesh.it,Malandrino,Patatina Grande,62
+2025-06-29,S2025_malandrino-2@slesh.it,Malandrino,Burger,98
+2025-06-29,S2025_malandrino-2@slesh.it,Malandrino,Patatina Media,94
+2025-07-13,S2025_Toto-2@slesh.it,Totò,Cannolo,5
+2025-07-13,S2025_Toto-2@slesh.it,Totò,Gelato 5€,9
+2025-07-13,S2025_Toto-2@slesh.it,Totò,Gelato 4€,1
+2025-07-13,S2025_Toto-2@slesh.it,Totò,Arancine,16
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Polpette vegane,5
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Pollo fritto,8
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Patatine,67
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Summer Smash,24
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Smash Burger,51
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Classicone,20
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Box MEDIO,12
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,South-ita Smash,9
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Smoki Vegan,9
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Crispy Twist,4
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Agrodolce,3
+2025-07-13,S2025_Twist-Chips-2@slesh.it,Twist&Chips,Box GRANDE,10
+2025-07-13,S2025_Twist-Chips-3@slesh.it,Twist&Chips,Pollo fritto,1
+2025-07-13,S2025_Twist-Chips-3@slesh.it,Twist&Chips,Patatine,1
+2025-07-13,S2025_Twist-Chips-3@slesh.it,Twist&Chips,Summer Smash,3
+2025-07-13,S2025_Twist-Chips-3@slesh.it,Twist&Chips,Smash Burger,3
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail,231
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Nastro Azzurro,46
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Sprtiz,2
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Soft Drink,2
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bottiglia Vino,7
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Vino e bolle,5
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Acqua,19
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Analcolico,1
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bicchiere,107
+2025-07-13,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Raffo,5
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail,110
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Nastro Azzurro,36
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Sprtiz,43
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Vino e bolle,4
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Acqua,25
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bicchiere,85
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Raffo,10
+2025-07-13,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail,113
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Nastro Azzurro,31
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Sprtiz,26
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Vino e bolle,3
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Acqua,1
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Analcolico,3
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bicchiere,87
+2025-07-13,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Raffo,6
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail,93
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Nastro Azzurro,25
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Sprtiz,20
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Vino e bolle,8
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Acqua,1
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bicchiere,55
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Raffo,9
+2025-07-13,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail,167
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Nastro Azzurro,25
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Sprtiz,50
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Soft Drink,6
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bottiglia Vino,3
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Vino e bolle,7
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Acqua,2
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Analcolico,1
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bicchiere,103
+2025-07-13,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Raffo,7
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail,189
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Nastro Azzurro,28
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Sprtiz,52
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bottiglia Vino,1
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Vino e bolle,7
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Acqua,4
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bicchiere,106
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Raffo,17
+2025-07-13,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail signature,5
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail,188
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Nastro Azzurro,40
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Sprtiz,32
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bottiglia Vino,6
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Vino e bolle,2
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Acqua,7
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bicchiere,95
+2025-07-13,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Raffo,19
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail,171
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Nastro Azzurro,42
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Sprtiz,19
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bottiglia Vino,7
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Vino e bolle,2
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Acqua,4
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bicchiere,99
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Raffo,5
+2025-07-13,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail signature,2
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail,235
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Nastro Azzurro,48
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Sprtiz,59
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Vino e bolle,12
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Acqua,9
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Analcolico,2
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bicchiere,115
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Raffo,41
+2025-07-13,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail,163
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Nastro Azzurro,49
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Sprtiz,54
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bottiglia Vino,1
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Vino e bolle,3
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Acqua,6
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bicchiere,132
+2025-07-13,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Raffo,40
+2025-07-13,S2025_focaccia-1@slesh.it,Focacceria ,Porchetta,30
+2025-07-13,S2025_focaccia-1@slesh.it,Focacceria ,Prosciutto,20
+2025-07-13,S2025_focaccia-1@slesh.it,Focacceria ,Veg,49
+2025-07-13,S2025_focaccia-1@slesh.it,Focacceria ,Mortadella,43
+2025-07-27,S2025-cassa-1@slesh.it,"Merch, Guardaroba, Gelateria",Gelato,1
+2025-07-27,S2025-cassa-3@slesh.it,"Merch, Guardaroba, Gelateria",maglietta,1
+2025-07-27,S2025_ApeMagna-1@slesh.it,Ape Magna,Patatina a spirale,36
+2025-07-27,S2025_ApeMagna-1@slesh.it,Ape Magna,10 Arrosticini,22
+2025-07-27,S2025_ApeMagna-1@slesh.it,Ape Magna,Ciabatta,49
+2025-07-27,S2025_ApeMagna-2@slesh.it,Ape Magna,Patatina a spirale,41
+2025-07-27,S2025_ApeMagna-2@slesh.it,Ape Magna,10 Arrosticini,30
+2025-07-27,S2025_ApeMagna-2@slesh.it,Ape Magna,Ciabatta,21
+2025-07-27,S2025_PretaPolpett-1@slesh.it,Pret a Polpett,Mix Polpette,8
+2025-07-27,S2025_PretaPolpett-1@slesh.it,Pret a Polpett,Patatina Media,7
+2025-07-27,S2025_PretaPolpett-2@slesh.it,Pret a Polpett,Mix Polpette,86
+2025-07-27,S2025_PretaPolpett-2@slesh.it,Pret a Polpett,Patatina Media,93
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Sprtiz,55
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bottiglia Vino,6
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail,148
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Nastro Azzurro,29
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Acqua,21
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Vino e bolle,6
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Raffo,11
+2025-07-27,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bicchiere,85
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Sprtiz,66
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Soft Drink,8
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail,229
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Nastro Azzurro,64
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Acqua,33
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Vino e bolle,5
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Raffo,22
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Bicchiere,142
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Analcolico,2
+2025-07-27,S2025_cocktailbar-11@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Sprtiz,38
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bottiglia Vino,1
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Cocktail,260
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Nastro Azzurro,53
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Acqua,10
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Vino e bolle,3
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Raffo,22
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bicchiere,100
+2025-07-27,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Sprtiz,7
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Soft Drink,2
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail,40
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Nastro Azzurro,7
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Acqua,3
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Vino e bolle,1
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Raffo,3
+2025-07-27,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bicchiere,3
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Sprtiz,82
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Soft Drink,10
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail,245
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Nastro Azzurro,52
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Acqua,18
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Vino e bolle,14
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Raffo,19
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bicchiere,194
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-07-27,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Analcolico,1
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Sprtiz,32
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bottiglia Vino,4
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Soft Drink,12
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail,196
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Nastro Azzurro,37
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Acqua,16
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Raffo,18
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bicchiere,57
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Analcolico,1
+2025-07-27,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail Super premium,4
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Sprtiz,24
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bottiglia Vino,4
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Soft Drink,2
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail,124
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Nastro Azzurro,22
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Acqua,14
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Vino e bolle,4
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Raffo,5
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bicchiere,44
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail signature,3
+2025-07-27,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Analcolico,6
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Sprtiz,71
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail,169
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Nastro Azzurro,45
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Acqua,15
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Vino e bolle,7
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Raffo,5
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bicchiere,110
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail signature,5
+2025-07-27,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Analcolico,2
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Sprtiz,3
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bottiglia Vino,9
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Soft Drink,4
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail,237
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Nastro Azzurro,56
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Acqua,11
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Vino e bolle,4
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Raffo,6
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bicchiere,66
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail signature,2
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Analcolico,6
+2025-07-27,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Sprtiz,71
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bottiglia Vino,8
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Soft Drink,13
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail,172
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Nastro Azzurro,52
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Acqua,21
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Vino e bolle,4
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Raffo,18
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bicchiere,144
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Analcolico,5
+2025-07-27,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Sprtiz,73
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bottiglia Vino,5
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail,235
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Nastro Azzurro,60
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Acqua,16
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Vino e bolle,13
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Raffo,11
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bicchiere,184
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail signature,5
+2025-07-27,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Analcolico,5
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Sprtiz,55
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bottiglia Vino,3
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail,176
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Nastro Azzurro,47
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Acqua,15
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Vino e bolle,1
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Raffo,13
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bicchiere,119
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail signature,3
+2025-07-27,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Analcolico,1
+2025-07-27,S2025_focaccia-1@slesh.it,Focacceria ,Porchetta,15
+2025-07-27,S2025_focaccia-1@slesh.it,Focacceria ,Prosciutto,20
+2025-07-27,S2025_focaccia-1@slesh.it,Focacceria ,Veg,76
+2025-07-27,S2025_focaccia-1@slesh.it,Focacceria ,Mortadella,169
+2025-07-27,S2025_focaccia-2@slesh.it,Focacceria ,Veg,23
+2025-07-27,S2025_focaccia-2@slesh.it,Focacceria ,Mortadella,56
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Raffo,23
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bicchiere,107
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Sprtiz,27
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Bottiglia Vino,10
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Soft Drink,9
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Cocktail,158
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Nastro Azzurro,42
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Acqua,17
+2025-08-03,S2025_cocktailbar-10@slesh.it,Cocktail Bar ,Vino e bolle,15
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Raffo,1
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bicchiere,35
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Sprtiz,10
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Bottiglia Vino,3
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Cocktail,34
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Nastro Azzurro,6
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Acqua,3
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Vino e bolle,1
+2025-08-03,S2025_cocktailbar-12@slesh.it,Cocktail Bar ,Analcolico,1
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Raffo,1
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Bicchiere,24
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Sprtiz,13
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Soft Drink,1
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Cocktail,116
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Nastro Azzurro,6
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Acqua,4
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Vino e bolle,6
+2025-08-03,S2025_cocktailbar-1@slesh.it,Cocktail Bar ,Analcolico,1
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Raffo,10
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Bicchiere,49
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Sprtiz,3
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Soft Drink,4
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Cocktail,192
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Nastro Azzurro,32
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Acqua,10
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Vino e bolle,10
+2025-08-03,S2025_cocktailbar-2@slesh.it,Cocktail Bar ,Analcolico,2
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Raffo,8
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bicchiere,36
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Sprtiz,30
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Bottiglia Vino,6
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Soft Drink,3
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Cocktail,141
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Nastro Azzurro,28
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Acqua,8
+2025-08-03,S2025_cocktailbar-3@slesh.it,Cocktail Bar ,Vino e bolle,11
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Raffo,9
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bicchiere,134
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Sprtiz,49
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Bottiglia Vino,6
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Soft Drink,10
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail,257
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Nastro Azzurro,28
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Acqua,9
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Vino e bolle,4
+2025-08-03,S2025_cocktailbar-4@slesh.it,Cocktail Bar ,Cocktail Super premium,1
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Raffo,18
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bicchiere,146
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Sprtiz,66
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Bottiglia Vino,10
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Soft Drink,16
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail,242
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Nastro Azzurro,43
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Acqua,17
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Vino e bolle,5
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Analcolico,3
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail Super premium,2
+2025-08-03,S2025_cocktailbar-5@slesh.it,Cocktail Bar ,Cocktail signature,1
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Raffo,37
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bicchiere,80
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Sprtiz,52
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Soft Drink,5
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Cocktail,103
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Nastro Azzurro,96
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Acqua,13
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Vino e bolle,6
+2025-08-03,S2025_cocktailbar-6@slesh.it,Cocktail Bar ,Analcolico,1
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Raffo,18
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bicchiere,99
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Sprtiz,49
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Bottiglia Vino,2
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Soft Drink,9
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail,278
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Nastro Azzurro,10
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Acqua,23
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Vino e bolle,14
+2025-08-03,S2025_cocktailbar-7@slesh.it,Cocktail Bar ,Cocktail Super premium,2
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Raffo,31
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bicchiere,199
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Sprtiz,74
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Bottiglia Vino,10
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Soft Drink,13
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail,298
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Nastro Azzurro,84
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Acqua,27
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Vino e bolle,11
+2025-08-03,S2025_cocktailbar-8@slesh.it,Cocktail Bar ,Cocktail Super premium,3
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Raffo,14
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bicchiere,167
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Sprtiz,47
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Bottiglia Vino,22
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Soft Drink,10
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail,178
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Nastro Azzurro,36
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Acqua,25
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Vino e bolle,13
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Analcolico,3
+2025-08-03,S2025_cocktailbar-9@slesh.it,Cocktail Bar ,Cocktail signature,5
+2025-08-03,S2025_focaccia-1@slesh.it,Focacceria ,Prosciutto,33
+2025-08-03,S2025_focaccia-1@slesh.it,Focacceria ,Mortadella,78
+2025-08-03,S2025_focaccia-1@slesh.it,Focacceria ,Veg,112
+2025-08-03,S2025_focaccia-1@slesh.it,Focacceria ,Porchetta,26
+2025-08-03,S2025_malandrino-2@slesh.it,Malandrino,Patatina Grande,59
+2025-08-03,S2025_malandrino-2@slesh.it,Malandrino,Burger,131
+2025-08-03,S2025_malandrino-2@slesh.it,Malandrino,Patatina Media,114

@@ -1,0 +1,133 @@
+event_date,product_name_it,price_eur,category,units_sold,revenue_eur
+2025-06-15,Acqua,2,beverage,215,430.0
+2025-06-15,Analcolico,8,beverage,36,288.0
+2025-06-15,Arancine ,5,Food,50,250.0
+2025-06-15,Bicchiere,1,beverage,1605,1605.0
+2025-06-15,Bottiglia Vino ,27,beverage,115,3105.0
+2025-06-15,Bu Chicken ,12,Food,16,192.0
+2025-06-15,Bu Pork ,12,Food,34,408.0
+2025-06-15,Bu Veggy ,12,Food,7,84.0
+2025-06-15,Burger,12,Food,86,1032.0
+2025-06-15,Calamari e Moscardini ,10,Food,63,630.0
+2025-06-15,Cartoccio Misto,8,Food,5,40.0
+2025-06-15,Cocktail,10,beverage,2375,23750.0
+2025-06-15,Cocktail Premium,13,beverage,85,1105.0
+2025-06-15,Cocktail Super premium ,15,beverage,15,225.0
+2025-06-15,Gelato,3,beverage,26,78.0
+2025-06-15,Guardaroba,3,Guardaroba,1,3.0
+2025-06-15,Mortadella,8,Food,88,704.0
+2025-06-15,Nachos,8,Food,13,104.0
+2025-06-15,Nastro Azzurro,6,beverage,674,4044.0
+2025-06-15,Patatina Grande,8,Food,57,456.0
+2025-06-15,Patatina Media,5,Food,125,625.0
+2025-06-15,Polletti ,8,Food,26,208.0
+2025-06-15,Porchetta ,8,Food,47,376.0
+2025-06-15,Prosciutto,8,Food,51,408.0
+2025-06-15,Pulled Chicken Burger,12,Food,3,36.0
+2025-06-15,Pulled Pork Burger,12,Food,36,432.0
+2025-06-15,Pulled Salmon Burger,12,Food,4,48.0
+2025-06-15,Raffo,7,beverage,291,2037.0
+2025-06-15,Soft Drink,5,beverage,105,525.0
+2025-06-15,Sprtiz,10,beverage,499,4990.0
+2025-06-15,Veg,8,Food,42,336.0
+2025-06-15,Vino e bolle,6,beverage,105,630.0
+2025-06-29,Acqua,2,beverage,202,404.0
+2025-06-29,Analcolico,8,beverage,29,232.0
+2025-06-29,Bicchiere,1,beverage,1349,1349.0
+2025-06-29,Bottiglia Vino ,27,beverage,105,2835.0
+2025-06-29,Burger,12,Food,98,1176.0
+2025-06-29,Cartoccio misto ,10,Food,49,490.0
+2025-06-29,Cocktail,10,beverage,2003,20030.0
+2025-06-29,Cocktail Super premium ,15,beverage,6,90.0
+2025-06-29,Cocktail signature,13,beverage,12,156.0
+2025-06-29,FRITTURA,10,Food,7,70.0
+2025-06-29,Gamberi in tempura ,8,Food,23,184.0
+2025-06-29,Gelato,3,beverage,26,78.0
+2025-06-29,Mortadella,8,Food,21,168.0
+2025-06-29,Nastro Azzurro,6,beverage,470,2820.0
+2025-06-29,PULLED SALMON,12,Food,19,228.0
+2025-06-29,Patatina Grande,8,Food,62,496.0
+2025-06-29,Patatina Media,5,Food,94,470.0
+2025-06-29,Porchetta ,8,Food,21,168.0
+2025-06-29,Prosciutto,8,Food,25,200.0
+2025-06-29,Raffo,7,beverage,207,1449.0
+2025-06-29,Soft Drink,5,beverage,88,440.0
+2025-06-29,Sprtiz,10,beverage,513,5130.0
+2025-06-29,Veg,8,Food,146,1168.0
+2025-06-29,Vino e bolle,6,beverage,86,516.0
+2025-06-29,Wrap gamberi ,12,Food,26,312.0
+2025-06-29,maglietta,20,Merch,3,60.0
+2025-07-13,Acqua,2,beverage,78,156.0
+2025-07-13,Agrodolce,10,Food,3,30.0
+2025-07-13,Analcolico,8,beverage,7,56.0
+2025-07-13,Arancine,5,Food,16,80.0
+2025-07-13,Bicchiere,1,beverage,984,984.0
+2025-07-13,Bottiglia Vino ,27,beverage,39,1053.0
+2025-07-13,Box GRANDE,15,Food,10,150.0
+2025-07-13,Box MEDIO,13,Food,12,156.0
+2025-07-13,Cannolo,5,Food,5,25.0
+2025-07-13,Classicone,10,Food,20,200.0
+2025-07-13,Cocktail,10,beverage,1660,16600.0
+2025-07-13,Cocktail Super premium ,15,beverage,2,30.0
+2025-07-13,Cocktail signature,13,beverage,8,104.0
+2025-07-13,Crispy Twist,12,Food,4,48.0
+2025-07-13,Gelato 4€,4,Food,1,4.0
+2025-07-13,Gelato 5€,5,Food,9,45.0
+2025-07-13,Mortadella,8,Food,43,344.0
+2025-07-13,Nastro Azzurro,6,beverage,370,2220.0
+2025-07-13,Patatine,6,Food,68,408.0
+2025-07-13,Pollo fritto,8,Food,9,72.0
+2025-07-13,Polpette vegane,8,Food,5,40.0
+2025-07-13,Porchetta ,8,Food,30,240.0
+2025-07-13,Prosciutto,8,Food,20,160.0
+2025-07-13,Raffo,7,beverage,159,1113.0
+2025-07-13,Smash Burger,10,Food,54,540.0
+2025-07-13,Smoki Vegan,10,Food,9,90.0
+2025-07-13,Soft Drink,5,beverage,28,140.0
+2025-07-13,South-ita Smash,12,Food,9,108.0
+2025-07-13,Sprtiz,10,beverage,357,3570.0
+2025-07-13,Summer Smash,12,Food,27,324.0
+2025-07-13,Veg,8,Food,49,392.0
+2025-07-13,Vino e bolle,6,beverage,53,318.0
+2025-07-27,10 Arrosticini,12,Food,52,624.0
+2025-07-27,Acqua,2,beverage,193,386.0
+2025-07-27,Analcolico,8,beverage,29,232.0
+2025-07-27,Bicchiere,1,beverage,1248,1248.0
+2025-07-27,Bottiglia Vino ,27,beverage,50,1350.0
+2025-07-27,Ciabatta,10,Food,70,700.0
+2025-07-27,Cocktail,10,beverage,2231,22310.0
+2025-07-27,Cocktail Super premium ,15,beverage,8,120.0
+2025-07-27,Cocktail signature,13,beverage,20,260.0
+2025-07-27,Gelato,3,beverage,1,3.0
+2025-07-27,Mix Polpette,10,Food,94,940.0
+2025-07-27,Mortadella,8,Food,225,1800.0
+2025-07-27,Nastro Azzurro,6,beverage,524,3144.0
+2025-07-27,Patatina Media,5,Food,100,500.0
+2025-07-27,Patatina a spirale,5,Food,77,385.0
+2025-07-27,Porchetta ,8,Food,15,120.0
+2025-07-27,Prosciutto,8,Food,20,160.0
+2025-07-27,Raffo,7,beverage,153,1071.0
+2025-07-27,Soft Drink,5,beverage,74,370.0
+2025-07-27,Sprtiz,10,beverage,577,5770.0
+2025-07-27,Veg,8,Food,99,792.0
+2025-07-27,Vino e bolle,6,beverage,62,372.0
+2025-07-27,maglietta,20,Merch,1,20.0
+2025-08-03,Acqua,2,beverage,156,312.0
+2025-08-03,Analcolico,8,beverage,11,88.0
+2025-08-03,Bicchiere,1,beverage,1076,1076.0
+2025-08-03,Bottiglia Vino ,27,beverage,71,1917.0
+2025-08-03,Burger,12,Food,131,1572.0
+2025-08-03,Cocktail,10,beverage,1997,19970.0
+2025-08-03,Cocktail Super premium ,15,beverage,8,120.0
+2025-08-03,Cocktail signature,13,beverage,6,78.0
+2025-08-03,Mortadella,8,Food,78,624.0
+2025-08-03,Nastro Azzurro,6,beverage,411,2466.0
+2025-08-03,Patatina Grande,8,Food,59,472.0
+2025-08-03,Patatina Media,5,Food,114,570.0
+2025-08-03,Porchetta ,8,Food,26,208.0
+2025-08-03,Prosciutto,8,Food,33,264.0
+2025-08-03,Raffo,7,beverage,170,1190.0
+2025-08-03,Soft Drink,5,beverage,80,400.0
+2025-08-03,Sprtiz,10,beverage,420,4200.0
+2025-08-03,Veg,8,Food,112,896.0
+2025-08-03,Vino e bolle,6,beverage,96,576.0
