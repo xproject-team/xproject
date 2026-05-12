@@ -1,0 +1,33 @@
+event_date,store_name,units_sold,revenue_eur
+2024-06-16,Bar Barcelo,2142,14002
+2024-06-16,Bar Gin No.3,359,3858
+2024-06-16,Main Bar Jack Daniel's,3952,28107
+2024-06-16,Punto Food,539,4462
+2024-06-30,Bar Barcelo,1041,7854
+2024-06-30,Bar Barcelo Birra,187,972
+2024-06-30,Bar Gin No.3,171,1767
+2024-06-30,Main Bar Jack Daniel's,3777,26962
+2024-06-30,Main Bar Jack Daniel's Birra,1295,6010
+2024-06-30,Punto Food,550,4864
+2024-06-30,Punto Food Caffè,18,36
+2024-07-14,Bar Barcelo,1443,10853
+2024-07-14,Bar Barcelo Birra,295,1500
+2024-07-14,Bar Gin No.3,80,860
+2024-07-14,Main Bar Jack Daniel's,3718,27223
+2024-07-14,Main Bar Jack Daniel's Birra,1469,6774
+2024-07-14,Punto Food,508,4356
+2024-07-14,Punto Food Caffè,20,40
+2024-07-28,Bar Barcelo,1288,9636
+2024-07-28,Bar Barcelo Birra,199,989
+2024-07-28,Bar Gin No.3,153,1641
+2024-07-28,Main Bar Jack Daniel's,4018,28689
+2024-07-28,Main Bar Jack Daniel's Birra,1159,5304
+2024-07-28,Punto Food,518,4486
+2024-07-28,Punto Food Caffè,15,30
+2024-08-04,Bar Barcelo,1288,9636
+2024-08-04,Bar Barcelo Birra,199,989
+2024-08-04,Bar Gin No.3,153,1641
+2024-08-04,Main Bar Jack Daniel's,4018,28689
+2024-08-04,Main Bar Jack Daniel's Birra,1159,5304
+2024-08-04,Punto Food,518,4486
+2024-08-04,Punto Food Caffè,15,30

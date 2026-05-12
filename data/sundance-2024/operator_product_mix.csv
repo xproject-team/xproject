@@ -1,0 +1,862 @@
+event_date,operator_name,store_assignment,product_name_it,units_confirmed
+2024-06-16,sun-admin-4@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food",Gin Tonic,1
+2024-06-16,sun-admin-4@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food",Birra,14
+2024-06-16,sun-admin-4@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food",Bicchiere,4
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Gin Tonic,30
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Bicchiere,87
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Vino e bolle,5
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Analcolico,1
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Cocktail,125
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Acqua,6
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Cocktail Premium,13
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Soft Drink,4
+2024-06-16,sun-barcelo-1@slesh.it,Bar Barcelo,Sprtiz,20
+2024-06-16,sun-barcelo-2@slesh.it,Bar Barcelo,Birra,527
+2024-06-16,sun-barcelo-2@slesh.it,Bar Barcelo,Bicchiere,173
+2024-06-16,sun-barcelo-4@slesh.it,Bar Barcelo,Birra,5
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Gin Tonic,61
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Birra,1
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Bicchiere,53
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Vino e bolle,2
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Cocktail,121
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Acqua,9
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Cocktail Premium,6
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Soft Drink,6
+2024-06-16,sun-barcelo-6@slesh.it,Bar Barcelo,Sprtiz,9
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Gin Tonic,89
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Birra,50
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Bicchiere,78
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Vino e bolle,7
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Cocktail,77
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Acqua,23
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Cocktail Premium,2
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Soft Drink,4
+2024-06-16,sun-barcelo-7@slesh.it,Bar Barcelo,Sprtiz,26
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Gin Tonic,73
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Birra,7
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Bicchiere,47
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Vino e bolle,5
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Cocktail,55
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Acqua,5
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Cocktail Premium,1
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Soft Drink,3
+2024-06-16,sun-barcelo-8@slesh.it,Bar Barcelo,Sprtiz,18
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Gin Tonic,100
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Bicchiere,52
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Vino e bolle,3
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Analcolico,2
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Cocktail,101
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Acqua,14
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Cocktail Premium,2
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Soft Drink,17
+2024-06-16,sun-barcelo-9@slesh.it,Bar Barcelo,Sprtiz,17
+2024-06-16,sun-food-1@slesh.it,Punto Food,Patatine,9
+2024-06-16,sun-food-1@slesh.it,Punto Food,BUN pollo,1
+2024-06-16,sun-food-1@slesh.it,Punto Food,Frutta,3
+2024-06-16,sun-food-1@slesh.it,Punto Food,Poke pollo,3
+2024-06-16,sun-food-1@slesh.it,Punto Food,Takoyaki,1
+2024-06-16,sun-food-1@slesh.it,Punto Food,Gyoza,4
+2024-06-16,sun-food-1@slesh.it,Punto Food,BUN manzo,3
+2024-06-16,sun-food-2@slesh.it,Punto Food,Patatine,56
+2024-06-16,sun-food-2@slesh.it,Punto Food,BUN pollo,22
+2024-06-16,sun-food-2@slesh.it,Punto Food,Frutta,16
+2024-06-16,sun-food-2@slesh.it,Punto Food,Poke pollo,23
+2024-06-16,sun-food-2@slesh.it,Punto Food,Takoyaki,9
+2024-06-16,sun-food-2@slesh.it,Punto Food,Gyoza,18
+2024-06-16,sun-food-2@slesh.it,Punto Food,BUN manzo,40
+2024-06-16,sun-food-2@slesh.it,Punto Food,BUN ceci,5
+2024-06-16,sun-food-2@slesh.it,Punto Food,Poke uova,5
+2024-06-16,sun-food-2@slesh.it,Punto Food,BUN melanzana,3
+2024-06-16,sun-food-3@slesh.it,Punto Food,Patatine,102
+2024-06-16,sun-food-3@slesh.it,Punto Food,BUN pollo,40
+2024-06-16,sun-food-3@slesh.it,Punto Food,Frutta,11
+2024-06-16,sun-food-3@slesh.it,Punto Food,Poke pollo,26
+2024-06-16,sun-food-3@slesh.it,Punto Food,Takoyaki,17
+2024-06-16,sun-food-3@slesh.it,Punto Food,Gyoza,21
+2024-06-16,sun-food-3@slesh.it,Punto Food,BUN manzo,90
+2024-06-16,sun-food-3@slesh.it,Punto Food,BUN ceci,2
+2024-06-16,sun-food-3@slesh.it,Punto Food,Poke uova,3
+2024-06-16,sun-food-3@slesh.it,Punto Food,BUN melanzana,6
+2024-06-16,sun-gin-1@slesh.it,Bar Gin No.3,Bicchiere,67
+2024-06-16,sun-gin-1@slesh.it,Bar Gin No.3,Analcolico,1
+2024-06-16,sun-gin-1@slesh.it,Bar Gin No.3,No.3 MULE,26
+2024-06-16,sun-gin-1@slesh.it,Bar Gin No.3,No.3 TONIC,220
+2024-06-16,sun-gin-1@slesh.it,Bar Gin No.3,No.3 PINK,45
+2024-06-16,sun-jack-11@slesh.it,Main Bar Jack Daniel's,Caffè,11
+2024-06-16,sun-jack-13@slesh.it,Main Bar Jack Daniel's,Birra,362
+2024-06-16,sun-jack-13@slesh.it,Main Bar Jack Daniel's,Bicchiere,146
+2024-06-16,sun-jack-13@slesh.it,Main Bar Jack Daniel's,Acqua,1
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Gin Tonic,35
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Bicchiere,27
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Vino e bolle,3
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Cocktail,16
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,4
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Sprtiz,6
+2024-06-16,sun-jack-16@slesh.it,Main Bar Jack Daniel's,Bottiglia,2
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Gin Tonic,105
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Bicchiere,90
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Vino e bolle,10
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Analcolico,7
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail,102
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Acqua,10
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,2
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Soft Drink,12
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Sprtiz,41
+2024-06-16,sun-jack-1@slesh.it,Main Bar Jack Daniel's,Bottiglia,15
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Gin Tonic,102
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Bicchiere,158
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Vino e bolle,8
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail,91
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Acqua,8
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,4
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Sprtiz,43
+2024-06-16,sun-jack-2@slesh.it,Main Bar Jack Daniel's,Bottiglia,36
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Gin Tonic,88
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Birra,2
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Bicchiere,80
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Vino e bolle,11
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail,76
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Acqua,4
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,4
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Soft Drink,4
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Sprtiz,33
+2024-06-16,sun-jack-3@slesh.it,Main Bar Jack Daniel's,Bottiglia,16
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Gin Tonic,167
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Bicchiere,197
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Vino e bolle,19
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail,171
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Acqua,24
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,7
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Sprtiz,55
+2024-06-16,sun-jack-4@slesh.it,Main Bar Jack Daniel's,Bottiglia,25
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Gin Tonic,63
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Bicchiere,151
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Vino e bolle,10
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail,130
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Acqua,10
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,11
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Soft Drink,21
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Sprtiz,49
+2024-06-16,sun-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia,13
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Gin Tonic,83
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Birra,3
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Bicchiere,131
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Vino e bolle,15
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail,135
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Acqua,7
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,8
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Soft Drink,9
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Sprtiz,42
+2024-06-16,sun-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia,19
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Gin Tonic,90
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Bicchiere,198
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Vino e bolle,14
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Analcolico,3
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail,127
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Acqua,23
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,2
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Soft Drink,10
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Sprtiz,80
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Caffè,3
+2024-06-16,sun-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia,18
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Cocktail,53
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Acqua,21
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Bicchiere,45
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Cocktail Premium,11
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Soft Drink,4
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Gin Tonic,49
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Birra,1
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Sprtiz,24
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Vino e bolle,20
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Analcolico,2
+2024-06-30,sd-barcelo-1@slesh.it,Bar Barcelo,Bottiglia Vino,5
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Cocktail,96
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Acqua,24
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Bicchiere,53
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Soft Drink,4
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Gin Tonic,85
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Birra,24
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Sprtiz,21
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Vino e bolle,5
+2024-06-30,sd-barcelo-2@slesh.it,Bar Barcelo,Shot,6
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Cocktail,32
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Acqua,13
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Bicchiere,25
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Gin Tonic,56
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Sprtiz,8
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Vino e bolle,4
+2024-06-30,sd-barcelo-3@slesh.it,Bar Barcelo,Shot,2
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Cocktail,43
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Acqua,12
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Bicchiere,40
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Cocktail Premium,1
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Soft Drink,1
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Gin Tonic,76
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Sprtiz,14
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Vino e bolle,2
+2024-06-30,sd-barcelo-4@slesh.it,Bar Barcelo,Shot,1
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Cocktail,87
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Acqua,5
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Bicchiere,27
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Soft Drink,2
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Gin Tonic,6
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Sprtiz,19
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Vino e bolle,11
+2024-06-30,sd-barcelo-5@slesh.it,Bar Barcelo,Bottiglia Vino,1
+2024-06-30,sd-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Bicchiere,30
+2024-06-30,sd-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Birra,157
+2024-06-30,sd-food-1@slesh.it,Punto Food,BUN ceci,7
+2024-06-30,sd-food-1@slesh.it,Punto Food,Gyoza,26
+2024-06-30,sd-food-1@slesh.it,Punto Food,Poke pollo,29
+2024-06-30,sd-food-1@slesh.it,Punto Food,BUN melanzana,7
+2024-06-30,sd-food-1@slesh.it,Punto Food,BUN pollo,49
+2024-06-30,sd-food-1@slesh.it,Punto Food,Frutta,15
+2024-06-30,sd-food-1@slesh.it,Punto Food,Patatine,79
+2024-06-30,sd-food-1@slesh.it,Punto Food,BUN manzo,57
+2024-06-30,sd-food-1@slesh.it,Punto Food,Poke uova,6
+2024-06-30,sd-food-1@slesh.it,Punto Food,Maxi tacos,123
+2024-06-30,sd-food-1@slesh.it,Punto Food,Takoyaki,13
+2024-06-30,sd-food-2@slesh.it,Punto Food,BUN ceci,2
+2024-06-30,sd-food-2@slesh.it,Punto Food,Gyoza,4
+2024-06-30,sd-food-2@slesh.it,Punto Food,Poke pollo,8
+2024-06-30,sd-food-2@slesh.it,Punto Food,BUN melanzana,5
+2024-06-30,sd-food-2@slesh.it,Punto Food,BUN pollo,8
+2024-06-30,sd-food-2@slesh.it,Punto Food,Frutta,10
+2024-06-30,sd-food-2@slesh.it,Punto Food,Patatine,19
+2024-06-30,sd-food-2@slesh.it,Punto Food,BUN manzo,14
+2024-06-30,sd-food-2@slesh.it,Punto Food,Poke uova,3
+2024-06-30,sd-food-2@slesh.it,Punto Food,Maxi tacos,27
+2024-06-30,sd-food-2@slesh.it,Punto Food,Takoyaki,4
+2024-06-30,sd-food-3@slesh.it,Punto Food,Gyoza,3
+2024-06-30,sd-food-3@slesh.it,Punto Food,Poke pollo,4
+2024-06-30,sd-food-3@slesh.it,Punto Food,BUN melanzana,3
+2024-06-30,sd-food-3@slesh.it,Punto Food,BUN pollo,1
+2024-06-30,sd-food-3@slesh.it,Punto Food,Frutta,5
+2024-06-30,sd-food-3@slesh.it,Punto Food,Patatine,6
+2024-06-30,sd-food-3@slesh.it,Punto Food,BUN manzo,3
+2024-06-30,sd-food-3@slesh.it,Punto Food,Poke uova,2
+2024-06-30,sd-food-3@slesh.it,Punto Food,Maxi tacos,8
+2024-06-30,sd-food-caffe-1@slesh.it,Punto Food Caffè,Caffè,18
+2024-06-30,sd-gin-1@slesh.it,Bar Gin No.3,Bicchiere,38
+2024-06-30,sd-gin-1@slesh.it,Bar Gin No.3,No.3 TONIC,99
+2024-06-30,sd-gin-1@slesh.it,Bar Gin No.3,No.3 MULE,7
+2024-06-30,sd-gin-1@slesh.it,Bar Gin No.3,No.3 PINK,27
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail,92
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Acqua,20
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Bicchiere,87
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,5
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Soft Drink,11
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Gin Tonic,40
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Sprtiz,15
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Vino e bolle,7
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Analcolico,3
+2024-06-30,sd-jack-1@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail,69
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Acqua,18
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Bicchiere,84
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,3
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Soft Drink,4
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Gin Tonic,66
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Birra,4
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Sprtiz,33
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Vino e bolle,5
+2024-06-30,sd-jack-2@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,7
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail,109
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Acqua,13
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Bicchiere,133
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,11
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Soft Drink,7
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Gin Tonic,86
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Sprtiz,55
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Vino e bolle,6
+2024-06-30,sd-jack-3@slesh.it,Main Bar Jack Daniel's,Bottiglia,11
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail,209
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Acqua,19
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Bicchiere,153
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,7
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Gin Tonic,88
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Sprtiz,26
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Vino e bolle,16
+2024-06-30,sd-jack-4@slesh.it,Main Bar Jack Daniel's,Bottiglia,9
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail,128
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Acqua,23
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Bicchiere,150
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,14
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Soft Drink,17
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Gin Tonic,116
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Sprtiz,68
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Vino e bolle,12
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Analcolico,2
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,1
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Shot,9
+2024-06-30,sd-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia,12
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail,169
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Acqua,21
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Bicchiere,151
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,5
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Soft Drink,6
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Gin Tonic,62
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Sprtiz,52
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Vino e bolle,8
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,11
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Shot,1
+2024-06-30,sd-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia,2
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail,115
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Acqua,20
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Bicchiere,179
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,18
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Soft Drink,6
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Gin Tonic,103
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Sprtiz,60
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Vino e bolle,6
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Analcolico,4
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Shot,2
+2024-06-30,sd-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia,2
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail,79
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Acqua,13
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Bicchiere,107
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,6
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Gin Tonic,101
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Sprtiz,33
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Analcolico,8
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,6
+2024-06-30,sd-jack-8@slesh.it,Main Bar Jack Daniel's,Bottiglia,2
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail,103
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Acqua,20
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Bicchiere,78
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,5
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Soft Drink,4
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Gin Tonic,53
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Birra,1
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Sprtiz,26
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Vino e bolle,12
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Analcolico,2
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,3
+2024-06-30,sd-jack-9@slesh.it,Main Bar Jack Daniel's,Shot,1
+2024-06-30,sd-jack-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,208
+2024-06-30,sd-jack-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Birra,514
+2024-06-30,sd-jack-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,144
+2024-06-30,sd-jack-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Birra,429
+2024-07-14,sun3-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Birra,2
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Bicchiere,57
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Acqua,15
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Cocktail Premium,4
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Gin Tonic,92
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Sprtiz,18
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Soft Drink,3
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Vino e bolle,7
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Analcolico,1
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Bottiglia Vino,1
+2024-07-14,sun3-barcelo-1@slesh.it,Bar Barcelo,Cocktail,56
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Bicchiere,41
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Acqua,12
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Gin Tonic,75
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Sprtiz,24
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Soft Drink,3
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Vino e bolle,6
+2024-07-14,sun3-barcelo-2@slesh.it,Bar Barcelo,Cocktail,82
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Bicchiere,55
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Acqua,24
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Gin Tonic,7
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Sprtiz,19
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Soft Drink,1
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Vino e bolle,17
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Analcolico,1
+2024-07-14,sun3-barcelo-3@slesh.it,Bar Barcelo,Cocktail,160
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Bicchiere,66
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Acqua,12
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Cocktail Premium,4
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Gin Tonic,99
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Sprtiz,21
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Soft Drink,7
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Vino e bolle,8
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Cocktail,93
+2024-07-14,sun3-barcelo-4@slesh.it,Bar Barcelo,Shot,2
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Bicchiere,72
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Acqua,26
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Cocktail Premium,3
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Gin Tonic,114
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Sprtiz,23
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Soft Drink,6
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Vino e bolle,7
+2024-07-14,sun3-barcelo-5@slesh.it,Bar Barcelo,Cocktail,99
+2024-07-14,sun3-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Birra,241
+2024-07-14,sun3-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Bicchiere,54
+2024-07-14,sun3-food-1@slesh.it,Punto Food,Frutta,1
+2024-07-14,sun3-food-1@slesh.it,Punto Food,Maxi tacos,2
+2024-07-14,sun3-food-1@slesh.it,Punto Food,BUN pollo,2
+2024-07-14,sun3-food-1@slesh.it,Punto Food,Patatine,2
+2024-07-14,sun3-food-1@slesh.it,Punto Food,Takoyaki,2
+2024-07-14,sun3-food-1@slesh.it,Punto Food,BUN manzo,4
+2024-07-14,sun3-food-2@slesh.it,Punto Food,Frutta,7
+2024-07-14,sun3-food-2@slesh.it,Punto Food,Maxi tacos,32
+2024-07-14,sun3-food-2@slesh.it,Punto Food,BUN pollo,15
+2024-07-14,sun3-food-2@slesh.it,Punto Food,Patatine,57
+2024-07-14,sun3-food-2@slesh.it,Punto Food,Takoyaki,9
+2024-07-14,sun3-food-2@slesh.it,Punto Food,BUN manzo,20
+2024-07-14,sun3-food-2@slesh.it,Punto Food,BUN ceci,4
+2024-07-14,sun3-food-2@slesh.it,Punto Food,BUN melanzana,4
+2024-07-14,sun3-food-2@slesh.it,Punto Food,Gyoza,4
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Frutta,15
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Maxi tacos,107
+2024-07-14,sun3-food-3@slesh.it,Punto Food,BUN pollo,37
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Patatine,72
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Takoyaki,19
+2024-07-14,sun3-food-3@slesh.it,Punto Food,BUN manzo,55
+2024-07-14,sun3-food-3@slesh.it,Punto Food,BUN ceci,7
+2024-07-14,sun3-food-3@slesh.it,Punto Food,BUN melanzana,9
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Gyoza,20
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Poke uova,1
+2024-07-14,sun3-food-3@slesh.it,Punto Food,Poke pollo,1
+2024-07-14,sun3-food-caffe-1@slesh.it,Punto Food Caffè,Caffè,20
+2024-07-14,sun3-gin-1@slesh.it,Bar Gin No.3,Bicchiere,15
+2024-07-14,sun3-gin-1@slesh.it,Bar Gin No.3,No.3 MULE,6
+2024-07-14,sun3-gin-1@slesh.it,Bar Gin No.3,No.3 PINK,6
+2024-07-14,sun3-gin-1@slesh.it,Bar Gin No.3,No.3 TONIC,53
+2024-07-14,sun3-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Birra,435
+2024-07-14,sun3-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,166
+2024-07-14,sun3-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Birra,624
+2024-07-14,sun3-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,242
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bicchiere,51
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Acqua,9
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,4
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Gin Tonic,95
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Sprtiz,40
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Soft Drink,7
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Vino e bolle,7
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,7
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail,47
+2024-07-14,sun3-main-jack-1@slesh.it,Main Bar Jack Daniel's,Shot,2
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bicchiere,47
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Acqua,10
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,1
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Gin Tonic,41
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Sprtiz,29
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Vino e bolle,7
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail,49
+2024-07-14,sun3-main-jack-2@slesh.it,Main Bar Jack Daniel's,Shot,3
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bicchiere,123
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Acqua,22
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,6
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Gin Tonic,83
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Sprtiz,44
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Vino e bolle,4
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-07-14,sun3-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail,131
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bicchiere,182
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Acqua,27
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,14
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Gin Tonic,137
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Sprtiz,90
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Soft Drink,12
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Vino e bolle,16
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,13
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail,83
+2024-07-14,sun3-main-jack-4@slesh.it,Main Bar Jack Daniel's,Shot,3
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bicchiere,203
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Acqua,45
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,8
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Gin Tonic,153
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Sprtiz,99
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Vino e bolle,14
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Analcolico,3
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,23
+2024-07-14,sun3-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail,73
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bicchiere,134
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Acqua,33
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,11
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Gin Tonic,3
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Sprtiz,50
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Soft Drink,9
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Vino e bolle,20
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,16
+2024-07-14,sun3-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail,186
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bicchiere,71
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Acqua,2
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,7
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Gin Tonic,75
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Sprtiz,40
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Vino e bolle,1
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,9
+2024-07-14,sun3-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail,76
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bicchiere,118
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Acqua,14
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,9
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Gin Tonic,27
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Sprtiz,46
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Soft Drink,2
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Vino e bolle,8
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Analcolico,5
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail,130
+2024-07-14,sun3-main-jack-8@slesh.it,Main Bar Jack Daniel's,Shot,3
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bicchiere,120
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Acqua,21
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,11
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Gin Tonic,144
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Sprtiz,69
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Soft Drink,13
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Vino e bolle,5
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,10
+2024-07-14,sun3-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail,107
+2024-07-28,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Bicchiere,5
+2024-07-28,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Gin Tonic,1
+2024-07-28,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Sprtiz,2
+2024-07-28,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Soft Drink,1
+2024-07-28,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Cocktail Premium,1
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Bicchiere,43
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Gin Tonic,54
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Sprtiz,19
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Soft Drink,4
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Analcolico,1
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Cocktail,78
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Acqua,5
+2024-07-28,sun4-barcelo-1@slesh.it,Bar Barcelo,Vino e bolle,4
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Bicchiere,54
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Gin Tonic,86
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Sprtiz,24
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Soft Drink,5
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Analcolico,2
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Cocktail,73
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Acqua,23
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Vino e bolle,1
+2024-07-28,sun4-barcelo-2@slesh.it,Bar Barcelo,Shot,30
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Bicchiere,83
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Gin Tonic,3
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Sprtiz,6
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Soft Drink,5
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Cocktail,169
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Acqua,9
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Vino e bolle,4
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Shot,4
+2024-07-28,sun4-barcelo-3@slesh.it,Bar Barcelo,Bottiglia Vino,1
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Bicchiere,21
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Gin Tonic,61
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Sprtiz,7
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Soft Drink,2
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Analcolico,1
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Cocktail,27
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Acqua,7
+2024-07-28,sun4-barcelo-4@slesh.it,Bar Barcelo,Vino e bolle,2
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Bicchiere,52
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Gin Tonic,144
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Sprtiz,31
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Soft Drink,2
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Cocktail Premium,2
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Analcolico,1
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Cocktail,94
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Acqua,35
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Vino e bolle,3
+2024-07-28,sun4-barcelo-5@slesh.it,Bar Barcelo,Shot,6
+2024-07-28,sun4-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Bicchiere,41
+2024-07-28,sun4-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Birra,158
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Frutta,12
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Poke uova,8
+2024-07-28,sun4-food-1@slesh.it,Punto Food,BUN ceci,12
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Gyoza,19
+2024-07-28,sun4-food-1@slesh.it,Punto Food,BUN pollo,51
+2024-07-28,sun4-food-1@slesh.it,Punto Food,BUN manzo,26
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Poke pollo,19
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Maxi tacos,145
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Takoyaki,27
+2024-07-28,sun4-food-1@slesh.it,Punto Food,BUN melanzana,2
+2024-07-28,sun4-food-1@slesh.it,Punto Food,Patatine,99
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Frutta,7
+2024-07-28,sun4-food-2@slesh.it,Punto Food,BUN ceci,3
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Gyoza,8
+2024-07-28,sun4-food-2@slesh.it,Punto Food,BUN pollo,12
+2024-07-28,sun4-food-2@slesh.it,Punto Food,BUN manzo,13
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Poke pollo,9
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Maxi tacos,16
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Takoyaki,3
+2024-07-28,sun4-food-2@slesh.it,Punto Food,Patatine,27
+2024-07-28,sun4-food-caffe-1@slesh.it,Punto Food Caffè,Caffè,15
+2024-07-28,sun4-gin-1@slesh.it,Bar Gin No.3,Bicchiere,29
+2024-07-28,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 TONIC,96
+2024-07-28,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 MULE,15
+2024-07-28,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 PINK,13
+2024-07-28,sun4-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,103
+2024-07-28,sun4-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Birra,310
+2024-07-28,sun4-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,227
+2024-07-28,sun4-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Birra,519
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bicchiere,68
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Gin Tonic,129
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Sprtiz,62
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Soft Drink,10
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,6
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail,99
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Acqua,31
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Vino e bolle,13
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Shot,5
+2024-07-28,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bicchiere,150
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Gin Tonic,22
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Sprtiz,54
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Soft Drink,13
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,25
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail,171
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Acqua,19
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Vino e bolle,11
+2024-07-28,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,6
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bicchiere,178
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Gin Tonic,139
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Sprtiz,85
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Soft Drink,9
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,8
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Analcolico,3
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail,85
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Acqua,25
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Vino e bolle,21
+2024-07-28,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,9
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bicchiere,108
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Gin Tonic,9
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Sprtiz,28
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Soft Drink,6
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,10
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail,168
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Acqua,21
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Vino e bolle,17
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Shot,5
+2024-07-28,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,6
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bicchiere,42
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Gin Tonic,60
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Sprtiz,25
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,3
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail,42
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Acqua,37
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Vino e bolle,8
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Shot,3
+2024-07-28,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bicchiere,150
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Gin Tonic,131
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Sprtiz,49
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Soft Drink,3
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,12
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail,131
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Acqua,33
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Vino e bolle,13
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Shot,10
+2024-07-28,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,9
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bicchiere,76
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Gin Tonic,59
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Sprtiz,39
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Soft Drink,7
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,7
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Analcolico,2
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail,73
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Acqua,9
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Vino e bolle,14
+2024-07-28,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,11
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bicchiere,167
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Gin Tonic,156
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Sprtiz,84
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Soft Drink,12
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,13
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail,75
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Acqua,23
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Vino e bolle,23
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Shot,2
+2024-07-28,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bicchiere,144
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Gin Tonic,128
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Sprtiz,69
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,9
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail,111
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Acqua,34
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Vino e bolle,18
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Shot,7
+2024-07-28,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-08-04,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Bicchiere,5
+2024-08-04,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Gin Tonic,1
+2024-08-04,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Sprtiz,2
+2024-08-04,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Soft Drink,1
+2024-08-04,sun4-admin-1@slesh.it,"Main Bar Jack Daniel's, Bar Gin No.3, Bar Barcelo, Punto Food, Main Bar Jack Daniel's Birra, Punto Food Caffè, Bar Barcelo Birra",Cocktail Premium,1
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Bicchiere,43
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Gin Tonic,54
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Sprtiz,19
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Soft Drink,4
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Analcolico,1
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Cocktail,78
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Acqua,5
+2024-08-04,sun4-barcelo-1@slesh.it,Bar Barcelo,Vino e bolle,4
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Bicchiere,54
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Gin Tonic,86
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Sprtiz,24
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Soft Drink,5
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Analcolico,2
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Cocktail,73
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Acqua,23
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Vino e bolle,1
+2024-08-04,sun4-barcelo-2@slesh.it,Bar Barcelo,Shot,30
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Bicchiere,83
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Gin Tonic,3
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Sprtiz,6
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Soft Drink,5
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Cocktail,169
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Acqua,9
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Vino e bolle,4
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Shot,4
+2024-08-04,sun4-barcelo-3@slesh.it,Bar Barcelo,Bottiglia Vino,1
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Bicchiere,21
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Gin Tonic,61
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Sprtiz,7
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Soft Drink,2
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Analcolico,1
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Cocktail,27
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Acqua,7
+2024-08-04,sun4-barcelo-4@slesh.it,Bar Barcelo,Vino e bolle,2
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Bicchiere,52
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Gin Tonic,144
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Sprtiz,31
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Soft Drink,2
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Cocktail Premium,2
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Analcolico,1
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Cocktail,94
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Acqua,35
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Vino e bolle,3
+2024-08-04,sun4-barcelo-5@slesh.it,Bar Barcelo,Shot,6
+2024-08-04,sun4-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Bicchiere,41
+2024-08-04,sun4-barcelo-birra-1@slesh.it,Bar Barcelo Birra,Birra,158
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Frutta,12
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Poke uova,8
+2024-08-04,sun4-food-1@slesh.it,Punto Food,BUN ceci,12
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Gyoza,19
+2024-08-04,sun4-food-1@slesh.it,Punto Food,BUN pollo,51
+2024-08-04,sun4-food-1@slesh.it,Punto Food,BUN manzo,26
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Poke pollo,19
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Maxi tacos,145
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Takoyaki,27
+2024-08-04,sun4-food-1@slesh.it,Punto Food,BUN melanzana,2
+2024-08-04,sun4-food-1@slesh.it,Punto Food,Patatine,99
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Frutta,7
+2024-08-04,sun4-food-2@slesh.it,Punto Food,BUN ceci,3
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Gyoza,8
+2024-08-04,sun4-food-2@slesh.it,Punto Food,BUN pollo,12
+2024-08-04,sun4-food-2@slesh.it,Punto Food,BUN manzo,13
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Poke pollo,9
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Maxi tacos,16
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Takoyaki,3
+2024-08-04,sun4-food-2@slesh.it,Punto Food,Patatine,27
+2024-08-04,sun4-food-caffe-1@slesh.it,Punto Food Caffè,Caffè,15
+2024-08-04,sun4-gin-1@slesh.it,Bar Gin No.3,Bicchiere,29
+2024-08-04,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 TONIC,96
+2024-08-04,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 MULE,15
+2024-08-04,sun4-gin-1@slesh.it,Bar Gin No.3,No.3 PINK,13
+2024-08-04,sun4-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,103
+2024-08-04,sun4-main-birra-1@slesh.it,Main Bar Jack Daniel's Birra,Birra,310
+2024-08-04,sun4-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Bicchiere,227
+2024-08-04,sun4-main-birra-2@slesh.it,Main Bar Jack Daniel's Birra,Birra,519
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bicchiere,68
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Gin Tonic,129
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Sprtiz,62
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Soft Drink,10
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,6
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Cocktail,99
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Acqua,31
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Vino e bolle,13
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Shot,5
+2024-08-04,sun4-main-jack-1@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bicchiere,150
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Gin Tonic,22
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Sprtiz,54
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Soft Drink,13
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,25
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Cocktail,171
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Acqua,19
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Vino e bolle,11
+2024-08-04,sun4-main-jack-2@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,6
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bicchiere,178
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Gin Tonic,139
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Sprtiz,85
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Soft Drink,9
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,8
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Analcolico,3
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Cocktail,85
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Acqua,25
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Vino e bolle,21
+2024-08-04,sun4-main-jack-3@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,9
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bicchiere,108
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Gin Tonic,9
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Sprtiz,28
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Soft Drink,6
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,10
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Cocktail,168
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Acqua,21
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Vino e bolle,17
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Shot,5
+2024-08-04,sun4-main-jack-4@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,6
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bicchiere,42
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Gin Tonic,60
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Sprtiz,25
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Soft Drink,5
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,3
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Cocktail,42
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Acqua,37
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Vino e bolle,8
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Shot,3
+2024-08-04,sun4-main-jack-5@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,4
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bicchiere,150
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Gin Tonic,131
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Sprtiz,49
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Soft Drink,3
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,12
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Cocktail,131
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Acqua,33
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Vino e bolle,13
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Shot,10
+2024-08-04,sun4-main-jack-6@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,9
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bicchiere,76
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Gin Tonic,59
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Sprtiz,39
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Soft Drink,7
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,7
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Analcolico,2
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Cocktail,73
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Acqua,9
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Vino e bolle,14
+2024-08-04,sun4-main-jack-7@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,11
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bicchiere,167
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Gin Tonic,156
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Sprtiz,84
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Soft Drink,12
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,13
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Analcolico,1
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Cocktail,75
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Acqua,23
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Vino e bolle,23
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Shot,2
+2024-08-04,sun4-main-jack-8@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bicchiere,144
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Gin Tonic,128
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Sprtiz,69
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Soft Drink,8
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail Premium,9
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Cocktail,111
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Acqua,34
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Vino e bolle,18
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Shot,7
+2024-08-04,sun4-main-jack-9@slesh.it,Main Bar Jack Daniel's,Bottiglia Vino,8

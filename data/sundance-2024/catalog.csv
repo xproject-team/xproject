@@ -1,0 +1,135 @@
+event_date,product_name_it,price_eur,category,units_sold,revenue_eur
+2024-06-16,Acqua,2.0,unknown,144,288.0
+2024-06-16,Analcolico,8.0,unknown,16,128.0
+2024-06-16,BUN ceci,10.0,unknown,7,70.0
+2024-06-16,BUN manzo,10.0,unknown,133,1330.0
+2024-06-16,BUN melanzana,10.0,unknown,9,90.0
+2024-06-16,BUN pollo,10.0,unknown,63,630.0
+2024-06-16,Bicchiere,1.0,unknown,1739,1739.0
+2024-06-16,Birra,6.0,unknown,971,5826.0
+2024-06-16,Bottiglia,25.0,unknown,144,3600.0
+2024-06-16,Caffè,2.0,unknown,14,28.0
+2024-06-16,Cocktail,10.0,unknown,1327,13270.0
+2024-06-16,Cocktail Premium,13.0,unknown,66,858.0
+2024-06-16,Frutta,6.0,unknown,30,180.0
+2024-06-16,Gin Tonic,10.0,unknown,1087,10870.0
+2024-06-16,Gyoza,8.0,unknown,43,344.0
+2024-06-16,No.3 MULE,13.0,unknown,26,338.0
+2024-06-16,No.3 PINK,13.0,unknown,45,585.0
+2024-06-16,No.3 TONIC,13.0,unknown,220,2860.0
+2024-06-16,Patatine,6.0,unknown,167,1002.0
+2024-06-16,Poke pollo,10.0,unknown,52,520.0
+2024-06-16,Poke uova,10.0,unknown,8,80.0
+2024-06-16,Soft Drink,5.0,unknown,103,515.0
+2024-06-16,Sprtiz,10.0,unknown,439,4390.0
+2024-06-16,Takoyaki,8.0,unknown,27,216.0
+2024-06-16,Vino e bolle,6.0,unknown,112,672.0
+2024-06-30,Acqua,2.0,unknown,242,484.0
+2024-06-30,Analcolico,8.0,unknown,21,168.0
+2024-06-30,BUN ceci,10.0,unknown,9,90.0
+2024-06-30,BUN manzo,10.0,unknown,74,740.0
+2024-06-30,BUN melanzana,10.0,unknown,15,150.0
+2024-06-30,BUN pollo,10.0,unknown,58,580.0
+2024-06-30,Bicchiere,1.0,unknown,1732,1732.0
+2024-06-30,Birra,6.0,unknown,1130,6780.0
+2024-06-30,Bottiglia,25.0,unknown,38,950.0
+2024-06-30,Bottiglia Vino,25.0,unknown,46,1150.0
+2024-06-30,Caffè,2.0,unknown,18,36.0
+2024-06-30,Cocktail,10.0,unknown,1384,13840.0
+2024-06-30,Cocktail Premium,13.0,unknown,86,1118.0
+2024-06-30,Frutta,6.0,unknown,30,180.0
+2024-06-30,Gin Tonic,10.0,unknown,987,9870.0
+2024-06-30,Gyoza,8.0,unknown,33,264.0
+2024-06-30,Maxi tacos,10.0,unknown,158,1580.0
+2024-06-30,No.3 MULE,13.0,unknown,7,91.0
+2024-06-30,No.3 PINK,13.0,unknown,27,351.0
+2024-06-30,No.3 TONIC,13.0,unknown,99,1287.0
+2024-06-30,Patatine,6.0,unknown,104,624.0
+2024-06-30,Poke pollo,10.0,unknown,41,410.0
+2024-06-30,Poke uova,10.0,unknown,11,110.0
+2024-06-30,Shot,5.0,unknown,22,110.0
+2024-06-30,Soft Drink,5.0,unknown,82,410.0
+2024-06-30,Sprtiz,10.0,unknown,454,4540.0
+2024-06-30,Takoyaki,8.0,unknown,17,136.0
+2024-06-30,Vino e bolle,6.0,unknown,114,684.0
+2024-07-14,Acqua,2.0,unknown,272,544.0
+2024-07-14,Analcolico,8.0,unknown,13,104.0
+2024-07-14,BUN ceci,10.0,unknown,11,110.0
+2024-07-14,BUN manzo,10.0,unknown,79,790.0
+2024-07-14,BUN melanzana,10.0,unknown,13,130.0
+2024-07-14,BUN pollo,10.0,unknown,54,540.0
+2024-07-14,Bicchiere,1.0,unknown,1817,1817.0
+2024-07-14,Birra,6.0,unknown,1302,7812.0
+2024-07-14,Bottiglia Vino,25.0,unknown,99,2475.0
+2024-07-14,Caffè,2.0,unknown,20,40.0
+2024-07-14,Cocktail,10.0,unknown,1372,13720.0
+2024-07-14,Cocktail Premium,13.0,unknown,82,1066.0
+2024-07-14,Frutta,6.0,unknown,23,138.0
+2024-07-14,Gin Tonic,10.0,unknown,1145,11450.0
+2024-07-14,Gyoza,8.0,unknown,24,192.0
+2024-07-14,Maxi tacos,10.0,unknown,141,1410.0
+2024-07-14,No.3 MULE,13.0,unknown,6,78.0
+2024-07-14,No.3 PINK,13.0,unknown,6,78.0
+2024-07-14,No.3 TONIC,13.0,unknown,53,689.0
+2024-07-14,Patatine,6.0,unknown,131,786.0
+2024-07-14,Poke pollo,10.0,unknown,1,10.0
+2024-07-14,Poke uova,10.0,unknown,1,10.0
+2024-07-14,Shot,5.0,unknown,13,65.0
+2024-07-14,Soft Drink,5.0,unknown,86,430.0
+2024-07-14,Sprtiz,10.0,unknown,612,6120.0
+2024-07-14,Takoyaki,8.0,unknown,30,240.0
+2024-07-14,Vino e bolle,6.0,unknown,127,762.0
+2024-07-28,Acqua,2.0,unknown,311,622.0
+2024-07-28,Analcolico,8.0,unknown,14,112.0
+2024-07-28,BUN ceci,10.0,unknown,15,150.0
+2024-07-28,BUN manzo,10.0,unknown,39,390.0
+2024-07-28,BUN melanzana,10.0,unknown,2,20.0
+2024-07-28,BUN pollo,10.0,unknown,63,630.0
+2024-07-28,Bicchiere,1.0,unknown,1741,1741.0
+2024-07-28,Birra,6.0,unknown,987,5922.0
+2024-07-28,Bottiglia Vino,25.0,unknown,66,1650.0
+2024-07-28,Caffè,2.0,unknown,15,30.0
+2024-07-28,Cocktail,10.0,unknown,1396,13960.0
+2024-07-28,Cocktail Premium,13.0,unknown,96,1248.0
+2024-07-28,Frutta,6.0,unknown,19,114.0
+2024-07-28,Gin Tonic,10.0,unknown,1182,11820.0
+2024-07-28,Gyoza,8.0,unknown,27,216.0
+2024-07-28,Maxi tacos,10.0,unknown,161,1610.0
+2024-07-28,No.3 MULE,13.0,unknown,15,195.0
+2024-07-28,No.3 PINK,13.0,unknown,13,169.0
+2024-07-28,No.3 TONIC,13.0,unknown,96,1248.0
+2024-07-28,Patatine,6.0,unknown,126,756.0
+2024-07-28,Poke pollo,10.0,unknown,28,280.0
+2024-07-28,Poke uova,10.0,unknown,8,80.0
+2024-07-28,Shot,5.0,unknown,72,360.0
+2024-07-28,Soft Drink,5.0,unknown,92,460.0
+2024-07-28,Sprtiz,10.0,unknown,584,5840.0
+2024-07-28,Takoyaki,8.0,unknown,30,240.0
+2024-07-28,Vino e bolle,6.0,unknown,152,912.0
+2024-08-04,Acqua,2.0,unknown,241,482.0
+2024-08-04,Analcolico,8.0,unknown,8,64.0
+2024-08-04,BUN ceci,10.0,unknown,7,70.0
+2024-08-04,BUN manzo,10.0,unknown,40,400.0
+2024-08-04,BUN melanzana,10.0,unknown,7,70.0
+2024-08-04,BUN pollo,10.0,unknown,27,270.0
+2024-08-04,Bicchiere,1.0,unknown,1359,1359.0
+2024-08-04,Birra,6.0,unknown,860,5160.0
+2024-08-04,Bottiglia Vino,25.0,unknown,30,750.0
+2024-08-04,Caffè,2.0,unknown,19,38.0
+2024-08-04,Cocktail,10.0,unknown,1130,11300.0
+2024-08-04,Cocktail Premium,13.0,unknown,60,780.0
+2024-08-04,Frutta,6.0,unknown,15,90.0
+2024-08-04,Gin Tonic,10.0,unknown,809,8090.0
+2024-08-04,Gyoza,8.0,unknown,24,192.0
+2024-08-04,Maxi tacos,10.0,unknown,124,1240.0
+2024-08-04,No.3 MULE,13.0,unknown,9,117.0
+2024-08-04,No.3 PINK,13.0,unknown,7,91.0
+2024-08-04,No.3 TONIC,13.0,unknown,47,611.0
+2024-08-04,Patatine,6.0,unknown,95,570.0
+2024-08-04,Poke pollo,10.0,unknown,6,60.0
+2024-08-04,Poke uova,10.0,unknown,5,50.0
+2024-08-04,Shot,5.0,unknown,30,150.0
+2024-08-04,Soft Drink,5.0,unknown,98,490.0
+2024-08-04,Sprtiz,10.0,unknown,411,4110.0
+2024-08-04,Takoyaki,8.0,unknown,16,128.0
+2024-08-04,Vino e bolle,6.0,unknown,96,576.0
