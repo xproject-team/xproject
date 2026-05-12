@@ -26,6 +26,23 @@ DeliveryGapFlag = Literal[
 ]
 
 
+# POS variance status — derived per-row in reconciliation_service.
+# Honest signaling: each row's status declares what the system KNOWS,
+# not what it guesses.  When the menu item is generic (no recipe to
+# decompose into bottles), we surface NEEDS_RECIPE rather than
+# fabricating a variance number.
+PosVarianceStatus = Literal[
+    "NO_POS_DATA",               # row has no Slesh sales at all
+    "NEEDS_RECIPE",              # POS sold this menu item but no recipe links it to bottles
+    "OK_WITHIN_THRESHOLD",       # variance within +/- 5%, normal operation
+    "OVER_POUR_MINOR",           # +5% to +15%: scanner > POS, mild over-pour or comp
+    "OVER_POUR_MODERATE",        # +15% to +30%: investigate
+    "OVER_POUR_MAJOR",           # >+30%: serious shrinkage signal
+    "UNDER_SCAN_MINOR",          # -5% to -15%: POS > scanner, mild under-scan
+    "UNDER_SCAN_MAJOR",          # < -15%: significant under-scan; data quality issue
+]
+
+
 # ─── Per-row response (per bar × product) ──────────────────────────────────
 
 class ReconciliationRow(BaseModel):
@@ -58,6 +75,30 @@ class ReconciliationRow(BaseModel):
     # Phase 6 MVP: row-level flags stay empty; gaps are reported at the
     # event level (where ground-truth dispatched_qty lives).
     flags:         list[str] = []
+
+    # ─── POS data (S5 — Slesh integration) ──────────────────────────
+    # Slesh's authoritative "this product was sold this many times" count
+    # for this (bar, product) pair within the event window.  None means
+    # no POS data exists yet (typical at start of event, or for items
+    # like cup deposits where Slesh records no sale).
+    consumed_via_pos_qty:  Decimal | None = None
+
+    # consumed_qty (scanner-observed) minus consumed_via_pos_qty (POS).
+    # Positive means scanner saw more empties than POS sold sales —
+    # the over-pour / comp / breakage / theft signal.
+    # None when POS data is missing OR when the menu item is generic
+    # (a single Slesh "Cocktail" sale cannot be decomposed into a
+    # specific bottle without a recipe).
+    pos_variance_qty:      Decimal | None = None
+
+    # Honest per-row status string — describes what the variance number
+    # means.  Frontend can render different cells for each status:
+    #   NO_POS_DATA           -> "— no Slesh sales yet"
+    #   NEEDS_RECIPE          -> "Menu item; bottle-level pending"
+    #   OK_WITHIN_THRESHOLD   -> green check
+    #   OVER_POUR_*           -> orange/red warning, sized by tier
+    #   UNDER_SCAN_*          -> blue info pill, sized by tier
+    pos_variance_status:   PosVarianceStatus = "NO_POS_DATA"
 
 
 # ─── Event-level gap (per product, across all bars) ────────────────────────
@@ -106,7 +147,15 @@ class ReconciliationTotals(BaseModel):
     total_arrived:             Decimal    # SUM of all arrived_qty across rows
     total_consumed:            Decimal    # SUM of all consumed_qty across rows
     event_delivery_gap_count:  int        # # of EventProductGap entries with non-null flag
-    missing_pos_data:          bool       # True until Slesh sandbox is wired
+    missing_pos_data:          bool       # True when no POS data exists for the event at all
+
+    # ─── POS rollup counters (S5) ───────────────────────────────────
+    # Helps Omar see at a glance: "out of 47 rows, 12 are generic menu
+    # items we can't decompose, 31 are OK, 4 are flagged for over-pour."
+    pos_pending_recipes_count: int = 0     # # of rows in NEEDS_RECIPE state
+    pos_ok_count:              int = 0     # # of rows in OK_WITHIN_THRESHOLD
+    pos_over_pour_count:       int = 0     # # of rows in any OVER_POUR_* state
+    pos_under_scan_count:      int = 0     # # of rows in any UNDER_SCAN_* state
 
 
 class ReconciliationSummary(BaseModel):

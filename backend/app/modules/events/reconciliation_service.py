@@ -92,6 +92,71 @@ def _derive_gap_flag(dispatched: Decimal, arrived: Decimal) -> tuple[Decimal, fl
 
 # ─── The main entry point ───────────────────────────────────────────────────
 
+
+def _derive_pos_variance_status(
+    consumed_via_pos: Decimal | None,
+    scanner_consumed: Decimal,
+    product_name: str,
+) -> tuple[Decimal | None, str]:
+    """Compute (variance_qty, status) for one row's POS comparison.
+
+    Returns variance=None when we cannot honestly compute it:
+      - no POS data exists for the (bar, product) pair, OR
+      - the product is a generic menu item that needs a recipe to
+        decompose into bottle-level consumption
+
+    Status semantics are intentional and HONEST:
+      - NO_POS_DATA            no Slesh sales captured for this row
+      - NEEDS_RECIPE           POS sold this menu item but it is a
+                               generic ("Cocktail", "Sprtiz", etc) and
+                               we cannot map sales to bottle-level
+                               variance without a recipe.  Surfacing
+                               this honestly is better than guessing.
+      - OK_WITHIN_THRESHOLD    |variance| / max(consumed, 1) <= 5%
+      - OVER_POUR_*            positive variance (scanner > POS),
+                               tiered by magnitude
+      - UNDER_SCAN_*           negative variance (POS > scanner),
+                               tiered by magnitude
+
+    Threshold choices match the existing _derive_gap_flag philosophy:
+      <  5%   noise / measurement variance, no flag
+      5-15%   minor, investigate next week
+      15-30%  moderate, investigate this week
+      > 30%   major, investigate today
+    Sundance-safety: NO crash on missing data, NO fabricated numbers.
+    """
+    if consumed_via_pos is None or consumed_via_pos <= 0:
+        return None, "NO_POS_DATA"
+
+    GENERIC_MENU_NAMES = {
+        "Cocktail",
+        "Cocktail signature",
+        "Cocktail Super premium",
+        "Sprtiz",
+        "Analcolico",
+        "Shot",
+        "Gin Tonic",
+        "Birra",
+    }
+    if product_name.strip() in GENERIC_MENU_NAMES:
+        return None, "NEEDS_RECIPE"
+
+    variance = scanner_consumed - consumed_via_pos
+    denom = max(scanner_consumed, consumed_via_pos, Decimal("1"))
+    pct = float(abs(variance) / denom * 100)
+
+    if pct <= 5.0:
+        return variance, "OK_WITHIN_THRESHOLD"
+
+    if variance > 0:
+        if pct <= 15.0:  return variance, "OVER_POUR_MINOR"
+        if pct <= 30.0:  return variance, "OVER_POUR_MODERATE"
+        return variance, "OVER_POUR_MAJOR"
+    else:
+        if pct <= 15.0:  return variance, "UNDER_SCAN_MINOR"
+        return variance, "UNDER_SCAN_MAJOR"
+
+
 async def compute_report(
     db: AsyncSession,
     *,
@@ -152,6 +217,13 @@ async def compute_report(
                     total_consumed=Decimal("0"),
                     event_delivery_gap_count=0,
                     missing_pos_data=not has_pos_data,
+                    # S5: empty event has zero POS counters (no rows to
+                    # categorize).  Defaults from schema would also work
+                    # but we explicit-set for clarity.
+                    pos_pending_recipes_count=0,
+                    pos_ok_count=0,
+                    pos_over_pour_count=0,
+                    pos_under_scan_count=0,
                 ),
             ),
         )
@@ -305,6 +377,25 @@ async def compute_report(
     for r in raw_rows:
         arrived = Decimal(r["arrived_qty"])
         consumed = Decimal(r["consumed_qty"])
+
+        # S5: surface POS data honestly per row.  SQL emits the column
+        # as 0 (coalesce) when no POS rows joined; convert to None so
+        # the schema reports "no data" rather than "confirmed zero".
+        raw_pos_qty = r.get("consumed_via_pos_qty")
+        if raw_pos_qty is None or Decimal(raw_pos_qty) <= 0:
+            consumed_via_pos: Decimal | None = None
+        else:
+            consumed_via_pos = Decimal(raw_pos_qty)
+
+        # Derive variance + status from the data + the product name.
+        # Helper returns None for cases where we cannot honestly compute
+        # variance (no POS data, generic menu item).
+        variance_qty, variance_status = _derive_pos_variance_status(
+            consumed_via_pos=consumed_via_pos,
+            scanner_consumed=consumed,
+            product_name=r["product_name"],
+        )
+
         rows.append(
             ReconciliationRow(
                 bar_id=r["bar_id"],
@@ -314,7 +405,10 @@ async def compute_report(
                 arrived_qty=arrived,
                 consumed_qty=consumed,
                 net_qty=arrived - consumed,
-                flags=[],   # row-level flags reserved for POS-wired future
+                flags=[],   # row-level flags reserved; status is below
+                consumed_via_pos_qty=consumed_via_pos,
+                pos_variance_qty=variance_qty,
+                pos_variance_status=variance_status,
             )
         )
 
@@ -387,6 +481,12 @@ async def compute_report(
         total_consumed=sum((r.consumed_qty for r in rows), Decimal("0")),
         event_delivery_gap_count=len(gaps),
         missing_pos_data=not has_pos_data,
+        # S5: POS rollup counters help frontend render summary cards
+        # ("47 rows: 12 pending recipes, 31 OK, 4 flagged").
+        pos_pending_recipes_count=sum(1 for r in rows if r.pos_variance_status == "NEEDS_RECIPE"),
+        pos_ok_count=sum(1 for r in rows if r.pos_variance_status == "OK_WITHIN_THRESHOLD"),
+        pos_over_pour_count=sum(1 for r in rows if r.pos_variance_status.startswith("OVER_POUR_")),
+        pos_under_scan_count=sum(1 for r in rows if r.pos_variance_status.startswith("UNDER_SCAN_")),
     )
 
     return ReconciliationReport(
