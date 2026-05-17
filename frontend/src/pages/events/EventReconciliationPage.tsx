@@ -50,6 +50,30 @@ function fmtQty(s: string): string {
   return trimmed ? `${whole}.${trimmed}` : whole
 }
 
+/**
+ * PosStatusPill — small colored badge mapping PosVarianceStatus values
+ * to Tailwind color classes.  Color choice mirrors business priority:
+ * red is "investigate today", green is "all good".
+ */
+function PosStatusPill({ status }: { status: string }) {
+  const cfg: Record<string, { label: string; classes: string }> = {
+    NO_POS_DATA:          { label: 'No POS data',  classes: 'bg-gray-100 text-gray-500' },
+    NEEDS_RECIPE:         { label: 'Needs recipe', classes: 'bg-slate-100 text-slate-600 border border-slate-300' },
+    OK_WITHIN_THRESHOLD:  { label: 'OK',           classes: 'bg-emerald-100 text-emerald-700' },
+    OVER_POUR_MINOR:      { label: 'Over-pour',    classes: 'bg-amber-100 text-amber-700' },
+    OVER_POUR_MODERATE:   { label: 'Over-pour',    classes: 'bg-orange-100 text-orange-800' },
+    OVER_POUR_MAJOR:      { label: 'Over-pour!',   classes: 'bg-red-100 text-red-700 font-semibold' },
+    UNDER_SCAN_MINOR:     { label: 'Under-scan',   classes: 'bg-sky-100 text-sky-700' },
+    UNDER_SCAN_MAJOR:     { label: 'Under-scan!',  classes: 'bg-blue-200 text-blue-800 font-semibold' },
+  }
+  const entry = cfg[status] ?? { label: status, classes: 'bg-gray-100 text-gray-500' }
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${entry.classes}`}>
+      {entry.label}
+    </span>
+  )
+}
+
 /** Format an ISO date for display: "Apr 17, 2026 at 10:29" */
 function fmtDateTime(iso: string | null): string {
   if (!iso) return '—'
@@ -101,12 +125,18 @@ function StatCard({
 }: {
   label: string
   value: string | number
-  emphasis?: 'normal' | 'danger'
+  emphasis?: 'normal' | 'danger' | 'success' | 'warning'
 }) {
   const valueColor =
-    emphasis === 'danger' ? 'text-[#E53E3E]' : 'text-[#1A202C]'
+    emphasis === 'danger'  ? 'text-[#E53E3E]'
+    : emphasis === 'success' ? 'text-[#047857]'
+    : emphasis === 'warning' ? 'text-[#B45309]'
+    : 'text-[#1A202C]'
   const borderColor =
-    emphasis === 'danger' ? 'border-[#FEB2B2]' : 'border-[#E2E8F0]'
+    emphasis === 'danger'  ? 'border-[#FEB2B2]'
+    : emphasis === 'success' ? 'border-[#A7F3D0]'
+    : emphasis === 'warning' ? 'border-[#FCD34D]'
+    : 'border-[#E2E8F0]'
   return (
     <div
       className={`bg-white border ${borderColor} rounded-lg p-4 flex-1 min-w-[160px]`}
@@ -139,12 +169,45 @@ function AtAGlanceSection({ report }: { report: ReconciliationReport }) {
           emphasis={totals.event_delivery_gap_count > 0 ? 'danger' : 'normal'}
         />
       </div>
-      {totals.missing_pos_data && (
+
+      {/* S6: POS-side rollup cards.  Render only when POS data exists. */}
+      {!totals.missing_pos_data && (
+        <div className="flex flex-wrap gap-3 mt-3">
+          <StatCard
+            label="POS variance: OK"
+            value={totals.pos_ok_count}
+            emphasis={totals.pos_ok_count > 0 ? 'success' : 'normal'}
+          />
+          <StatCard
+            label="Over-pour flagged"
+            value={totals.pos_over_pour_count}
+            emphasis={totals.pos_over_pour_count > 0 ? 'danger' : 'normal'}
+          />
+          <StatCard
+            label="Under-scan flagged"
+            value={totals.pos_under_scan_count}
+            emphasis={totals.pos_under_scan_count > 0 ? 'warning' : 'normal'}
+          />
+          <StatCard
+            label="Pending recipes"
+            value={totals.pos_pending_recipes_count}
+            emphasis="normal"
+          />
+        </div>
+      )}
+      {/* S6: honest contextual messaging about POS state */}
+      {totals.missing_pos_data ? (
         <p className="mt-2 text-[11px] italic text-[#A0AEC0]">
           POS sales data not yet wired — sold-vs-arrived signal will appear
-          when Slesh integration is live.
+          when Slesh integration produces data for this event.
         </p>
-      )}
+      ) : totals.pos_pending_recipes_count > 0 && totals.pos_ok_count === 0 ? (
+        <p className="mt-2 text-[11px] italic text-[#A0AEC0]">
+          POS data is being received but {totals.pos_pending_recipes_count}{' '}
+          {totals.pos_pending_recipes_count === 1 ? 'row needs' : 'rows need'} a recipe
+          to decompose menu sales into bottle-level variance.
+        </p>
+      ) : null}
     </section>
   )
 }
@@ -384,6 +447,10 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
                 <th className="text-right px-3 py-2"><SortHeader col="arrived" label="Arrived" numeric /></th>
                 <th className="text-right px-3 py-2"><SortHeader col="consumed" label="Consumed" numeric /></th>
                 <th className="text-right px-3 py-2"><SortHeader col="net" label="Net" numeric /></th>
+                {/* S6: POS columns.  Always rendered; cells use "—" for no-data. */}
+                <th className="text-right px-3 py-2 text-[#4A5568]">POS sold</th>
+                <th className="text-right px-3 py-2 text-[#4A5568]">Variance</th>
+                <th className="text-left  px-3 py-2 text-[#4A5568]">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -397,6 +464,16 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
                   <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">{fmtQty(r.arrived_qty)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">{fmtQty(r.consumed_qty)}</td>
                   <td className="px-3 py-2 text-right tabular-nums font-semibold text-[#1A202C]">{fmtQty(r.net_qty)}</td>
+                  {/* S6: POS columns — render "—" when the field is null. */}
+                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">
+                    {r.consumed_via_pos_qty === null ? <span className="text-[#A0AEC0]">—</span> : fmtQty(r.consumed_via_pos_qty)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">
+                    {r.pos_variance_qty === null ? <span className="text-[#A0AEC0]">—</span> : fmtQty(r.pos_variance_qty)}
+                  </td>
+                  <td className="px-3 py-2 text-left">
+                    <PosStatusPill status={r.pos_variance_status} />
+                  </td>
                 </tr>
               ))}
             </tbody>

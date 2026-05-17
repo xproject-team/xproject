@@ -43,6 +43,32 @@ export type DeliveryGapFlag =
   | 'DELIVERY_GAP_MAJOR'
 
 /**
+ * Per-row POS variance status — mirrors backend Pydantic Literal exactly.
+ *
+ * HONESTY PRINCIPLE: the system distinguishes "we don't know" from
+ * "we measured zero" so the UI can render the right signal.
+ *
+ *   NO_POS_DATA            -> render "—"; no Slesh sales for this row
+ *   NEEDS_RECIPE           -> render gray pill; menu item has no recipe
+ *                             to decompose into bottle-level variance
+ *   OK_WITHIN_THRESHOLD    -> render green pill; |variance| <= 5%
+ *   OVER_POUR_MINOR        -> orange pill; +5 to +15% (scanner > POS)
+ *   OVER_POUR_MODERATE     -> red pill; +15 to +30%
+ *   OVER_POUR_MAJOR        -> dark red pill; > +30%, immediate attention
+ *   UNDER_SCAN_MINOR       -> blue pill; -5 to -15% (POS > scanner)
+ *   UNDER_SCAN_MAJOR       -> dark blue pill; < -15%, data quality issue
+ */
+export type PosVarianceStatus =
+  | 'NO_POS_DATA'
+  | 'NEEDS_RECIPE'
+  | 'OK_WITHIN_THRESHOLD'
+  | 'OVER_POUR_MINOR'
+  | 'OVER_POUR_MODERATE'
+  | 'OVER_POUR_MAJOR'
+  | 'UNDER_SCAN_MINOR'
+  | 'UNDER_SCAN_MAJOR'
+
+/**
  * One row of the reconciliation grid: a (bar, product) pair with at
  * least one DISPATCH or CONSUMED scan in the event window.
  *
@@ -57,6 +83,17 @@ export interface ReconciliationRow {
   consumed_qty:  string   // SUM of CONSUMED scans
   net_qty:       string   // arrived - consumed
   flags:         string[] // empty for MVP; future: row-level over-pour signals
+
+  /**
+   * POS-derived fields (S5 backend, S6 frontend display).
+   *
+   * Decimal-as-string contract: numeric fields are STRINGS to preserve
+   * precision.  NULL means "no data" — distinct from "0" which would
+   * mean "confirmed zero".  Renderers should treat null as "—".
+   */
+  consumed_via_pos_qty:  string | null   // Slesh-authoritative count
+  pos_variance_qty:      string | null   // scanner consumed - POS sold
+  pos_variance_status:   PosVarianceStatus
 }
 
 /**
@@ -82,8 +119,17 @@ export interface ReconciliationTotals {
   total_arrived:             string
   total_consumed:            string
   event_delivery_gap_count:  number
-  /** True until Slesh POS sandbox is wired. */
+  /** True when no Slesh POS data exists for this event at all. */
   missing_pos_data:          boolean
+
+  /**
+   * POS rollup counters (S5).  Lets the summary cards display
+   * "47 rows: 12 pending recipes, 31 OK, 4 flagged" at a glance.
+   */
+  pos_pending_recipes_count: number   // rows in NEEDS_RECIPE state
+  pos_ok_count:              number   // rows in OK_WITHIN_THRESHOLD
+  pos_over_pour_count:       number   // rows in any OVER_POUR_*
+  pos_under_scan_count:      number   // rows in any UNDER_SCAN_*
 }
 
 export interface ReconciliationSummary {
