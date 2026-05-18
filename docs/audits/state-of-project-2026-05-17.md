@@ -170,6 +170,22 @@ RED FLAG 5: Branch hygiene rule violated
               actually landed (Phase 4 -> Phase 7 alert text race).
               Master roadmap fully read.  Layer 1 (documented
               state) audit complete.
+  2026-05-18  Layer 1 commit landed (023b9e5).  715 lines preserved
+              before any Layer 2 risk.
+  2026-05-18  Layer 2 begun.  git log analysis revealed May 8
+              zero-commit anomaly.  Per-day commit-density check
+              identified Phase 3/4/5 fixes as actually-May-9.
+  2026-05-18  May 7-9 window verification: RF32 RESOLVED — fixes
+              are in repo with one-day audit/commit timing offset.
+              LANDMARK finding RF33 discovered: Phase 1D NEVER
+              HAPPENED.  Tactical Layer 3 dip confirmed:
+                - users.role column still exists
+                - 20/20 legacy call sites unmigrated
+                - 0 uses of get_active_role helper anywhere
+              Severity escalated to CRITICAL.  Phase 1 incomplete
+              by its own definition; auth system in dual state.
+              RF11 superseded by RF33's evidence-backed version.
+              Phase-to-commit mapping table added as Appendix E.
 
 ────────────────────────────────────────────────────────────
 
@@ -663,6 +679,198 @@ RED FLAG 31: Alert text race may indicate broader adapter issue
 
 ────────────────────────────────────────────────────────────
 
+## Appendix D — Layer 2 (Git) findings
+
+### RF32 RESOLUTION: Phase 3/4/5 fixes are in the repo
+
+Concern: master roadmap body sections claim Phase 3, 4, 5
+✅ COMPLETE 2026-05-08 but git shows zero commits on 2026-05-08.
+
+Resolution: git log shows the work shipped 2026-05-09:
+
+  7ba09eb  Phase 3 complete — Manager
+  2739450  Phase 3 Batch F — Inventory scoping
+  508621e  Phase 3 Batch E — /reports route guard
+  4cfa01d  Phase 4 complete — Bartender
+  8b1f67b  Phase 4 Batch G — Bartender polish
+  1f27ffb  Phase 5 complete — Warehouse Staff
+  b9befea  Phase 5 Batch H — Warehouse Staff polish
+
+Body section dates record AUDIT timestamp (Claude in Chrome
+walk), not COMMIT timestamp.  Audit was performed May 8;
+fixes committed May 9.  This is reasonable practice, not
+drift worth alarming about.
+Severity: LOW.  Body sections should ideally include both
+audit-date AND commit-hash; Session 2 will add commit hashes.
+
+────────────────────────────────────────────────────────────
+
+RED FLAG 33: Phase 1D NEVER HAPPENED (LANDMARK finding)
+
+This is the most consequential finding of the audit.
+Severity: HIGH operationally; CRITICAL if conditions trigger.
+
+Layer 1 evidence:
+  Master roadmap defines Phase 1 as 4 sub-phases (1A/1B/1C/1D).
+  Each has separate "Completion record" placeholder.
+  1D scope is 12 sub-tasks: migrate 20 call sites, drop
+  users.role column, browser test 4 roles, squash-merge.
+  1A/1B/1C show "✅ DONE 2026-05-07" headers.
+  1D shows NO completion marker (RF11).
+
+Layer 2 evidence:
+  Git log shows single commit 1a15439 (2026-05-07 17:53):
+    "feat(auth): Phase 1 — multi-role login, two-step auth
+                  UI, session-expiry modal"
+  This single commit ships 1A + 1B + 1C in one shot.
+  No subsequent Phase 1D commit appears anywhere.
+  The expand/contract migration pattern (described in master
+  roadmap as the entire rationale for splitting Phase 1)
+  was abandoned in execution.
+
+Layer 3 evidence (tactical Layer 3 dip):
+  Query A: psql \d users
+           Result: users.role column STILL EXISTS
+                   (Phase 1D.10 drop-column not done)
+  Query B: grep -c "current_user.role" app/**/*.py
+           Result: 20 occurrences
+                   (matches recon's 20 sites EXACTLY; zero
+                   migrated)
+  Query C: grep "current_user.role" with file:line
+           Result: spans auth, bars, alerts, warehouse modules
+                   - app/modules/auth/router.py:170
+                   - app/modules/bars/router.py:152
+                   - app/modules/alerts/router.py:88, 130, 166, 204
+                   - app/modules/warehouse/router.py:82, 108,
+                     130, 131
+  Query D: grep -c "get_active_role" app/**/*.py
+           Result: 0 uses
+                   (helper from Phase 1B.4 EXISTS in spec but
+                   is unused anywhere in the codebase)
+
+System designer interpretation:
+
+The auth system is in the EXPAND state of expand/contract
+migration but never reached CONTRACT.  Two coexisting state
+representations:
+  OLD:  users.role column (single role per user, native enum)
+  NEW:  user_roles join table (multi-role per user, backfilled
+                                from users.role at 1A.2)
+
+Read paths:
+  - 20 call sites read users.role (OLD path) — production code
+  - JWT carries active_role claim from Phase 1B.3 — middleware
+  - Roles-for-email endpoint queries user_roles (NEW path)
+
+Current state (today):
+  user_roles + users.role are IN SYNC because the 1A.2 backfill
+  populated user_roles from users.role and nothing has written
+  EITHER since.  Login flow likely writes both.
+
+Drift triggers (any one breaks the system):
+  1. New feature writes to users.role without updating user_roles
+  2. New feature writes to user_roles without updating users.role
+  3. Manual SQL update by Hesam to either table
+  4. New feature reads from user_roles assuming it's authoritative
+  5. New feature reads from users.role assuming it's authoritative
+  6. Developer (Reza) adds code calling get_active_role()
+     and tests pass because no other code uses it, but then
+     inconsistency emerges later
+  7. Any future role-add or role-revoke endpoint (1B.6 exists
+     in spec; not verified in code)
+
+Sundance risk:
+  LOW immediately — current state is stable
+  MEDIUM during Phase 9 development if new features touch roles
+  HIGH if any of trigger 1-7 fires before Sundance
+
+Fix scope (post-audit):
+  Option A: Complete Phase 1D properly before any new feature work
+            Estimated time: 1-2 days
+            Risk profile: surgical, well-spec'd, all 20 sites known
+            Sundance impact: removes drift risk entirely
+  Option B: Defer formally and document the dual state
+            Add CI guard: prevent any new code from reading
+            current_user.role; force all new code through helper
+            Estimated time: half-day
+            Risk profile: lower effort but technical-debt grows
+  Option C: Hybrid - ship the helper, migrate the 4 highest-traffic
+            call sites (alerts), defer the rest
+            Estimated time: half-day
+            Risk profile: medium
+
+System-designer recommendation: Option A.
+Reasoning:
+  - 1-2 days is fast for "complete a migration"
+  - The migration is well-defined; recon already done
+  - Doing it now eliminates 7 distinct drift triggers
+  - Doing it before Phase 9 means Phase 9 builds on stable auth
+  - Sundance pre-event smoke test then exercises the unified
+    code path
+
+────────────────────────────────────────────────────────────
+
+## Appendix E — Layer 2 phase-to-commit mapping (running)
+
+This section maps roadmap-claimed phase completion to actual
+commit hashes from git log.  Updated as Layer 2 progresses.
+
+  Phase 0 — Recon                        2026-05-06
+    Documented but no fix commits to verify (recon-only phase).
+    Confirmed via b9af3d5 (2026-05-07): docs add roadmap.
+    
+  Phase 1A — Schema (backward-compat)   ⚠️ PARTIAL
+  Phase 1B — Login endpoints alongside  ⚠️ PARTIAL
+  Phase 1C — Frontend two-step + dropdown  ⚠️ PARTIAL
+    Single commit 1a15439 (2026-05-07 17:53):
+      "feat(auth): Phase 1 — multi-role login, two-step auth UI,
+                   session-expiry modal"
+    Encompasses 1A/B/C — exact granularity unverified.
+    
+  Phase 1D — Call-site migration        ❌ NOT DONE
+    No commit found.  Verified by code grep (Appendix D RF33).
+    
+  Phase 2 — Owner experience            ✅ COMPLETE
+    May 7: b8d7e4f (Batch A), c45be14 (Batch D)
+    May 9: e71c770 (Batch B Inventory), e29e036 (Batch C polish),
+           b64a78e (mark complete)
+    Body section's "✅ COMPLETE 2026-05-07" refers to AUDIT date;
+    commits land May 7 (A, D) and May 9 (B, C).
+    
+  Phase 3 — Manager experience          ✅ COMPLETE  
+    May 9: 508621e (Batch E), 2739450 (Batch F), 7ba09eb (complete)
+    Audit May 8; commits May 9.
+    
+  Phase 4 — Bartender experience        ✅ COMPLETE
+    May 9: 8b1f67b (Batch G), 4cfa01d (complete)
+    Audit May 8; commits May 9.
+    
+  Phase 5 — Warehouse Staff             ✅ COMPLETE
+    May 9: b9befea (Batch H), 1f27ffb (complete)
+    Audit May 8; commits May 9.
+    
+  Phase 6 — Camera Scanner System       ✅ COMPLETE (per memory)
+    Verified at least 21 scanner-related commits May 9-11.
+    Detailed sub-phase mapping pending Layer 2 continuation.
+    
+  Phase 7 — Cross-Role Bug Hunt         ✅ CLAIMED (per memory)
+    Detailed mapping pending Layer 2 continuation.
+    docs/known-issues.md presence still unverified (RF20).
+    
+  Phase 8 — Sundance Dress Rehearsal    ❌ UNSTARTED
+    No simulation event, no failure-mode tests, no performance
+    verification commits found.  RF21 CRITICAL.
+    
+  Slesh Reconciliation Workstream       ✅ COMPLETE (May 11-17)
+    11 commits ed98938 back through 331726d.
+    Currently mis-labeled "Phase 8" in internal closure docs (RF2).
+    
+  Phase 9 — ML Model A                  ❌ UNSTARTED
+    No commits matching ML / forecasting / pandas pipeline.
+    Awaiting Phase 9 dependencies (recipes + Omar conversation).
+
+────────────────────────────────────────────────────────────
+
 ## Appendix C — Audit findings inventory (running)
 
 This section will collect every audit finding by severity for
@@ -672,6 +880,10 @@ end-of-session triage.  Updated each chunk.
 
   RF21  Real Phase 8 = Sundance Dress Rehearsal, UNSTARTED, this is
         the actual Sundance go/no-go (~2-3 days budget, 33 days left)
+  RF33  Phase 1D NEVER HAPPENED — auth system in expand state of
+        expand/contract migration, 20/20 legacy call sites unmigrated,
+        get_active_role helper unused, users.role column still exists.
+        Drift triggers (7 listed) any of which breaks the system.
 
 ### HIGH severity
 
@@ -679,8 +891,8 @@ end-of-session triage.  Updated each chunk.
   RF4   Test suite status unknown (now refined by RF8)
   RF8   Test-infrastructure debt formally documented + unresolved
   RF10  Phase 2 doc-internal contradiction (header says ⏸, body says ✅)
-  RF11  Phase 1D critical sub-tasks unchecked (includes schema migration
-        + 4-role browser test)
+  RF11  Phase 1D critical sub-tasks unchecked (SUPERSEDED by RF33).
+        Layer 2+3 confirmed: Phase 1D NEVER HAPPENED, see RF33.
   RF13  "Done" phases contain unchecked deferred items (refined; many
         resolved by body audits)
   RF17  Phase 6 header status doesn't match shipped reality
