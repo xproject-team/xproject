@@ -364,7 +364,130 @@ Session 3 gap triage will:
   as one of its deliverables.
 
 ## 7. Days-remaining math
+
+### Time budget at audit completion
+
+  Audit completed:       2026-05-18 (today)
+  Sundance go-live:      2026-06-19
+  Days remaining:        32
+  
+  Buffer rule of thumb:  4-5 days hard freeze + smoke-test before
+                         going-live = effective working window of
+                         27-28 days for code work.
+
+### Must-ship items (from audit)
+
+  RF33  Phase 1D auth migration              1-2 days
+  RF37  Real Phase 7 cross-role bug hunt     4-5 days
+  RF21  Phase 8 Sundance dress rehearsal     3-5 days
+  Phase 9.1-9.5  ML + recipes (Omar-gated)   ~5 days
+  
+  Section 5 PRE-SUNDANCE items (16 items):
+    Visible-to-client cosmetic batch          ~1 day
+    Phase 9 prerequisites (subset)            (folds into Phase 9)
+    Sundance-critical feature gaps            ~1-2 days
+    Test infrastructure smoke test            ~0.5 day
+  
+  Total must-ship work estimate:             ~16-19 days
+
+### Slack analysis
+
+  Working window:        27-28 days
+  Must-ship estimate:    16-19 days
+  Raw slack:             8-12 days
+  
+  Slack reserves needed:
+    Unexpected RF40+ findings (Session 2/3)   ~2 days
+    Recipe data dependencies (Omar may delay) ~2 days
+    Bug fixes from real Phase 7 walkthroughs  ~3 days
+    Hardware/network surprises               ~1 day
+  
+  Net slack after reserves:                  0-4 days (TIGHT)
+
+### Implication
+
+  The 32-day window IS achievable IF:
+  1. Priority discipline holds — no scope creep
+  2. RF33 ships first (1-2 days), then
+  3. Real Phase 7 ships (4-5 days), then
+  4. Phase 8 dress rehearsal (3-5 days) runs in week 3, then
+  5. Phase 9 (Omar-gated) fills weeks 2-3 in parallel, then
+  6. Hard freeze + smoke test in final 4-5 days.
+  
+  Scope reduction levers (in order of preference):
+    A. Defer C1 (Detector #6) to post-Sundance
+    B. Defer B11 (Allocations UI) if Owner-workflow proves OK in
+       dress rehearsal
+    C. Trim Phase 9 ML to single-model MVP (skip LSTM/GBT candidates)
+    D. Reduce Phase 7 from full 4-role walkthrough to 2-role
+       (Owner + Manager) if time pressure forces it.
+
 ## 8. Open questions requiring decisions
+
+These are decisions Hesam needs to make (or get from Omar) before
+Session 3 can produce the final must-ship plan.
+
+### Q1.  Detector #6 (Warehouse Discrepancy) — ship or defer?
+
+  RF35 confirmed: detector was not built.
+  Sundance value: scanner alerts on unusual restock counts.
+  Cost: ~1-2 days backend work.
+  
+  Decision required: Session 3 input.
+  Default recommendation: POST-SUNDANCE unless dress rehearsal
+                          surfaces this as user-visible gap.
+
+### Q2.  Recipe data from Omar — when?
+
+  Phase 9 ML model uses recipe yields as features.
+  D1, D5, A8 all depend on this.
+  
+  Decision required: contact Omar for 2026 menu structure (per
+                     Phase 8 closure Q1-Q4 list).
+  Blocker: if Omar delays past 2026-05-25, ML feature engineering
+           cannot start.  Phase 9 slips.
+
+### Q3.  Slesh sandbox credentials — when?
+
+  Live POS integration awaits Slesh sandbox access.
+  Without it, Phase 9 must rely on historical Slesh CSVs (already
+  staged in data/sundance-2024/ and data/sundance-2025/).
+  
+  Decision required: Omar ping Alberto (Slesh CTO).
+  Workaround: train ML on historical data; switch to live API
+              post-Sundance.
+
+### Q4.  Anomaly detectors #3, #4, #5 (Phase 2.13) — ship status?
+
+  C5 in Section 5 marked NEED INVESTIGATION.
+  Master roadmap Phase 2.13 spec'd these but audit did not verify
+  whether they shipped.
+  
+  Decision required: Session 3 grep backend/app/modules/alerts/
+                     detectors/ to confirm.
+
+### Q5.  Settings page features (Phase 2.12) — ship status?
+
+  C6 in Section 5 marked NEED INVESTIGATION.
+  Change-password and self-service settings may not have shipped.
+  
+  Decision required: Session 3 verification.
+
+### Q6.  Visible-to-client cosmetic batch — when to ship?
+
+  Section 5 Class B items B5, B7, B10, B13, D4 are visible to
+  Omar at the next demo.
+  
+  Decision required: bundle into single 1-day "polish sprint"
+                     before next Omar demo OR ship piecemeal
+                     during normal development.
+  
+  Default recommendation: single polish sprint.  Lower context-
+                          switch cost.
+
+────────────────────────────────────────────────────────────
+
+## Appendix A — Audit progress log
 
 [ All sections below to be filled in as audit progresses ]
 
