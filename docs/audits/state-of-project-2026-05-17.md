@@ -810,6 +810,103 @@ Reasoning:
 
 ────────────────────────────────────────────────────────────
 
+RED FLAG 34 RESOLVED POSITIVE: Phase 6.4 IS the offline queue
+  RF18 raised concern that offline-queue ship status was unverified.
+  Resolution: commit 45df782 (2026-05-10): "feat(scanner): Phase 6.4
+  — frontend UUID + offline queue".  Master roadmap labeled it 6.6;
+  execution renumbered to 6.4.  Offline queue exists in code.
+  Severity: RESOLVED POSITIVE.
+  Pending Layer 3: grep localStorage in frontend/src/features/scan/
+  to confirm drain-on-reconnect + idempotent re-submission.
+
+────────────────────────────────────────────────────────────
+
+RED FLAG 35: Detector #6 (Warehouse Discrepancy) NEVER SHIPPED
+  Master roadmap Phase 6.7 spec: "Anomaly detector #6 — Warehouse
+  Discrepancy.  Compare requested-quantity vs scanned-quantity per
+  restock.  Register in AlertsOrchestrator."
+  
+  Actual commit Phase 6.7 (40a82f9, 2026-05-11): "BarScanEmptiesPage
+  (Bartender Mode C)".  COMPLETELY DIFFERENT WORK.  Phase 6.7 number
+  reused for a Bartender page; the anomaly detector was not built.
+  
+  Cross-references:
+    RF14 anticipated this might now be unblocked
+    userMemories mentions only "Demand Spike detector"
+    No commit grep matches "WarehouseDiscrepancy" pattern
+  
+  Severity: HIGH.  Anomaly detection was a stated Phase 6 deliverable.
+  Fix scope: Layer 3 verification + Session 3 ship-before/after/no
+  decision.
+
+────────────────────────────────────────────────────────────
+
+RED FLAG 36: Phase 6.11-6.12.4 is reconciliation work, not scanner
+  Master roadmap Phase 6 = "Camera Scanner System" with 8 sub-steps.
+  Actual Phase 6 extended through 6.14 including reconciliation
+  feature work:
+    6.11    reconciliation-report endpoint
+    6.12.1  useReconciliationReport TanStack hook
+    6.12.2  EventReconciliationPage viewer
+    6.12.3  wire reconciliation route + button
+    6.12.4  three-role browser verification
+  
+  These commits ARE in the repo; feature works.  Scope drifted without
+  roadmap update.  Same pattern as RF2 and RF35.
+  
+  Severity: MEDIUM (doc/scope drift; not functional).
+  Fix scope: Session 2 reconciles master roadmap with actual structure.
+
+────────────────────────────────────────────────────────────
+
+RED FLAG 37: Phase 7 was renumbered + scope-shrunk dramatically
+  Master roadmap Phase 7 = "Cross-Role Bug Hunt" with 11 sub-steps
+  (role walkthroughs, S1/S2 fixes, known-issues.md).
+  
+  Actual Phase 7 commits (4 total, all May 11 evening):
+    7.1  add XProject favicon (1c3fcfc) — cosmetic
+    7.2  React Router v7 future flags (2f15af6) — warning suppression
+    7.3  reposition PermissionDeniedToast (3ab69e9) — UI position
+    7.4  remove unused TypeScript import (d15c3bc) — code hygiene
+  
+  The 4 commits are SMALL UI FIXES that REUSED Phase 7 numbering.
+  They DO NOT match the spec.  No walkthroughs, no severity-categorized
+  bug list, no S1/S2 bug fixes, no docs/known-issues.md (verifies RF20).
+  
+  Severity: HIGH.  Phase 7 is STRUCTURALLY UNDONE.  Cross-role bug
+  hunt never happened.  Latent S1/S2 bugs still in codebase, undiscovered.
+  
+  Compounds RF21: without Phase 7 catching bugs first, real Phase 8
+  dress rehearsal will surface them under multi-role concurrent load.
+  
+  Fix scope: Session 3 schedules real Phase 7.  Time per spec: 4-5 days.
+
+────────────────────────────────────────────────────────────
+
+RED FLAG 38: Phase 7's renaming masks unfinished cross-role hunt
+  userMemories records "Phase 7 (Polish) — 4 commits, COMPLETE".
+  Matches 4 actual commits.  But "Polish" is NOT what Phase 7 was
+  specified to be.
+  
+  Master roadmap Phase 7 done-criterion: "Zero S1 bugs, zero S2 bugs,
+  S3/S4 documented in docs/known-issues.md, all role walkthroughs clean."
+  
+  Reality: zero of those criteria attempted.  "Phase 7 done" claim
+  is structurally FALSE.
+  
+  Severity: HIGH.  Same axis as RF37, different dimension: the project
+  lost track of what Phase 7 was supposed to BE.
+  
+  Pre-Sundance budget rebalance:
+    RF33  Phase 1D auth migration         1-2 days
+    RF37  Phase 7 cross-role bug hunt     4-5 days
+    RF21  Phase 8 dress rehearsal         3-5 days
+    Phase 9 ML + recipes (Omar-gated)     ~5 days
+    Sundance buffer                       3-5 days
+    Total: 16-22 days vs 32 days remaining.
+
+────────────────────────────────────────────────────────────
+
 ## Appendix E — Layer 2 phase-to-commit mapping (running)
 
 This section maps roadmap-claimed phase completion to actual
@@ -849,9 +946,15 @@ commit hashes from git log.  Updated as Layer 2 progresses.
     May 9: b9befea (Batch H), 1f27ffb (complete)
     Audit May 8; commits May 9.
     
-  Phase 6 — Camera Scanner System       ✅ COMPLETE (per memory)
-    Verified at least 21 scanner-related commits May 9-11.
-    Detailed sub-phase mapping pending Layer 2 continuation.
+  Phase 6 — Camera Scanner System       ⚠️ PARTIAL
+    22 commits land May 9-11.  Sub-phases shipped: 6.1-6.6.2,
+    6.7 (REUSED for BarScanEmptiesPage NOT Detector #6),
+    6.8, 6.9a, 6.11-6.12.4 (RECONCILIATION scope drift),
+    6.13 (architecture doc), 6.14 (dress rehearsal CHECKLIST
+    doc only, no actual rehearsal performed).
+    Scanner functionality: SHIPPED
+    Detector #6: NEVER SHIPPED (RF35)
+    Physical dress rehearsal: DOC ONLY
     
   Phase 7 — Cross-Role Bug Hunt         ✅ CLAIMED (per memory)
     Detailed mapping pending Layer 2 continuation.
@@ -905,6 +1008,10 @@ end-of-session triage.  Updated each chunk.
   RF27  B6.7-B6.14 polling worker tests deferred = critical test gap
   RF28  Phase-to-phase handoffs need cross-verification (Phase 4 → Phase 7)
   RF30  Four disconnected deferred-items lists (22+ items uncatalogued)
+  RF35  Detector #6 (Warehouse Discrepancy) NEVER SHIPPED
+  RF37  Phase 7 was renumbered + scope-shrunk (4 UI fixes instead
+        of cross-role bug hunt)
+  RF38  Phase 7 done-criterion structurally unmet
 
 ### MEDIUM severity
 
@@ -918,10 +1025,12 @@ end-of-session triage.  Updated each chunk.
   RF31  Alert text race may indicate broader adapter issue
   RF15  No consolidated deferred-items list (superseded by RF30)
   RF24  Appendix A is partial (superseded by RF30)
+  RF36  Phase 6.11-6.12.4 is reconciliation scope drift (cosmetic)
 
 ### LOW severity
 
   RF1   Status pointer 11 days stale (mechanical fix)
   RF12  Phase 2 sub-step inventory now complete (14 sub-steps total)
   RF16  Detector #6 / Phase 2.13 -> Phase 6.7 cross-reference clarification
+  RF34  Phase 6.4 IS the offline queue (RF18 resolved positive)
 
