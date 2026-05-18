@@ -254,14 +254,16 @@ reference to relevant red flags.
        
   C5.  Anomaly detectors #3, #4, #5 (Phase 2.13)
        Source: master roadmap Phase 2.13 spec
-       Disposition: NEED INVESTIGATION  (status unverified by audit;
-                                          Session 3 must verify and
-                                          decide)
+       Cross-ref: RF40 (Detectors #1 + #2 shipped; #3/4/5 not)
+       Disposition: POST-SUNDANCE  (detectors #1 + #2 provide
+                                    baseline coverage; #3/4/5 are
+                                    incremental value, not foundational)
        
-  C6.  Settings — change password etc (Phase 2.12 — ship status
-       unverified)
+  C6.  Settings — change password feature (Phase 2.12)
        Source: master roadmap Phase 2.12 spec
-       Disposition: NEED INVESTIGATION
+       Cross-ref: RF41 HIGH (never built; client-visible at Sundance)
+       Disposition: PRE-SUNDANCE  (Omar will notice he can't change
+                                   his password; ~0.5 day fix)
        
   C7.  Phase 6.14 physical-device dress rehearsal (vs the docs-only
        checklist that shipped at commit 63a4b2f)
@@ -316,10 +318,11 @@ reference to relevant red flags.
 
 Total items: 32 across five classes.  Counts by disposition:
 
-  PRE-SUNDANCE          (16 items)
-  POST-SUNDANCE         (12 items)
+  PRE-SUNDANCE          (17 items)
+  POST-SUNDANCE         (13 items)
   NO-FIX (working as designed)   ( 2 items)
-  NEED INVESTIGATION    ( 2 items)
+  NEED INVESTIGATION    ( 0 items)  — all resolved by Q4/Q5
+                                       verification (see Appendix F6/F7)
 
 PRE-SUNDANCE items by sub-category:
   Visible to client / Sundance-day operations:  B5, B7, B10, B11, B13,
@@ -1364,6 +1367,78 @@ the code grep produced.
   Severity: DISMISSED.  Marker kept here so future audits don't
   re-raise the same hypothesis.
 
+### F6.  RF40 — Recipe Deviation Detector EXISTS (positive discovery)
+
+  Investigation: verify Q4 in Section 8 (anomaly detectors #3/4/5
+  ship status).  ls of backend/app/modules/alerts/detectors/:
+  
+    __init__.py             (empty)
+    demand_spike.py         (7,290 bytes — Detector #1)
+    recipe_deviation.py     (10,624 bytes — Detector #2, NEW FIND)
+  
+  Detector #2 (Recipe Deviation) was not mentioned in userMemories
+  but exists in code.  File modified 2026-05-06 — predates the
+  audit's commit-history scan starting point.
+  
+  Status of Phase 2.13's 5 detectors:
+    #1  Demand Spike          ✅ SHIPPED (demand_spike.py)
+    #2  Recipe Deviation      ✅ SHIPPED (recipe_deviation.py) NEW
+    #3                        ❌ NOT SHIPPED
+    #4                        ❌ NOT SHIPPED
+    #5                        ❌ NOT SHIPPED
+  
+  Plus Phase 6.7's:
+    #6  Warehouse Discrepancy ❌ NOT SHIPPED (confirmed at F1, RF35)
+  
+  Severity: POSITIVE.  We have MORE anomaly detection coverage
+  than the audit initially recorded.  Raises Sundance value of
+  alerts system.
+  
+  Follow-up needed (deferred to first Session 3 task):
+    a) Verify recipe_deviation.py registers in AlertsOrchestrator
+    b) Verify it fires on test events
+    c) Section 5 C5 disposition updated to reflect reality
+
+### F7.  RF41 — Change-password feature NEVER BUILT
+
+  Investigation: verify Q5 in Section 8 (Settings page ship status).
+  
+  Frontend ls of pages/settings/:
+    SettingsPage.tsx        (6,719 bytes — basic shell only)
+  
+  grep "changePassword|change_password|/auth/change" backend + frontend:
+    ZERO matches.
+  
+  Status:
+    Basic Settings page:                  ✅ SHIPPED
+    Change-password endpoint (backend):   ❌ NEVER BUILT
+    Change-password form (frontend):      ❌ NEVER BUILT
+    Self-service account management:      ❌ NEVER BUILT
+  
+  Sundance impact:
+    Omar's password is shared in plaintext: omar@nomagroup.it /
+    xproject2026.  He cannot change it via UI.
+    Manager passwords (manager123) cannot be changed by managers.
+    All 9 seed accounts have known passwords.
+    
+    Client perception: Omar will notice immediately.  Looks
+    unprofessional for a production-grade system.
+    Security: localhost MVP — not high-risk yet.  At Sundance the
+    venue WiFi makes this a more meaningful exposure.
+  
+  Severity: HIGH for client-perception, MEDIUM for security.
+  Fix scope:
+    Backend:  POST /api/v1/auth/change-password endpoint
+              (current_password + new_password verification, bcrypt)
+    Frontend: Add change-password section to SettingsPage.tsx
+              with current/new/confirm fields + handler
+    Test:     manual smoke test per role
+    Estimated time: 0.5 day
+  
+  Disposition: PRE-SUNDANCE.
+  Cross-reference: Section 5 C6 disposition resolved to
+                   PRE-SUNDANCE.
+
 ────────────────────────────────────────────────────────────
 
 ## Appendix E — Layer 2 phase-to-commit mapping (running)
@@ -1471,6 +1546,7 @@ end-of-session triage.  Updated each chunk.
   RF37  Phase 7 was renumbered + scope-shrunk (4 UI fixes instead
         of cross-role bug hunt)
   RF38  Phase 7 done-criterion structurally unmet
+  RF41  Change-password feature NEVER BUILT (client-visible at Sundance)
 
 ### MEDIUM severity
 
@@ -1492,4 +1568,6 @@ end-of-session triage.  Updated each chunk.
   RF12  Phase 2 sub-step inventory now complete (14 sub-steps total)
   RF16  Detector #6 / Phase 2.13 -> Phase 6.7 cross-reference clarification
   RF34  Phase 6.4 IS the offline queue (RF18 resolved positive)
+  RF40  Recipe Deviation Detector (Detector #2) EXISTS (positive
+        discovery; raises alerts coverage from 1 to 2 detectors)
 
