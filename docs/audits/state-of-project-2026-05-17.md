@@ -101,7 +101,250 @@ RED FLAG 5: Branch hygiene rule violated
 
 ────────────────────────────────────────────────────────────
 
-## 5. Deferred items inventory (will populate during audit)
+## 5. Deferred items inventory (consolidated)
+
+Five disconnected sources held deferred-item records before this audit:
+master-roadmap Appendix A, per-phase body "Deferred" sections, "(deferred
+item)" tags inside phase definitions, the phase8-closure.md sections 4-6,
+and userMemories.  RF30 identified this and recommended consolidation.
+
+The list below is the single authoritative deferred-items inventory.
+Each item carries a class label (A-E) showing source, a disposition
+recommendation (pre-Sundance / post-Sundance / won't-ship), and a cross-
+reference to relevant red flags.
+
+### Class A — Explicit post-Sundance deferrals (master roadmap Appendix A)
+
+  A1.  Visual theme redesign
+       Source: master roadmap Appendix A line 1
+       Disposition: POST-SUNDANCE  (intentional; works for MVP)
+       
+  A2.  Token rotation policy with Slesh
+       Source: master roadmap Appendix A line 2
+       Disposition: POST-SUNDANCE  (operational, not code; calendar
+                                    reminder for week-after Sundance)
+       
+  A3.  Multi-tenant scaling (cache + cursor logic for tenant isolation)
+       Source: master roadmap Appendix A line 3
+       Disposition: POST-SUNDANCE  (only matters when adding 2nd tenant)
+       
+  A4.  Event P&L preview
+       Source: master roadmap Appendix A line 4
+       Disposition: POST-SUNDANCE  (blocked by wholesale cost data
+                                    Hesam does not have yet)
+       
+  A5.  Briefing Sheet preview
+       Source: master roadmap Appendix A line 5
+       Disposition: POST-SUNDANCE  (blocked by XHR staff-shift data)
+       
+  A6.  B6.7-B6.14 polling worker formal pytest tests
+       Source: master roadmap Appendix A line 6
+       Cross-ref: RF27 HIGH (test gap on Sundance-critical infra)
+       Disposition: PRE-SUNDANCE smoke test (substitute for formal tests)
+                    POST-SUNDANCE full pytest rebuild
+       
+  A7.  Async test infrastructure rebuild (asyncpg "another operation
+       in progress" issue)
+       Source: master roadmap Appendix A line 7
+       Cross-ref: RF4 + RF8 (test infra debt)
+       Disposition: POST-SUNDANCE  (production runs fine; tests only
+                                    affected on async fixtures)
+       
+  A8.  ORM mapper init bug (User relationship in alerts/models.py
+       breaks standalone scripts; production fine)
+       Source: master roadmap Appendix A line 8
+       Cross-ref: RF26 MEDIUM (Phase 9 recipe-seeding risk)
+       Disposition: PRE-SUNDANCE  (likely needed when seeding recipes
+                                   in Phase 9.1)
+       
+  A9.  Multi-language UI
+       Source: master roadmap Appendix A line 9
+       Disposition: POST-SUNDANCE  (UI stays English; reports already
+                                    bilingual)
+
+### Class B — Per-phase body deferred sections
+
+  B1.  URL state for tabs (Catalog Products/Recipes, Alerts filter,
+       Chat channel)
+       Source: master roadmap line 686 (Phase 2 body Deferred section)
+       Disposition: POST-SUNDANCE  (UX polish)
+       
+  B2.  Loading skeletons on F5 (all 11 pages)
+       Source: master roadmap line 687
+       Disposition: POST-SUNDANCE  (UX polish)
+       
+  B3.  Alerts "Warning" filter scope inconsistency
+       Source: master roadmap line 688
+       Disposition: PRE-SUNDANCE  (alerts are Sundance-critical;
+                                   investigate may be small fix)
+       
+  B4.  Multiple "ships in v1.1" footnotes
+       Source: master roadmap line 689
+       Disposition: POST-SUNDANCE  (cleanup)
+       
+  B5.  "ACTIVE ALERTS 0 all clear" KPI mislabel
+       Source: master roadmap line 716 (Phase 3 body polish-week)
+       Disposition: PRE-SUNDANCE  (Manager-visible contradicts alerts;
+                                   one-line copy fix)
+       
+  B6.  Self-DM channel "Manager Cocktail Bar <-> ..." (seed data hygiene)
+       Source: master roadmap line 717
+       Disposition: POST-SUNDANCE  (cosmetic seed data)
+       
+  B7.  Bottom-left sidebar swap-icon dev affordance still visible
+       Source: master roadmap line 718
+       Disposition: PRE-SUNDANCE  (dev affordance visible in prod;
+                                   remove before Omar/event)
+       
+  B8.  "Active Alerts" KPI logic — Bartender recon confusion
+       Source: master roadmap line 745 (Phase 4 body polish-week)
+       Disposition: NO-FIX  (audit determined to be recon false positive)
+       
+  B9.  Alert text race (Mojito alert flickering between two adapter shapes)
+       Source: master roadmap line 747 (Phase 4 body, flagged to Phase 7)
+       Cross-ref: RF28 + RF31 (handoff lost; adapter inconsistency)
+       Disposition: PRE-SUNDANCE  (Phase 7 was supposed to catch this;
+                                   needs real fix as part of real
+                                   Phase 7 cross-role bug hunt)
+       
+  B10. Settings copy "Reports are already bilingual" references a
+       feature Warehouse Staff doesn't have
+       Source: master roadmap line 775 (Phase 5 body; same bug in
+                                        Phase 4 for Bartender)
+       Disposition: PRE-SUNDANCE  (one-line fix; visible to non-Owner)
+       
+  B11. Allocations UI missing (backend POST /api/v1/warehouse/allocations
+       exists; no UI; Owner-workflow workaround)
+       Source: master roadmap line 776
+       Cross-ref: RF29 MEDIUM (feature gap with workaround)
+       Disposition: PRE-SUNDANCE IF dress rehearsal shows operational
+                    friction with Owner-as-proxy.  Otherwise POST-SUNDANCE.
+       
+  B12. Login role picker offers all 4 roles for warehouse.keeper
+       Source: master roadmap line 779
+       Disposition: NO-FIX  (anti-enumeration design from Phase 1C.2,
+                              working as designed)
+       
+  B13. Inconsistent role labels ("Warehouse" vs "Warehouse Staff")
+       across topbar pill / sidebar pill / Settings
+       Source: master roadmap line 780
+       Disposition: PRE-SUNDANCE  (visible to client; cosmetic but visible)
+
+### Class C — Phase-body "(deferred item)" tags in main definitions
+
+  C1.  Detector #6 — Warehouse Discrepancy anomaly detector
+       Source: master roadmap Phase 6.7 spec
+       Cross-ref: RF14 + RF16 + RF35 HIGH (NEVER SHIPPED)
+       Disposition: PRE-SUNDANCE IF time budget allows (compounds
+                    Sundance value of scanner+alerts combo).
+                    Otherwise POST-SUNDANCE.  Session 3 decides.
+       
+  C2.  Manager auto-join bar channel hook
+       Source: master roadmap Phase 3.4 + userMemories
+       Disposition: POST-SUNDANCE  (manual workaround; not blocking)
+       
+  C3.  PATCH /api/v1/bars/{id}/manager UI endpoint
+       Source: master roadmap Phase 3.6 + userMemories
+       Disposition: POST-SUNDANCE  (backend supports; no UI)
+       
+  C4.  Post-event report generator (Phase 2.10)
+       Source: master roadmap Phase 2.10 spec
+       Disposition: PRE-SUNDANCE  (post-Sundance retrospective needs
+                                   this to deliver value to Omar)
+       
+  C5.  Anomaly detectors #3, #4, #5 (Phase 2.13)
+       Source: master roadmap Phase 2.13 spec
+       Disposition: NEED INVESTIGATION  (status unverified by audit;
+                                          Session 3 must verify and
+                                          decide)
+       
+  C6.  Settings — change password etc (Phase 2.12 — ship status
+       unverified)
+       Source: master roadmap Phase 2.12 spec
+       Disposition: NEED INVESTIGATION
+       
+  C7.  Phase 6.14 physical-device dress rehearsal (vs the docs-only
+       checklist that shipped at commit 63a4b2f)
+       Source: master roadmap Phase 6.14 spec
+       Cross-ref: RF19 HIGH (Sundance reliability gap)
+       Disposition: PRE-SUNDANCE  (physical device test on real
+                                   hardware before Sundance day)
+
+### Class D — Phase-closure doc deferrals (phase8-closure.md sections 4-6)
+
+  D1.  Recipe seeding from Slesh historical catalog
+       Source: phase8-closure.md
+       Disposition: PRE-SUNDANCE  (Phase 9.1 prerequisite; needs Omar
+                                   to confirm 2026 menu structure)
+       
+  D2.  Whitespace dedup in product names
+       Source: phase8-closure.md
+       Disposition: POST-SUNDANCE  (cosmetic data hygiene)
+       
+  D3.  Brand-specific ingredient products (e.g. Belvedere Vodka vs
+       generic Vodka)
+       Source: phase8-closure.md
+       Disposition: POST-SUNDANCE  (recipes Phase 9 may need this;
+                                    deferred from initial recipe set)
+       
+  D4.  S8 admin slesh-poll-state endpoint
+       Source: phase8-closure.md (Phase 8 closure deferral, our Slesh
+                                   workstream)
+       Disposition: PRE-SUNDANCE  (admin observability for live event)
+       
+  D5.  GENERIC_MENU_NAMES proper categorization (currently set as
+       Phase 9 dependency hook)
+       Source: phase8-closure.md
+       Disposition: PRE-SUNDANCE  (Phase 9 prerequisite)
+
+### Class E — userMemories deferrals
+
+  E1.  Open weather integration (Open-Meteo API)
+       Source: userMemories: "identified as mandatory ML feature per Omar"
+       Disposition: PRE-SUNDANCE  (Phase 9 ML feature engineering input;
+                                   may also reveal Sundance-day forecast
+                                   for ops planning)
+       
+  E2.  Rate limiting (slowapi previously attempted, rolled back)
+       Source: userMemories: "Rate limiting (slowapi) was attempted and
+                              rolled back"
+       Disposition: POST-SUNDANCE  (production hardening; not Sundance-
+                                    blocking; previous attempt broke
+                                    chat send)
+
+### Inventory summary
+
+Total items: 32 across five classes.  Counts by disposition:
+
+  PRE-SUNDANCE          (16 items)
+  POST-SUNDANCE         (12 items)
+  NO-FIX (working as designed)   ( 2 items)
+  NEED INVESTIGATION    ( 2 items)
+
+PRE-SUNDANCE items by sub-category:
+  Visible to client / Sundance-day operations:  B5, B7, B10, B11, B13,
+                                                D4, C7
+  Phase 9 prerequisites (Omar-gated):           A8, D1, D5, E1
+  Sundance-critical feature gaps:               B3, B9, C4, C1 (if budget)
+  Test infrastructure:                          A6
+
+These 16 items, plus the 4 phase-level workstreams (RF33 auth, RF37
+real Phase 7, RF21 Phase 8 dress rehearsal, Phase 9 ML), constitute
+the audit's must-ship recommendation for pre-Sundance work.  Session 3
+sequences them by priority and time-budget against the 32-day window.
+
+### Next action
+
+Session 3 gap triage will:
+  - Verify NEED INVESTIGATION items (C5 anomaly detectors #3/4/5,
+    C6 Settings ship status)
+  - Confirm or revise each disposition
+  - Sequence PRE-SUNDANCE items by dependency + impact
+  - Produce docs/pre-sundance-must-ship.md as the executable plan
+  - Produce docs/post-sundance-backlog.md for everything else
+
+────────────────────────────────────────────────────────────
+
 ## 6. Known issues inventory
 ## 7. Days-remaining math
 ## 8. Open questions requiring decisions
