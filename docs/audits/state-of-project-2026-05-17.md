@@ -346,6 +346,23 @@ Session 3 gap triage will:
 ────────────────────────────────────────────────────────────
 
 ## 6. Known issues inventory
+
+  Codebase TODO/FIXME comments (Layer 3 grep, 2026-05-18):
+    Backend:  7 occurrences
+    Frontend: 3 occurrences
+    Total:    10 across whole codebase
+  
+  Healthy debt level for a 6-week-old project with 193 commits.
+  Triage pass deferred to Session 3 — each TODO inspected for
+  Sundance-criticality.
+  
+  Phase 7 known-issues.md (required by master roadmap Phase 7
+  done-criterion): DOES NOT EXIST.  Confirms RF20, corroborates
+  RF37 + RF38.
+  
+  Real Phase 7 cross-role bug hunt (RF37) will produce this file
+  as one of its deliverables.
+
 ## 7. Days-remaining math
 ## 8. Open questions requiring decisions
 
@@ -1147,6 +1164,82 @@ RED FLAG 38: Phase 7's renaming masks unfinished cross-role hunt
     Phase 9 ML + recipes (Omar-gated)     ~5 days
     Sundance buffer                       3-5 days
     Total: 16-22 days vs 32 days remaining.
+
+────────────────────────────────────────────────────────────
+
+## Appendix F — Layer 3 (Code) verification findings
+
+Layer 3 directly verifies Layer 1 (doc claims) and Layer 2 (commit
+claims) against actual code state.  This appendix records what
+the code grep produced.
+
+### F1.  RF35 — Detector #6 (Warehouse Discrepancy) CONFIRMED ABSENT
+
+  Command: grep -rn "WarehouseDiscrepancy|warehouse_discrepancy"
+           backend/app/
+  Result:  ZERO matches.
+  Severity: RF35 stays HIGH.  Detector #6 genuinely was not built;
+            no alternate-naming hides it.
+  Cross-check: alerts/detectors/ folder contains only DemandSpike
+               detector per userMemories; this confirms by absence.
+
+### F2.  RF18/RF34 — Offline queue CONFIRMED IMPLEMENTED
+
+  Initially RF34 was marked RESOLVED POSITIVE based on commit
+  message alone.  This is a Layer 2 anti-pattern (trusting
+  commit text without code verification).  Layer 3 verifies:
+
+  Command: grep -rn "offlineQueue|offline_queue|localStorage|
+                     pendingScans|queueScan" frontend/src/
+  Result:  Implementation lives at:
+           frontend/src/features/warehouse/scanQueue.ts
+           frontend/src/features/warehouse/useWarehouse.ts:530-555
+  
+  Note: NOT in features/scan/ — both Bartender and Warehouse scan
+        flows route through features/warehouse/ since that's where
+        the warehouse_scans table endpoint hooks live.
+  
+  Commit 45df782 message claims (all verified true):
+    - Every scan carries client_event_id (UUID auto-generated)
+    - localStorage stash on network failure
+    - Auto-drain on browser 'online' event AND app mount
+    - Server-side 4xx errors do NOT queue
+    - Server idempotency makes replay safe
+  
+  Severity: RF18 + RF34 confirmed RESOLVED POSITIVE.
+  Sundance offline tolerance: VERIFIED IMPLEMENTED.
+
+### F3.  RF20 — docs/known-issues.md CONFIRMED MISSING
+
+  Command: ls -la docs/known-issues.md
+  Result:  No such file or directory.
+  Severity: RF20 stays HIGH.  Confirms Phase 7 done-criterion
+            structurally unmet (corroborates RF37, RF38).
+
+### F4.  Codebase TODO/FIXME debt — LOW
+
+  Commands:
+    grep -rn "TODO|FIXME|XXX|HACK" backend/app/ --include="*.py"
+    grep -rn "TODO|FIXME|XXX|HACK" frontend/src/ --include="*.ts*"
+  Results:
+    Backend:  7 occurrences
+    Frontend: 3 occurrences
+    Total:    10 across whole codebase
+  
+  Severity: LOW (no new RF).  Healthy debt level for a 6-week-old
+  project with 193 commits.  Worth enumerating before Sundance
+  to triage individual items.
+
+### F5.  RF39 — Hypothesized then DISMISSED
+
+  Hypothesis (during this Layer 3 dip): commit 45df782 message
+  claimed offline queue but features/scan/ grep showed nothing.
+  
+  Resolution: queue lives in features/warehouse/, not features/scan/.
+  Folder-naming confusion only.  Implementation is solid.
+  
+  Severity: DISMISSED.  Marker kept here so future audits don't
+  re-raise the same hypothesis.
 
 ────────────────────────────────────────────────────────────
 
