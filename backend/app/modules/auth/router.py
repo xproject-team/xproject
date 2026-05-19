@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import decode_access_token
+from app.modules.auth.permissions import get_active_role
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.repository import (
     get_user_authorized_roles,
@@ -167,6 +168,6 @@ async def read_current_user(
         id=str(current_user.id),
         email=current_user.email,
         full_name=current_user.full_name,
-        role=current_user.role.value,
+        role=get_active_role(current_user).value,
         is_active=current_user.is_active,
     )

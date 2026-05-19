@@ -36,7 +36,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
-from app.modules.auth.permissions import get_active_role
 from app.modules.warehouse.inventory_service import InventoryService
 from app.modules.warehouse.invoice_service import (
     InvalidInvoiceTransitionError,
@@ -80,7 +79,7 @@ def require_owner(
     """Gate: Owner only. Used for dashboard KPIs, disputes, approvals,
     and ADJUSTMENT scans.
     """
-    if get_active_role(current_user) != UserRole.OWNER:
+    if current_user.role != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -106,7 +105,7 @@ def require_owner_or_warehouse(
     that should be Owner-only (approve/reject pending review, dispute, archive)
     keep using require_owner above.
     """
-    if get_active_role(current_user) not in (UserRole.OWNER, UserRole.WAREHOUSE):
+    if current_user.role not in (UserRole.OWNER, UserRole.WAREHOUSE):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -128,9 +127,9 @@ def require_warehouse_or_owner(
     """
     # Normalize the role to lowercase string for robust comparison
     role_value = (
-        get_active_role(current_user).value
-        if hasattr(get_active_role(current_user), "value")
-        else str(get_active_role(current_user))
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
     ).lower()
     if role_value not in ("owner", "warehouse_keeper"):
         raise HTTPException(
@@ -477,9 +476,9 @@ async def submit_scan(
     """
     svc = ScanService(db)
     role_value = (
-        get_active_role(current_user).value
-        if hasattr(get_active_role(current_user), "value")
-        else str(get_active_role(current_user))
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
     ).lower()
 
     try:
@@ -575,9 +574,9 @@ async def void_scan(
     """
     svc = ScanService(db)
     role_value = (
-        get_active_role(current_user).value
-        if hasattr(get_active_role(current_user), "value")
-        else str(get_active_role(current_user))
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
     ).lower()
     try:
         scan = await svc.void_scan(
