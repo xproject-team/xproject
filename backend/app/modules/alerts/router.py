@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
+from app.modules.auth.permissions import get_active_role
 from app.modules.alerts.schemas import (
     AlertAcknowledge,
     AlertAcknowledgeResponse,
@@ -85,7 +86,7 @@ async def list_alerts_for_event(
     return await service.list_for_event(
         tenant_id=current_user.tenant_id,
         event_id=event_id,
-        user_role=current_user.role.value,
+        user_role=get_active_role(current_user).value,
         user_bar_id=current_user.bar_id,
         only_active=only_active,
         severity=severity,
@@ -127,7 +128,7 @@ async def count_active_by_bar(
     Owner-only: managers never see alerts for other bars. Returning this
     to a manager would leak operational signal about bars they don't run.
     """
-    if current_user.role.value != "owner":
+    if get_active_role(current_user).value != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -163,7 +164,7 @@ async def get_alert(
         return await service.get_by_id(
             tenant_id=current_user.tenant_id,
             alert_id=alert_id,
-            user_role=current_user.role.value,
+            user_role=get_active_role(current_user).value,
             user_bar_id=current_user.bar_id,
         )
     except AlertNotFoundError:
@@ -201,7 +202,7 @@ async def acknowledge_alert(
 
     409 on version conflict. Client must refetch the alert and retry.
     """
-    if current_user.role.value != "owner":
+    if get_active_role(current_user).value != "owner":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
