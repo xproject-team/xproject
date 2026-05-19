@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
+from app.modules.auth.permissions import get_active_role
 from app.modules.bars.schemas import BarCreate, BarResponse, BarUpdate
 from app.modules.bars.service import (
     BarNotFoundError,
@@ -149,7 +150,7 @@ async def backfill_channels(
 
     403 if caller is not the tenant Owner.
     """
-    if current_user.role != UserRole.OWNER:
+    if get_active_role(current_user) != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
