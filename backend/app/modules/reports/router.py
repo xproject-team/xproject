@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
+from app.modules.auth.permissions import get_active_role
 from app.modules.reports.aggregator import (
     EventNotCompletedError,
     EventNotFoundForReportError,
@@ -58,7 +59,7 @@ def require_owner(
     Applied to every report endpoint via Depends(). Managers and other
     roles never see report data (spec §10 — reports are Owner-only).
     """
-    if current_user.role != UserRole.OWNER:
+    if get_active_role(current_user) != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

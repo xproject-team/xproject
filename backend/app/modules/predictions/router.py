@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
+from app.modules.auth.permissions import get_active_role
 from app.modules.predictions.schemas import (
     GeneratePredictionRequest,
     PredictionResponse,
@@ -49,7 +50,7 @@ def require_owner(
     roles never see prediction data (spec §10 — predictions are Owner-only
     in v1.0; per-bar manager views ship in v1.2).
     """
-    if current_user.role != UserRole.OWNER:
+    if get_active_role(current_user) != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

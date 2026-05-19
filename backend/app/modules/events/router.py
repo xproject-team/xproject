@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
+from app.modules.auth.permissions import get_active_role
 from app.modules.events.schemas import EventCreate, EventResponse, EventUpdate
 from app.modules.events.reconciliation_schemas import ReconciliationReport
 from app.modules.events.reconciliation_service import compute_report
@@ -342,7 +343,7 @@ async def get_reconciliation_report(
     POS data is not yet wired (Slesh sandbox pending) — summary.totals.
     missing_pos_data is True for now; will flip when the integration lands.
     """
-    if current_user.role != UserRole.OWNER:
+    if get_active_role(current_user) != UserRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Owners can view the reconciliation report.",
