@@ -10,6 +10,20 @@ sprint inventory.
 
 ## Class A — Strategic deferrals
 
+  A0.  Phase 1D-full: remove in-memory user.role shim from
+       get_current_user dependency in auth/router.py:39
+       Update get_active_role helper to read JWT active_role claim
+       directly via FastAPI Request injection (signature changes
+       to add request: Request parameter).
+       Update 20 call sites to pass request.
+       Run Alembic migration p2_drop_users_role_column to remove
+       users.role from DB schema (user_roles join table remains
+       the only source).
+       Estimated time: 0.5-1 day post-Sundance.
+       Why deferred: Phase 1D-min (helper + 20 sites migrated) is
+       the Sundance-critical work.  Phase 1D-full is architectural
+       cleanup that adds Sundance risk without Sundance value.
+
   A1.  Visual theme redesign (one pass after Sundance)
   A2.  Token rotation policy with Slesh (operational; week-after reminder)
   A3.  Multi-tenant scaling (only when adding 2nd tenant)

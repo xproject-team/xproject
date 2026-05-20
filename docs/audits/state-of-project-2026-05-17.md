@@ -1571,3 +1571,105 @@ end-of-session triage.  Updated each chunk.
   RF40  Recipe Deviation Detector (Detector #2) EXISTS (positive
         discovery; raises alerts coverage from 1 to 2 detectors)
 
+
+
+────────────────────────────────────────────────────────────
+
+## WS1 RETROSPECTIVE — Phase 1D-min auth migration
+
+### Status
+
+  RF33 PARTIALLY RESOLVED.
+  
+  Phase 1D-min complete:
+    - All 20 call sites read current_user.role via get_active_role helper
+    - Helper is the single migration target for future work
+    - Dead code (core/dependencies.py) removed
+    - 3 unit tests cover the helper
+  
+  Phase 1D-full DEFERRED to post-Sundance:
+    - Remove in-memory shim from get_current_user
+    - Update helper to read JWT active_role claim directly via Request
+    - Drop users.role column from DB schema
+    - Reason for deferral: shim works correctly today; auth changes
+      pre-Sundance risk introducing regressions.  Architectural
+      cleanup belongs in post-Sundance hardening sprint.
+
+### Cumulative commits (10 commits, 2026-05-19)
+
+  b2518e3  chore(core): delete dead app/core/dependencies.py
+  09d8068  feat(auth): add get_active_role helper + 3 unit tests
+  e394deb  refactor(bars): migrate 1 site (smallest blast radius)
+  6b90870  refactor(alerts): migrate 4 sites
+  afa53c9  refactor(warehouse): migrate 11 sites (audit said 4)
+  12c490e  refactor(auth): migrate /auth/me + ACCIDENTAL warehouse revert
+  be895ba  refactor(warehouse): RECOVERY — re-apply migration
+  2db02f4  refactor: events + predictions + reports (3 sites)
+  <this>   docs(audit): RF33 RESOLVED + retrospective
+
+### Findings discovered during WS1 execution
+
+  RF42 — Duplicate get_current_user in core/dependencies.py
+    Initially feared CRITICAL.  Layer 3 verified only auth/router.py
+    version was in production use.  Deleted dead code cleanly.
+    Severity downgraded to MEDIUM.  Part 1 RESOLVED at b2518e3.
+    Part 2 (clean up the 14 imports that point at the auth/router.py
+    duplicate) deferred to post-Sundance (cosmetic).
+  
+  RF43 — Audit count was conservative (warehouse had 11 not 4)
+    Atomic-write count assertions caught it before any edit ran.
+    Migrated all 11 sites cleanly.  No code issue.  Just notes the
+    audit's first-pass grep was incomplete.
+  
+  RF44 — Editor stale-buffer revert (commit 7 incident)
+    Commit 12c490e silently reverted warehouse migration during the
+    auth migration commit.  Root cause hypothesis: an editor window
+    showing the pre-migration version of warehouse/router.py
+    auto-saved over the migrated content between commits 6 and 7.
+    
+    Detection: git show --stat 12c490e showed 2 files changed when
+    only 1 was expected.  Recovery: re-applied migration in commit
+    8 (be895ba).  Total recovery time: 10 minutes.
+    
+    Severity: LOW (caught + recovered).
+    Process improvement: between every commit, run grep on already-
+    migrated files; verify 0 legacy reads.  Now documented as
+    standard WS-discipline.
+
+### Lessons for WS2 + WS3
+
+  1. atomic-write asserts protect against bad patch scripts but
+     NOT external file mutations between commits
+  
+  2. Standard between-commit verification:
+       grep -rln "<pattern>" <files-already-migrated>
+     should return nothing.  Catches editor reverts immediately.
+  
+  3. Don't open files in an editor between migration and smoke test.
+     Terminal output of grep/sed/curl is sufficient verification.
+  
+  4. Watch git commit output: "N files changed" should match
+     what you explicitly git-added.  Discrepancy = investigate.
+  
+  5. Atomic multi-file patches (Phase 1 read + Phase 2 edit-in-memory
+     + Phase 3 write-all-or-none) prevent half-migrated state across
+     multi-file commits.
+
+### Sundance impact
+
+  Pre-WS1: auth in dual state, 7 listed drift triggers each could break
+  Post-WS1: single helper read pattern; future Phase 1D-full simpler
+  
+  System is in BETTER state than before for Sundance:
+    - 14 router files use one helper (find with grep + IDE)
+    - Dead code removed = smaller attack surface
+    - Helper has tests = regressions caught in CI
+    - Phase 1D-full is one-commit-away when post-Sundance time exists
+
+### WS1 budget
+
+  Plan:   1-2 days
+  Actual: ~3 hours over 2 calendar days (audit + execution)
+  
+  No Sundance schedule impact.  Next workstream (WS2 real Phase 7
+  cross-role bug hunt) starts tomorrow (2026-05-20) on revised schedule.

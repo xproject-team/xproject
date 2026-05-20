@@ -148,3 +148,24 @@ Maximum reduction: 4-5 days.  Brings buffer from 0-4 to 4-9 days.
 
 Last updated: 2026-05-18
 Next update: after WS1 ships
+
+
+---
+
+## Schedule revisions
+
+  WS1 ACTUAL: 2026-05-19 (1 calendar day from audit completion)
+  WS1 completed in ~3 hours of focused work.
+  10 commits landed on origin/develop.
+  
+  Schedule shifts forward by 1 day vs the original May 18 plan:
+    WS2 (real Phase 7 cross-role bug hunt): start 2026-05-20
+    WS3 (Phase 8 dress rehearsal): start 2026-05-28
+    Phase 9 (ML + recipes, Omar-gated): in parallel with WS2-3
+  
+  Days remaining to Sundance (2026-06-19): 31
+  Buffer remaining: still 0-4 days after risk reserves
+  
+  Phase 1D-full (remove in-memory shim + drop users.role column)
+  moved to post-Sundance backlog.  Phase 1D-min (helper + 20 sites
+  migrated) is RF33's resolution scope for pre-Sundance.
