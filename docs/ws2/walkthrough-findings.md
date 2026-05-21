@@ -83,6 +83,82 @@
 
 ---
 
+### F11a — RESOLVED 2026-05-21 — Duplicate "Arancine" catalog entries
+
+  Role:        Owner (affects /catalog)
+  Severity:    S3 (ambiguous catalog → operator confusion, no data loss risk)
+  Page/Route:  /catalog
+  Reported:    Owner walkthrough via Claude in Chrome
+  Resolved:    2026-05-21 via DB delete
+
+  Root cause (investigation findings):
+    Two distinct products rows for "Arancine":
+      - db6ae7cf (Slesh ID 68716f81...) created May 1 23:51:08.819
+      - 0a515545 (Slesh ID 684801bc...) created May 1 23:51:08.825
+    
+    Same name, same product_type=food, same default_price_cents=500.
+    Both had unique external_pos_id (different Slesh mappings).
+    Both created within the same seed script run.
+    
+    Dependency check showed ZERO FK refs on either row:
+      bar_stock: 0    stock_tx: 0    event_products: 0
+      alerts:    0    as_drink: 0    as_ingredient: 0
+    
+    Hypothesis: a seed script generated two Slesh-POS items for the
+    same logical product (likely an off-by-one in the import loop
+    that mapped multiple Slesh negozio_id values to the same name).
+
+  Resolution:
+    Single-statement deletion in a transaction:
+      DELETE FROM products WHERE id = '0a515545-e00b-422d-bb66-ea95d6b66481';
+    
+    Kept db6ae7cf as the canonical row (older external_pos_id, assumed
+    canonical in Slesh sandbox).  No FK migration needed — both rows
+    had zero dependencies.
+
+  Verification:
+    Pre-delete:  2 rows named "Arancine"
+    Post-delete: 1 row named "Arancine"  ✓
+    Total products: 71 → 70
+    
+  Backup: backups/xproject_dev_pre_arancine_dedup_20260521_131046.sql
+
+---
+
+### F11b — DEFERRED — "Cartoccio Misto" vs "Cartoccio misto" (case + price)
+
+  Role:        Owner (affects /catalog)
+  Severity:    S3 (naming ambiguity, not data integrity)
+  Page/Route:  /catalog
+  Reported:    Owner walkthrough via Claude in Chrome
+  Status:      DEFERRED — needs Omar input
+
+  Root cause investigation:
+    Three Cartoccio rows in the catalog, NOT duplicates:
+      - "Cartoccio Misto"   8€   Slesh ID 684801bc262443f1a08c8d23
+      - "Cartoccio misto"   10€  Slesh ID 685d2b3544d5451586f56329
+      - "Cartoccio Fritti"  8€   Slesh ID 687f4e6dcfd860a827401f0c
+    
+    All 3 have distinct external_pos_id values → Slesh treats them
+    as separate menu items.  Different prices (8€ vs 10€) suggest
+    intentional variants (e.g., portion sizes).
+    
+  Why NOT merge:
+    Merging would mean one external_pos_id is lost.  Slesh POS tx
+    arriving for the lost ID would either drop at the adapter or
+    fail to match a product.  This is real Sundance revenue risk.
+    
+  Recommendation for Omar:
+    Confirm whether the 8€ and 10€ Cartoccio Misto variants are:
+      (a) Intentional sizes (e.g., piccolo/grande) → rename to disambiguate
+      (b) An accidental duplicate → merge one Slesh ID into the other
+    
+    Pre-Sundance action depends on Omar's answer.
+    
+  Action today: documented as deferred; no DB change.
+
+---
+
 
 
 ---
