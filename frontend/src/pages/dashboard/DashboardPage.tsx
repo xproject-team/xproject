@@ -122,7 +122,7 @@ function KpiStrip({ bars, elapsed, unacknowledgedCount, criticalCount, onAlertsC
       >
         <div>
           <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5 text-left">
-            Active Alerts
+            Unacknowledged
           </p>
           <p className="text-2xl font-bold text-[#1A202C] leading-none text-left">
             {unacknowledgedCount}

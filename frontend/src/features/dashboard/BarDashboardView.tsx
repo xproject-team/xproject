@@ -590,7 +590,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
           hint={revenue > 0 ? 'live' : 'no sales yet'}
         />
         <KpiTile
-          label="Active Alerts"
+          label="Unacknowledged"
           value={String(unackedAlerts.length)}
           hint={
             criticalAlerts.length > 0
@@ -612,7 +612,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         <div className="lg:col-span-2 bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-3">
-            Active Alerts
+            Unacknowledged
           </p>
           {alertsQuery.isLoading && (
             <p className="text-xs text-[#A0AEC0] py-4">Loading alerts…</p>
