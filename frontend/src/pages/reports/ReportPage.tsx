@@ -255,7 +255,7 @@ function GenerateModal({
                   : 'bg-white text-[#4A5568] border-[#E2E8F0] hover:bg-[#F7FAFC]'
               }`}
             >
-              {lang === 'it' ? '🇮�� Italiano' : '🇬🇧 English'}
+              {lang === 'it' ? '🇮🇹 Italiano' : '🇬🇧 English'}
             </button>
           ))}
         </div>
