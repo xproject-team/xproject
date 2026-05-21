@@ -73,7 +73,7 @@ function PortfolioStrip({ kpis }: { kpis: PortfolioKpis | undefined }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <PortfolioStripTile
-        label="Total Events"
+        label="Completed Events"
         value={isLoading ? '…' : String(kpis!.total_events_completed)}
         hint={
           kpis && kpis.total_events_completed === 0
