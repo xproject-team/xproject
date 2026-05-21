@@ -16,6 +16,7 @@
  * states with early returns, inner component receives guaranteed data.
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { formatRelativeTime } from '@/lib/utils'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useAuth } from '@/features/auth/useAuth'
@@ -261,7 +262,7 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: A
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] font-mono font-bold text-[#1A202C]">
-                      {alert.created_at}
+                      {formatRelativeTime(alert.created_at)}
                     </span>
                     <span className={`text-xs font-semibold ${cfg.barBtn}`}>
                       {alert.bar_name}

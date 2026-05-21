@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { formatRelativeTime } from '@/lib/utils'
 import { useNavigate } from 'react-router-dom'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { useLiveEvent } from '@/features/dashboard/hooks'
@@ -91,7 +92,7 @@ function AlertCard({
         <div className="min-w-0">
           {/* Top row: timestamp + bar name + severity badge */}
           <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-xs font-bold font-mono text-[#1A202C]">{alert.created_at}</span>
+            <span className="text-xs font-bold font-mono text-[#1A202C]">{formatRelativeTime(alert.created_at)}</span>
             <button
               onClick={() => navigate('/dashboard')}
               className={`text-xs font-semibold hover:underline ${
@@ -305,7 +306,7 @@ export default function AlertsPage() {
                   <div className="flex items-start justify-between gap-4 mb-2">
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] font-bold font-mono text-[#E67E22]">{alert.created_at}</span>
+                        <span className="text-[10px] font-bold font-mono text-[#E67E22]">{formatRelativeTime(alert.created_at)}</span>
                         <span className="text-xs font-semibold text-[#E67E22]">{alert.bar_name}</span>
                       </div>
                       <p className={`text-sm font-medium ${acked ? 'text-[#718096]' : 'text-[#1A202C]'}`}>

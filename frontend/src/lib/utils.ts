@@ -2,7 +2,7 @@
  * Formatting helpers — currency, dates, percentages.
  * Pure functions only; no imports from features or lib/ modules.
  */
-import { format, parseISO } from 'date-fns'
+import { format, formatDistanceToNow, parseISO } from 'date-fns'
 
 export function formatCurrency(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
@@ -10,6 +10,10 @@ export function formatCurrency(amount: number, currency = 'USD'): string {
 
 export function formatDate(isoString: string, pattern = 'MMM d, yyyy HH:mm'): string {
   return format(parseISO(isoString), pattern)
+}
+
+export function formatRelativeTime(isoString: string): string {
+  return formatDistanceToNow(parseISO(isoString), { addSuffix: true })
 }
 
 export function formatPercent(value: number, decimals = 1): string {
