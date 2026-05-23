@@ -110,15 +110,21 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       0,
     )
 
-    // ── Drinks sold: count of parent transactions ──
-    const drinks_sold = txAtBar.length
-
-    // ── Drinks breakdown: bucket by product's tier_rank ──
+    // ── Drinks breakdown + total: tier-classified products only ──
+    // The KPI is labelled "DRINKS SOLD", so it must count only transactions
+    // on drinks.  A drink is any product whose catalog row has tier_rank set
+    // (1=Basic, 2=Standard, 3=Premium, 4=Ultra).  Non-drink transactions
+    // (food, supplies) are excluded.  Single pass guarantees that drinks_sold
+    // equals the sum of breakdown buckets by construction.
     const drinks_breakdown: DrinksBreakdown = { ...EMPTY_BREAKDOWN }
+    let drinks_sold = 0
     for (const tx of txAtBar) {
       const product = productById.get(tx.product_id)
       const tier = tierFromRank(product?.tier_rank ?? null)
-      if (tier) drinks_breakdown[tier] += 1
+      if (tier) {
+        drinks_breakdown[tier] += 1
+        drinks_sold           += 1
+      }
     }
 
     // Burn-rate aggregates
