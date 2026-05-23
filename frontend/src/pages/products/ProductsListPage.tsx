@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { CATEGORY_LABELS, useProducts } from '@/features/products/hooks'
+import type { ProductCategory } from '@/features/products/hooks'
 import type { ProductRow } from '@/lib/mockData'
 
 type FilterKey = 'all' | 'drink' | 'food' | 'ingredient' | 'supply'
@@ -127,7 +128,7 @@ export default function ProductsListPage() {
                     {p.is_archived && <span className="ml-2 text-[10px] font-medium text-[#718096]">(archived)</span>}
                   </td>
                   <td className="py-3 pr-4"><TypeBadge type={p.product_type} /></td>
-                  <td className="py-3 pr-4 text-[#4A5568] text-xs">{p.category ? CATEGORY_LABELS[p.category] : '—'}</td>
+                  <td className="py-3 pr-4 text-[#4A5568] text-xs">{p.category ? CATEGORY_LABELS[p.category as ProductCategory] : '—'}</td>
                   <td className="py-3 pr-4 text-[#4A5568] text-xs">{p.unit}</td>
                   <td className="py-3 pr-4 text-[#1A202C]">{fmtEur(p.default_price_cents)}</td>
                   <td className="py-3 pr-4">
