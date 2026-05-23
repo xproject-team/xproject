@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { MOCK_BARS, MOCK_PRODUCTS } from '@/lib/mockData'
+import { MOCK_PRODUCTS } from '@/lib/mockData'
+import { useBars } from '@/features/bars/hooks'
 import type { Event } from '@/lib/mockData'
 import {
   useEvent,
@@ -120,6 +121,10 @@ function EventDetailContent({ event }: { event: Event }) {
   const effectiveCanViewDashboard = effective.status === 'active' || effective.status === 'live'
   const effectiveCanViewReport    = effective.status === 'completed'
   const effectiveIsLive           = effective.status === 'live'
+  // Real bars data — replaces MOCK_BARS for count and table
+  const barsQuery   = useBars(effective.id)
+  const realBars    = barsQuery.data ?? []
+  const realBarsCount = realBars.length
   // Reconciliation is available once the event has gone LIVE at least once
   // (i.e., status is 'live' or 'completed') AND the user has Owner permission.
   const effectiveCanViewReconciliation =
@@ -403,7 +408,7 @@ function EventDetailContent({ event }: { event: Event }) {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={Icons.bars} label="Bars" value={effectiveIsLive ? MOCK_BARS.length : effective.bars_count} sub="configured" />
+        <StatCard icon={Icons.bars} label="Bars" value={effectiveIsLive ? realBarsCount : effective.bars_count} sub="configured" />
         <StatCard icon={Icons.guests} label="Expected Guests" value={(effective.expected_guest_count ?? 0).toLocaleString()} sub="registered" />
         <StatCard icon={Icons.products} label="Products" value={effectiveIsLive ? products.length : '\u2014'} sub="configured" />
         <StatCard icon={Icons.venue} label="Venue" value={effective.venue.name} />
@@ -512,44 +517,46 @@ function EventDetailContent({ event }: { event: Event }) {
         <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm overflow-hidden">
           <div className="bg-[#F7FAFC] border-b border-[#E2E8F0] px-5 py-3 flex items-center justify-between">
             <h2 className="text-xs font-bold text-[#4A5568] uppercase tracking-widest">Bars</h2>
-            <span className="text-xs text-[#4A5568]">{MOCK_BARS.length} bars</span>
+            <span className="text-xs text-[#4A5568]">{realBarsCount} bars</span>
           </div>
+          {barsQuery.isLoading ? (
+            <div className="px-5 py-8 text-center text-sm text-[#A0AEC0]">Loading bars…</div>
+          ) : barsQuery.isError ? (
+            <div className="px-5 py-8 text-center text-sm text-[#E53E3E]">Failed to load bars.</div>
+          ) : realBars.length === 0 ? (
+            <div className="px-5 py-8 text-center text-sm text-[#A0AEC0]">No bars configured for this event yet.</div>
+          ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E2E8F0]">
                 <th className="text-left px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Name</th>
-                <th className="text-left px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Status</th>
-                <th className="text-right px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Staff</th>
-                <th className="text-right px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Stock</th>
+                <th className="text-left px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Type</th>
+                <th className="text-right px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Status</th>
               </tr>
             </thead>
             <tbody>
-              {MOCK_BARS.map((bar) => {
-                const stockPct = Math.round((bar.current_stock / bar.initial_stock) * 100)
-                const dotCls = bar.status === 'healthy' ? 'bg-[#38A169]' : bar.status === 'warning' ? 'bg-[#D69E2E]' : 'bg-[#E53E3E] animate-pulse'
-                return (
-                  <tr key={bar.id} className="border-b border-[#E2E8F0] last:border-0 hover:bg-[#F7FAFC] transition-colors">
-                    <td className="px-5 py-3 font-medium text-[#1A202C]">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
-                        {bar.name}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3 text-[#4A5568] capitalize">{bar.status}</td>
-                    <td className="px-5 py-3 text-right text-[#4A5568]">{bar.staff_count}</td>
-                    <td className="px-5 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="w-16 h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${stockPct > 60 ? 'bg-[#38A169]' : stockPct > 30 ? 'bg-[#D69E2E]' : 'bg-[#E53E3E]'}`} style={{ width: `${stockPct}%` }} />
-                        </div>
-                        <span className="text-xs text-[#4A5568] tabular-nums w-8 text-right">{stockPct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+              {realBars.map((bar) => (
+                <tr key={bar.id} className="border-b border-[#E2E8F0] last:border-0 hover:bg-[#F7FAFC] transition-colors">
+                  <td className="px-5 py-3 font-medium text-[#1A202C]">{bar.name}</td>
+                  <td className="px-5 py-3 text-[#4A5568] capitalize">{bar.bar_type}</td>
+                  <td className="px-5 py-3 text-right">
+                    {bar.is_active ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[#38A169]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#38A169]" />
+                        Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs text-[#A0AEC0]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#A0AEC0]" />
+                        Inactive
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
+          )}
         </div>
       )}
 
