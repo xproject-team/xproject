@@ -27,6 +27,7 @@ import {
   type ReportSummary,
   type ReportLanguage,
 } from '@/features/reports/useReports'
+import { useEvents } from '@/features/events/hooks'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -208,6 +209,15 @@ function GenerateModal({
   const [eventId, setEventId] = useState('')
   const [language, setLanguage] = useState<ReportLanguage>('it')
   const generate = useGenerateReport()
+  const eventsQuery = useEvents()
+  const allEvents = eventsQuery.data ?? []
+  // Only completed events can have reports generated.
+  const eligibleEvents = allEvents.filter((e) => e.status === 'completed')
+
+  // Auto-select when there's a single eligible event and nothing chosen yet.
+  if (open && !eventId && eligibleEvents.length === 1) {
+    setEventId(eligibleEvents[0].id)
+  }
 
   if (!open) return null
 
@@ -227,19 +237,32 @@ function GenerateModal({
       <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
         <h2 className="text-lg font-bold text-[#1A202C] mb-1">Generate New Report</h2>
         <p className="text-xs text-[#718096] mb-5">
-          Enter an event ID and choose a language. The report will be generated immediately.
+          Choose a completed event and a language. The report will be generated immediately.
         </p>
 
         <label className="block text-xs font-semibold text-[#4A5568] mb-1 uppercase tracking-widest">
-          Event ID
+          Event
         </label>
-        <input
-          type="text"
-          value={eventId}
-          onChange={(e) => setEventId(e.target.value)}
-          placeholder="e.g. cca3afa4-14b7-4920-9a4a-47acb0fbb021"
-          className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm mb-4 font-mono"
-        />
+        {eventsQuery.isLoading ? (
+          <div className="px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm text-[#A0AEC0] mb-4">Loading events…</div>
+        ) : eligibleEvents.length === 0 ? (
+          <div className="px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm text-[#A0AEC0] mb-4">
+            No completed events yet. Reports can only be generated after an event ends.
+          </div>
+        ) : (
+          <select
+            value={eventId}
+            onChange={(e) => setEventId(e.target.value)}
+            className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm mb-4 bg-white"
+          >
+            {eligibleEvents.length > 1 && <option value="">Choose an event…</option>}
+            {eligibleEvents.map((ev) => (
+              <option key={ev.id} value={ev.id}>
+                {ev.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         <label className="block text-xs font-semibold text-[#4A5568] mb-1 uppercase tracking-widest">
           Language
