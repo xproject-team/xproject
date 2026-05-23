@@ -129,7 +129,7 @@ export default function BarCreatePage() {
 
           <Field
             label="Slesh shop ID"
-            hint="Optional. If you know the Slesh _id for this shop, paste it here so the polling worker can map orders to this bar. Otherwise leave blank and run sync_slesh_reference later."
+            hint="Optional. If you have the Slesh shop ID, paste it here so live POS orders sync to this bar. You can also leave it blank now and add it later from the bar detail page."
           >
             <input
               type="text"
