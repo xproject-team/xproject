@@ -149,3 +149,34 @@ psql -d postgres -c "DROP DATABASE xproject_restore_test;"
 If the row counts diverge, **stop and investigate before continuing
 development**. A silent corruption in the backup pipeline is the worst
 possible disaster scenario.
+
+---
+
+## 7. Alert pipeline health check
+
+Separate from DB recovery — sometimes the DB is fine but the alert
+pipeline has stopped firing. This usually means the arq worker is stuck.
+
+To diagnose without restarting anything:
+
+```bash
+./scripts/alert-pipeline-check.sh
+```
+
+This runs `AlertsOrchestrator.run_all()` once against the current LIVE
+event. Output shows:
+- Alert counts BEFORE the run
+- What the orchestrator fired/auto-resolved
+- Alert counts AFTER the run
+
+If the script returns a healthy `{checked: N, fired: M, ...}` totals dict
+but the dashboard is still empty, the bug is in the WebSocket push layer
+or the frontend — not the detection logic.
+
+If the script itself errors out, the bug is in the DB or one of the
+service dependencies. Run the deep health check next:
+
+```bash
+curl -s http://localhost:8000/api/v1/health/deep | python3 -m json.tool
+```
+
