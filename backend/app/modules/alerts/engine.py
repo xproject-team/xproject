@@ -108,6 +108,46 @@ def _audience_for(severity: str) -> str:
     return "owner_and_manager"
 
 
+# ─── Quantity + unit formatting helpers ──────────────────────────────────────
+_UNIT_PLURAL = {
+    'bottle': 'bottles',
+    'glass': 'glasses',
+    'can': 'cans',
+    'draft_glass': 'draft glasses',
+    'shot': 'shots',
+    'piece': 'pieces',
+    'gram': 'g',
+    'ml': 'ml',
+}
+
+def _fmt_qty(qty) -> str:
+    """Format a Decimal/int quantity for human display.
+    18120.000  -> '18,120'
+    0.750      -> '0.75'
+    1.500      -> '1.5'
+    """
+    from decimal import Decimal as _D
+    d = _D(str(qty)).normalize()
+    # If it's a whole number show as int with comma separator
+    if d == d.to_integral_value():
+        return f'{int(d):,}'
+    # Otherwise strip trailing zeros and show up to 3 decimal places
+    return f'{float(d):.3f}'.rstrip('0')
+
+def _fmt_unit(unit: str, qty=None) -> str:
+    """Return display-friendly unit string, pluralized when qty != 1."""
+    singular_map = {v: k for k, v in _UNIT_PLURAL.items()}
+    # gram and ml are already abbreviations — no plural needed
+    if unit in ('gram', 'ml', 'g'):
+        return _UNIT_PLURAL.get(unit, unit)
+    plural = _UNIT_PLURAL.get(unit, unit + 's')
+    if qty is None:
+        return plural
+    try:
+        return singular_map.get(unit, unit) if float(str(qty)) == 1.0 else plural
+    except (ValueError, TypeError):
+        return plural
+
 # ─── Message builders (rule-based; AI-advisor slot stays empty for now) ───────
 
 
@@ -132,11 +172,14 @@ def _build_messages(
     """
     # Round presentation values sensibly.
     rate_str = f"{burn_rate_per_hour:.1f}"
+    qty_str = _fmt_qty(current_qty)
+    unit_str = _fmt_unit(unit, current_qty)
+    unit_rate = _fmt_unit(unit)
     if current_qty == 0:
         title = f"{product_name} depleted at {bar_name}"
         owner_message = (
-            f"{product_name} at {bar_name} is fully depleted (0 {unit} "
-            f"remaining). Consumption was running at {rate_str} {unit}/h. "
+            f"{product_name} at {bar_name} is fully depleted (0 {unit_str} "
+            f"remaining). Consumption was running at {rate_str} {unit_rate}/h. "
             f"Any further orders will create deficit (phantom sales)."
         )
         manager_message = (
@@ -154,8 +197,8 @@ def _build_messages(
         title = f"{product_name} critically low at {bar_name}"
         owner_message = (
             f"{product_name} at {bar_name} will deplete in approximately "
-            f"{ttd_int} minutes at the current rate of {rate_str} {unit}/h. "
-            f"{current_qty} {unit} remaining. Action needed now to avoid "
+            f"{ttd_int} minutes at the current rate of {rate_str} {unit_rate}/h. "
+            f"{qty_str} {unit_str} remaining. Action needed now to avoid "
             f"stock-out."
         )
         manager_message = (
@@ -169,8 +212,8 @@ def _build_messages(
         title = f"{product_name} running low at {bar_name}"
         owner_message = (
             f"{product_name} at {bar_name} will deplete in approximately "
-            f"{ttd_int} minutes at {rate_str} {unit}/h. {current_qty} "
-            f"{unit} remaining. Plan a restock."
+            f"{ttd_int} minutes at {rate_str} {unit_rate}/h. {qty_str} "
+            f"{unit_str} remaining. Plan a restock."
         )
         manager_message = (
             f"Stock low for {product_name}. Restock recommended."
@@ -182,8 +225,8 @@ def _build_messages(
     else:  # info
         title = f"{product_name} approaching threshold at {bar_name}"
         owner_message = (
-            f"{product_name} at {bar_name} has {current_qty} {unit} "
-            f"remaining, running at {rate_str} {unit}/h. Projected "
+            f"{product_name} at {bar_name} has {qty_str} {unit_str} "
+            f"remaining, running at {rate_str} {unit_rate}/h. Projected "
             f"depletion in ~{ttd_int} minutes. Monitor and plan restock."
         )
         manager_message = None  # INFO is owner_only; never reaches manager
@@ -418,6 +461,14 @@ class AlertsOrchestrator:
         # dedup key no longer matches. No per-detector auto-resolve needed.
         spike = await self.demand_spike.evaluate(tenant_id, event_id, name_maps=name_maps)
         for k, v in spike.items():
+            totals[k] = totals.get(k, 0) + v
+
+        deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
+        for k, v in deviation.items():
+            totals[k] = totals.get(k, 0) + v
+
+        deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
+        for k, v in deviation.items():
             totals[k] = totals.get(k, 0) + v
 
         deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
