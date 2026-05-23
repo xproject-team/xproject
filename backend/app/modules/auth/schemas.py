@@ -43,3 +43,12 @@ class RolesForEmailResponse(BaseModel):
     """
     email: str
     roles: list[str]  # ["owner"], ["manager", "bartender"], etc.
+
+class ChangePasswordRequest(BaseModel):
+    """POST /auth/change-password body.
+
+    old_password: current credential, must match the stored hash
+    new_password: replacement credential, min length 8, must differ from old
+    """
+    old_password: str
+    new_password: str

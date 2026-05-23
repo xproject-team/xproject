@@ -20,6 +20,7 @@
 import { useState } from 'react'
 
 import { useAuth } from '@/features/auth/useAuth'
+import { useChangePassword } from '@/features/auth/hooks'
 
 // ─── Small helper components (kept inline — no need for separate files yet) ──
 
@@ -92,6 +93,129 @@ function roleBadge(role: string | undefined): { text: string; color: string } | 
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
+
+
+// ─── Change-password section ────────────────────────────────────────────────
+
+function ChangePasswordSection() {
+  const [oldPassword,     setOldPassword]     = useState('')
+  const [newPassword,     setNewPassword]     = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [successMessage,  setSuccessMessage]  = useState<string | null>(null)
+  const [clientError,     setClientError]     = useState<string | null>(null)
+
+  const mutation = useChangePassword()
+
+  const reset = () => {
+    setOldPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setClientError(null)
+  }
+
+  const handleSubmit = () => {
+    setSuccessMessage(null)
+    setClientError(null)
+
+    // Client-side validation first
+    if (!oldPassword || !newPassword || !confirmPassword) {
+      setClientError('All three fields are required')
+      return
+    }
+    if (newPassword.length < 8) {
+      setClientError('New password must be at least 8 characters')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setClientError('New password and confirmation do not match')
+      return
+    }
+    if (newPassword === oldPassword) {
+      setClientError('New password must differ from the current one')
+      return
+    }
+
+    mutation.mutate(
+      { old_password: oldPassword, new_password: newPassword },
+      {
+        onSuccess: () => {
+          setSuccessMessage('Password updated successfully.')
+          reset()
+        },
+      },
+    )
+  }
+
+  // Translate server error into the most useful message for the operator.
+  const serverError = mutation.error?.detail ?? null
+  const errorBanner = clientError ?? serverError
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-widest text-[#718096] mb-1 block">
+          Current password
+        </label>
+        <input
+          type="password"
+          value={oldPassword}
+          onChange={(e) => setOldPassword(e.target.value)}
+          autoComplete="current-password"
+          className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:border-[#1E5A8D]"
+          disabled={mutation.isPending}
+        />
+      </div>
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-widest text-[#718096] mb-1 block">
+          New password
+        </label>
+        <input
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          autoComplete="new-password"
+          className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:border-[#1E5A8D]"
+          disabled={mutation.isPending}
+        />
+        <p className="text-[10px] text-[#A0AEC0] mt-1">Minimum 8 characters.</p>
+      </div>
+      <div>
+        <label className="text-xs font-semibold uppercase tracking-widest text-[#718096] mb-1 block">
+          Confirm new password
+        </label>
+        <input
+          type="password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          autoComplete="new-password"
+          className="w-full px-3 py-2 text-sm border border-[#E2E8F0] rounded-md focus:outline-none focus:border-[#1E5A8D]"
+          disabled={mutation.isPending}
+        />
+      </div>
+
+      {errorBanner && (
+        <div className="bg-[#FED7D7] text-[#742A2A] text-xs rounded-md px-3 py-2">
+          {errorBanner}
+        </div>
+      )}
+      {successMessage && (
+        <div className="bg-[#C6F6D5] text-[#22543D] text-xs rounded-md px-3 py-2">
+          {successMessage}
+        </div>
+      )}
+
+      <div className="pt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={mutation.isPending}
+          className="bg-[#1E5A8D] hover:bg-[#1A4F7A] text-white text-sm font-semibold px-4 py-2 rounded-md transition disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {mutation.isPending ? 'Updating…' : 'Update password'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export default function SettingsPage() {
   const { user, logout } = useAuth()
@@ -177,6 +301,14 @@ export default function SettingsPage() {
             UI translation ships incrementally. Reports are already bilingual.
           </p>
         </div>
+      </Section>
+
+      {/* Change password section */}
+      <Section
+        title="Password"
+        description="Update the password used to sign in to XProject."
+      >
+        <ChangePasswordSection />
       </Section>
 
       {/* Session section */}

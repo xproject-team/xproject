@@ -7,6 +7,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password, verify_password
+
+class InvalidOldPasswordError(Exception):
+    """Raised when the supplied old_password does not match the user's hash."""
+
+
+class WeakPasswordError(Exception):
+    """Raised when the new_password fails strength validation (length, etc.)."""
+
+
+class SameAsOldPasswordError(Exception):
+    """Raised when the new_password is identical to the old."""
+
 from app.modules.auth.models import User, UserRole
 
 
@@ -34,6 +46,31 @@ class AuthService:
             return None
 
         return user
+
+    async def change_password(
+        self,
+        user: User,
+        old_password: str,
+        new_password: str,
+    ) -> None:
+        """Update the user's password hash after validating the old one.
+
+        Raises:
+          InvalidOldPasswordError   if old_password does not match the stored hash
+          WeakPasswordError         if new_password is shorter than 8 characters
+          SameAsOldPasswordError    if new_password equals old_password
+
+        On success: persists the new bcrypt hash and commits.
+        """
+        if not verify_password(old_password, user.hashed_password):
+            raise InvalidOldPasswordError()
+        if len(new_password) < 8:
+            raise WeakPasswordError()
+        if new_password == old_password:
+            raise SameAsOldPasswordError()
+        user.hashed_password = hash_password(new_password)
+        self.db.add(user)
+        await self.db.commit()
 
     def create_user_token(
         self,

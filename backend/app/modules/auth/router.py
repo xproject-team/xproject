@@ -20,12 +20,18 @@ from app.modules.auth.repository import (
     get_user_by_email_with_roles,
 )
 from app.modules.auth.schemas import (
+    ChangePasswordRequest,
     RolesForEmailRequest,
     RolesForEmailResponse,
     TokenResponse,
     UserResponse,
 )
-from app.modules.auth.service import AuthService
+from app.modules.auth.service import (
+    AuthService,
+    InvalidOldPasswordError,
+    SameAsOldPasswordError,
+    WeakPasswordError,
+)
 
 
 router = APIRouter()
@@ -171,3 +177,46 @@ async def read_current_user(
         role=get_active_role(current_user).value,
         is_active=current_user.is_active,
     )
+
+
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        400: {"description": "New password too weak or identical to old"},
+        401: {"description": "Old password incorrect"},
+    },
+)
+async def change_password(
+    payload:       ChangePasswordRequest,
+    current_user:  Annotated[User, Depends(get_current_user)],
+    db:            Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Update the authenticated user's password.
+
+    Body: { old_password, new_password }
+    Auth: JWT required.
+
+    Validation order matches the service: old must verify, then new must
+    pass length, then new must differ from old.
+
+    Returns 204 No Content on success.
+    """
+    service = AuthService(db)
+    try:
+        await service.change_password(current_user, payload.old_password, payload.new_password)
+    except InvalidOldPasswordError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Old password is incorrect",
+        )
+    except WeakPasswordError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters",
+        )
+    except SameAsOldPasswordError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must differ from the old one",
+        )
