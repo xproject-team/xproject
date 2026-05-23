@@ -96,6 +96,99 @@ def create_app() -> FastAPI:
         """Service liveness probe."""
         return {"status": "ok", "service": "xproject-api", "version": "0.1.0"}
 
+    @app.get("/api/v1/health/deep", tags=["health"])
+    async def health_deep():
+        """Deep health probe — checks every critical subsystem.
+
+        On Sundance day, hit this endpoint to verify the box is fully alive.
+        Returns 200 always (so monitoring tools can parse it), but each
+        component reports its own status independently. Owner can see at
+        a glance which subsystem broke.
+
+        Components checked:
+        - postgres   : can execute a SELECT 1
+        - redis      : can PING the broker
+        - minio      : can list buckets (chat attachments need this)
+        - live_event : is there an event in LIVE status right now
+        """
+        import time
+        from sqlalchemy import select, func
+        from app.core.database import AsyncSessionLocal
+        from app.modules.events.models import Event, EventStatus
+
+        components = {}
+
+        # ── postgres ───────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        try:
+            async with AsyncSessionLocal() as session:
+                r = (await session.execute(select(func.now()))).scalar_one()
+            components["postgres"] = {
+                "status": "ok",
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+                "server_time": r.isoformat() if r else None,
+            }
+        except Exception as e:  # noqa: BLE001
+            components["postgres"] = {"status": "error", "error": str(e)[:200]}
+
+        # ── redis ──────────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        try:
+            from app.core.redis_client import get_redis
+            r = await get_redis()
+            pong = await r.ping()
+            components["redis"] = {
+                "status": "ok" if pong else "error",
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            }
+        except Exception as e:  # noqa: BLE001
+            components["redis"] = {"status": "error", "error": str(e)[:200]}
+
+        # ── minio ──────────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        try:
+            from app.core.storage import _internal_client
+            _internal_client.list_buckets()
+            components["minio"] = {
+                "status": "ok",
+                "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
+            }
+        except Exception as e:  # noqa: BLE001
+            components["minio"] = {"status": "error", "error": str(e)[:200]}
+
+        # ── live event ─────────────────────────────────────────────────
+        try:
+            async with AsyncSessionLocal() as session:
+                row = (await session.execute(
+                    select(Event.id, Event.name, Event.tenant_id)
+                    .where(Event.status == EventStatus.LIVE)
+                )).first()
+            if row:
+                components["live_event"] = {
+                    "status": "ok",
+                    "event_id": str(row[0]),
+                    "event_name": row[1],
+                    "tenant_id": str(row[2]),
+                }
+            else:
+                components["live_event"] = {
+                    "status": "none",
+                    "note": "no event currently in LIVE state",
+                }
+        except Exception as e:  # noqa: BLE001
+            components["live_event"] = {"status": "error", "error": str(e)[:200]}
+
+        overall = "ok" if all(
+            c.get("status") in ("ok", "none") for c in components.values()
+        ) else "degraded"
+
+        return {
+            "status": overall,
+            "service": "xproject-api",
+            "version": "0.1.0",
+            "components": components,
+        }
+
     return app
 
 

@@ -24,6 +24,15 @@ from botocore.client import Config
 
 # Endpoints differ between local Docker (where api talks to minio:9000)
 # and the host browser (which talks to localhost:9000). We keep both.
+# Load .env explicitly so this module sees overrides regardless of
+# whether the parent process exported them.
+try:
+    from dotenv import load_dotenv as _ld
+    from pathlib import Path as _P
+    _ld(_P(__file__).resolve().parent.parent.parent.parent / ".env", override=False)
+except Exception:  # noqa: BLE001
+    pass
+
 S3_ENDPOINT_INTERNAL = os.getenv("S3_ENDPOINT_INTERNAL", "http://minio:9000")
 S3_ENDPOINT_PUBLIC   = os.getenv("S3_ENDPOINT_PUBLIC",   "http://localhost:9000")
 
