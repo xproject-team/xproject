@@ -268,10 +268,17 @@ export default function AlertsPage() {
       </div>
 
       {/* ── Alert list ──────────────────────────────────────────────────── */}
-      {filtered.length === 0 ? (
+      {/* Empty-state only when nothing matches on the entire page (main
+          list AND anomaly section, if visible).  Avoids the cognitive
+          collision of showing "No alerts match" while the anomaly
+          section below is rendering matching items. */}
+      {filtered.length === 0 && anomalyAlerts.length === 0 ? (
         <div className="bg-white border border-[#E2E8F0] rounded-xl px-6 py-10 text-center shadow-sm">
           <p className="text-sm font-medium text-[#4A5568]">No alerts match this filter.</p>
         </div>
+      ) : filtered.length === 0 ? (
+        // Main list collapses silently; anomaly section below carries the matches.
+        null
       ) : (
         <div className="space-y-2.5 mb-8">
           {filtered.map((alert) => (
