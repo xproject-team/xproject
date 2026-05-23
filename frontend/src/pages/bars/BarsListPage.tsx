@@ -35,9 +35,11 @@ function StatusPill({ isActive }: { isActive: boolean }) {
 }
 
 const TYPE_CFG: Record<string, { label: string; cls: string }> = {
-  drinks: { label: 'Drinks', cls: 'bg-sky-50    text-sky-800    border border-sky-200'    },
-  food:   { label: 'Food',   cls: 'bg-amber-50  text-amber-800  border border-amber-200'  },
-  mixed:  { label: 'Mixed',  cls: 'bg-purple-50 text-purple-800 border border-purple-200' },
+  drinks:  { label: 'Drinks',  cls: 'bg-sky-50      text-sky-800      border border-sky-200'      },
+  food:    { label: 'Food',    cls: 'bg-amber-50    text-amber-800    border border-amber-200'    },
+  mixed:   { label: 'Mixed',   cls: 'bg-purple-50   text-purple-800   border border-purple-200'   },
+  merch:   { label: 'Merch',   cls: 'bg-emerald-50  text-emerald-800  border border-emerald-200'  },
+  service: { label: 'Service', cls: 'bg-slate-50    text-slate-800    border border-slate-200'    },
 }
 
 function TypeBadge({ type }: { type: string }) {

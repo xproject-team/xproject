@@ -13,7 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 # The canonical set of bar_type values. Extend here when new types are added.
-BarType = Literal["drinks", "food", "mixed"]
+BarType = Literal["drinks", "food", "mixed", "merch", "service"]
 
 
 class BarResponse(BaseModel):

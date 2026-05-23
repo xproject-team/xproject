@@ -13,9 +13,11 @@ import type { BarRow, BarType } from '@/lib/mockData'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const TYPE_OPTIONS: { value: BarType; label: string }[] = [
-  { value: 'drinks', label: 'Drinks' },
-  { value: 'food',   label: 'Food'   },
-  { value: 'mixed',  label: 'Mixed'  },
+  { value: 'drinks',  label: 'Drinks'  },
+  { value: 'food',    label: 'Food'    },
+  { value: 'mixed',   label: 'Mixed'   },
+  { value: 'merch',   label: 'Merch'   },
+  { value: 'service', label: 'Service' },
 ]
 
 // ─── Wrapper ──────────────────────────────────────────────────────────────────

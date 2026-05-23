@@ -6,9 +6,11 @@ import { useEvents } from '@/features/events/hooks'
 import type { BarType } from '@/lib/mockData'
 
 const TYPE_OPTIONS: { value: BarType; label: string }[] = [
-  { value: 'drinks', label: 'Drinks' },
-  { value: 'food',   label: 'Food'   },
-  { value: 'mixed',  label: 'Mixed'  },
+  { value: 'drinks',  label: 'Drinks'  },
+  { value: 'food',    label: 'Food'    },
+  { value: 'mixed',   label: 'Mixed'   },
+  { value: 'merch',   label: 'Merch'   },
+  { value: 'service', label: 'Service' },
 ]
 
 interface FormErrors {

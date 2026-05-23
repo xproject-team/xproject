@@ -680,7 +680,7 @@ export interface ReconciliationReport {
 
 // ─── /api/v1/bars?event_id={event_id} ─────────────────────────────────────────
 
-export type BarType = 'drinks' | 'food' | 'mixed'
+export type BarType = 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 
 export interface BarRow {
   id: string
