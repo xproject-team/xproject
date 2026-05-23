@@ -180,8 +180,12 @@ export default function AlertsPage() {
   const unackedCount      = alertsSource.filter((a) => !acknowledged.has(a.id)).length
   const criticalActive    = alertsSource.filter((a) => a.severity === 'critical' && !acknowledged.has(a.id)).length
 
-  // ── Filtered list ──────────────────────────────────────────────────────────
+  // ── Filtered list (main stream) ────────────────────────────────────────────
+  // Anomaly-type alerts render in the dedicated Anomaly Detection section
+  // for users with that permission, so we exclude them here to avoid duplicate
+  // rendering of the same alert in two panels.
   const filtered = alertsSource.filter((a) => {
+    if (perms.canSeeAnomalies && a.alert_type === 'anomaly') return false
     if (activeFilter === 'all')          return true
     if (activeFilter === 'acknowledged') return acknowledged.has(a.id)
     return a.severity === activeFilter && !acknowledged.has(a.id)
