@@ -52,13 +52,12 @@ const DEFAULT_CAUSES = ['Unusual demand pattern', 'Possible miscounting', 'Staff
 
 // ─── Filter types ─────────────────────────────────────────────────────────────
 
-type FilterKey = 'all' | AlertSeverity | 'acknowledged'
+type FilterKey = 'all' | 'critical' | 'warning' | 'acknowledged'
 
 const FILTER_LABELS: { key: FilterKey; label: string }[] = [
   { key: 'all',          label: 'All' },
   { key: 'critical',     label: 'Critical' },
   { key: 'warning',      label: 'Warning' },
-  { key: 'anomaly',      label: 'Anomaly' },
   { key: 'acknowledged', label: 'Acknowledged' },
 ]
 
@@ -163,6 +162,7 @@ export default function AlertsPage() {
 
   const acknowledged = new Set(alertsSource.filter((a) => a.is_acknowledged).map((a) => a.id))
   const [activeFilter, setActiveFilter] = useState<FilterKey>('all')
+  const [showAnomalies, setShowAnomalies] = useState(true)
 
   const handleAcknowledge = useCallback(
     (id: string, version: number) => {
@@ -188,7 +188,12 @@ export default function AlertsPage() {
   })
 
   // ── Anomaly alerts (owner only) ────────────────────────────────────────────
-  const anomalyAlerts = alertsSource.filter((a) => a.alert_type === 'anomaly')
+  const anomalyAlerts = alertsSource.filter((a) => {
+    if (a.alert_type !== 'anomaly') return false
+    if (activeFilter === 'all')          return true
+    if (activeFilter === 'acknowledged') return acknowledged.has(a.id)
+    return a.severity === activeFilter && !acknowledged.has(a.id)
+  })
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -241,8 +246,6 @@ export default function AlertsPage() {
                     ? 'bg-red-100 text-[#E53E3E] border-red-200'
                     : key === 'warning'
                     ? 'bg-yellow-100 text-[#D69E2E] border-yellow-200'
-                    : key === 'anomaly'
-                    ? 'bg-orange-100 text-[#E67E22] border-orange-200'
                     : key === 'acknowledged'
                     ? 'bg-gray-100 text-[#718096] border-gray-200'
                     : 'bg-[#1E5A8D] text-white border-[#1E5A8D]'
@@ -281,7 +284,12 @@ export default function AlertsPage() {
       {/* ── Anomaly Detection section (owner only) ───────────────────── */}
       {perms.canSeeAnomalies && anomalyAlerts.length > 0 && (
         <section className="border-l-4 border-l-[#E67E22] bg-orange-50/40 border border-orange-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-orange-200 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowAnomalies((v) => !v)}
+            className="w-full px-5 py-4 border-b border-orange-200 flex items-center gap-2.5 text-left hover:bg-orange-50 transition-colors"
+            aria-expanded={showAnomalies}
+          >
             <svg className="w-4 h-4 text-[#E67E22] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
@@ -289,8 +297,19 @@ export default function AlertsPage() {
             <span className="text-[10px] font-bold bg-orange-100 text-[#E67E22] border border-orange-200 px-2 py-0.5 rounded-full uppercase tracking-wide">
               Owner Only
             </span>
-          </div>
-
+            <span className="ml-auto text-[10px] font-bold text-[#E67E22]/70 uppercase tracking-wide">
+              {anomalyAlerts.length} {anomalyAlerts.length === 1 ? 'item' : 'items'}
+            </span>
+            <svg
+              className={`w-4 h-4 text-[#E67E22] shrink-0 transition-transform ${showAnomalies ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showAnomalies && (
           <div className="p-4 space-y-3">
             {anomalyAlerts.map((alert) => {
               const causes = ANOMALY_CAUSES[alert.id] ?? DEFAULT_CAUSES
@@ -341,6 +360,7 @@ export default function AlertsPage() {
               )
             })}
           </div>
+          )}
         </section>
       )}
 
