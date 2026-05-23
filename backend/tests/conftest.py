@@ -89,3 +89,17 @@ def slesh_fixture():
             )
         return json.loads(path.read_text())
     return _load
+
+# ─────────────────────────────────────────────────────────────────────
+# Async engine cleanup — prevents connection pool pollution across tests
+# ─────────────────────────────────────────────────────────────────────
+@pytest_asyncio.fixture(autouse=True)
+async def _dispose_engine_after_test():
+    """Dispose the app's async engine after every test to avoid asyncpg
+    'another operation is in progress' errors caused by lingering
+    connections shared across the test session.
+    """
+    yield
+    from app.core.database import engine
+    await engine.dispose()
+
