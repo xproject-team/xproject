@@ -40,6 +40,19 @@ ELAPSED=$((END_TIME - START_TIME))
 echo "✅ Backup complete"
 echo "   Size:    ${SIZE_KB} KB"
 echo "   Elapsed: ${ELAPSED}s"
+
+# ── Off-site sync to iCloud Drive (best-effort, non-fatal) ────────────────
+ICLOUD_DIR="${HOME}/Library/Mobile Documents/com~apple~CloudDocs/XProject-Backups"
+if [[ -d "${ICLOUD_DIR}" ]]; then
+    echo ""
+    echo "═══ Off-site sync ═══"
+    if cp "${OUTPUT}" "${ICLOUD_DIR}/" 2>/dev/null; then
+        echo "   ✅ copied to iCloud Drive"
+    else
+        echo "   ⚠️  iCloud copy failed (non-fatal, local backup intact)"
+    fi
+fi
+
 echo ""
 echo "Restore command:"
 echo "   ./scripts/restore-db.sh ${OUTPUT}"

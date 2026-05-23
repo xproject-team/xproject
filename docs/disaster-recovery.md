@@ -119,18 +119,38 @@ cleanup post-event.
 
 ---
 
-## 5. Off-site backup (PRE-SUNDANCE TODO)
+## 5. Off-site backup (ACTIVE)
 
-Local backups protect against software corruption but NOT physical loss
-of the machine. Before Sundance, sync `backups/` to one of:
+Every `./scripts/backup-db.sh` run automatically copies the snapshot to:
 
-- **iCloud Drive** — easiest, but not encrypted in transit by default
+    ~/Library/Mobile Documents/com~apple~CloudDocs/XProject-Backups/
+
+This is iCloud Drive — Apple syncs the folder to all your devices and
+to Apple's servers. If your laptop is stolen, broken, or simply away
+from the venue at Sundance, the snapshots are recoverable from any
+Mac signed into your Apple ID, or downloadable via iCloud.com.
+
+The copy step is **best-effort and non-fatal**: if iCloud is offline or
+the folder doesn't exist, the local backup still succeeds and the script
+prints a warning instead of crashing.
+
+### To restore from iCloud on a new machine
+
+```bash
+# After signing into iCloud on the new Mac, the folder is at:
+cd ~/Library/Mobile\ Documents/com~apple~CloudDocs/XProject-Backups/
+ls -lt | head -5    # find the most recent snapshot
+# Copy it back to the project backups dir
+cp xproject_dev_<tag>_<timestamp>.sql ~/Projects/xproject/backups/
+# Then restore as normal
+cd ~/Projects/xproject && ./scripts/restore-db.sh backups/<filename>.sql xproject_dev
+```
+
+### Additional layers (optional, not yet active)
+
+- **S3 bucket** — best for production, costs money and requires AWS setup
+- **GitHub release attachment** — free, encrypted, but slow upload
 - **rsync to a second machine** — requires you to own a second machine
-- **S3 bucket** — best, but costs money and requires AWS setup
-- **GitHub release attachment** — free, encrypted, slow upload
-
-Minimal viable option: `rsync` the backups dir to your iCloud Drive folder
-in a cron job daily. Pre-Sundance, manually copy snapshots to your phone.
 
 ---
 
