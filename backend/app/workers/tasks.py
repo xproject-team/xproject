@@ -20,7 +20,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal as async_session_factory
 from app.modules.auth.models import User  # noqa: F401 (needed for ORM mapper init)
 from app.modules.alerts.engine import AlertsOrchestrator
-from app.modules.events.models import Event
+from app.modules.events.models import Event, EventStatus
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ async def cron_evaluate_all_live_events(ctx: dict) -> dict:
     async with async_session_factory() as session:
         try:
             stmt = select(Event.id, Event.tenant_id).where(
-                Event.status == "live",
+                Event.status == EventStatus.LIVE,
             )
             rows = (await session.execute(stmt)).all()
         except Exception as e:  # noqa: BLE001
@@ -169,7 +169,7 @@ async def generate_report(ctx: dict, event_id: str) -> dict:
     # Lazy imports — avoids loading reportlab + matplotlib at module import
     # time, which would slow worker boot for tenants that never generate
     # reports. First cron tick pays the cost; subsequent ticks are warm.
-    from app.modules.events.models import Event as _Event
+    from app.modules.events.models import Event, EventStatus as _Event
     from app.modules.reports.service import ReportService
 
     async with async_session_factory() as session:
@@ -423,7 +423,7 @@ async def cron_poll_slesh_for_all_live_events(ctx: dict) -> dict:
     async with async_session_factory() as session:
         try:
             stmt = select(Event.id, Event.tenant_id).where(
-                Event.status == "live",
+                Event.status == EventStatus.LIVE,
             )
             rows = (await session.execute(stmt)).all()
         except Exception as e:  # noqa: BLE001
