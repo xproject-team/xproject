@@ -37,6 +37,9 @@ export const CATEGORY_OPTIONS: { value: ProductCategory; label: string }[] = [
   { value: 'soft_drink',       label: 'Soft drink' },
 ]
 
+export const CATEGORY_LABELS: Record<ProductCategory, string> =
+  Object.fromEntries(CATEGORY_OPTIONS.map(o => [o.value, o.label])) as Record<ProductCategory, string>
+
 export type ProductUnit =
   | 'bottle'
   | 'glass'
