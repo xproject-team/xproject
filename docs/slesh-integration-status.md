@@ -150,3 +150,62 @@ on manual scanning only.
 Confirm whether Wine Station is a genuine non-POS bar (manual scans only,
 no NFC wristband sales) or a leftover test record that should be marked
 inactive before Sundance.
+
+---
+
+## Slesh API quirks discovered live (2026-05-25)
+
+These are NOT documented by Slesh. We discovered them by probing the
+real production API. Future engineers MUST know about these to avoid
+silent data loss at events.
+
+### Quirk 1 — `from` parameter is broken
+
+The `/order/brand-my` endpoint accepts a `from` query parameter
+documented as "1-indexed offset for pagination." In practice, Slesh
+ignores the parameter entirely. Verified:
+
+  - `from=100`: returned the same first 100 docs as `from` omitted
+  - `from=101`: same
+  - `from=envelope.to`: same
+  - `from=envelope.to+1`: same
+
+Slesh always returns docs 1-100 regardless of `from`. The adapter has
+a defensive loop guard that detects this and stops, but the data is
+not recoverable through pagination.
+
+### Quirk 2 — `pageSize` is hard-capped at 100
+
+Setting `pageSize=200` returns HTTP 400 with:
+
+    "Number must be less than or equal to 100"
+
+So 100 is both the default and the maximum per-call.
+
+### Quirk 3 — Implication: chunk-by-time is the ONLY way
+
+Combined, these mean: to retrieve all orders in a multi-hour window,
+the caller MUST split the window into time-based chunks small enough
+that each chunk has <=100 orders. The adapter cannot help — pagination
+inside a single chunk doesn't work.
+
+For Sundance peak load (estimated from real 2025 data):
+
+  - Total orders per event:    ~700-4500 over 9 hours
+  - Peak 5-min slot:            ~10 orders (far under 100)
+  - Live polling cron interval: 5 minutes
+  - Conclusion:                 SAFE — no data loss risk
+
+For historical backfill (multi-hour windows):
+
+  - 9-hour Sundance day = ~4500 orders in 5-day window
+  - Must chunk into 10-minute slices to stay <= 100/chunk
+  - Backfill script uses 30-min chunks by default — increase to use
+    10-min if loading a denser event.
+
+### Quirk 4 — Adapter must warn on truncation
+
+If a single chunk hits exactly 100 docs AND `envelope.total > 100`,
+data is being silently lost. The adapter logs a `DATA LOSS` warning
+in that case. Test: `tests/test_slesh_chunk_truncation.py`. If the
+test breaks, the warning was deleted or weakened — fix immediately.

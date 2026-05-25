@@ -318,14 +318,28 @@ class SleshAdapter(BasePOSAdapter):
 
             # Defensive infinite-loop guard: if Slesh ignores `from` and
             # re-serves the same first doc as the previous page, stop.
+            #
+            # Verified live 2026-05-25: Slesh's `from` parameter is broken —
+            # any from>=1 returns the same first 100 docs. So when a single
+            # time chunk has >100 orders, we WILL silently lose the rest
+            # unless the caller narrows its time window.
             if docs and page > 0:
                 first_id = docs[0].get("_id") if isinstance(docs[0], dict) else None
                 if first_id is not None and first_id == last_first_id:
-                    logger.warning(
-                        "%s pagination loop detected at page %d: "
-                        "first doc id %s repeated. Stopping to avoid loop.",
-                        op_name, page, first_id,
-                    )
+                    total_reported = envelope.get("total")
+                    if isinstance(total_reported, int) and total_reported > len(docs):
+                        logger.warning(
+                            "%s chunk truncated at page %d: Slesh reports total=%d "
+                            "but only %d docs delivered (its `from` parameter is broken). "
+                            "DATA LOSS — caller must narrow the time window.",
+                            op_name, page, total_reported, len(docs),
+                        )
+                    else:
+                        logger.warning(
+                            "%s pagination loop detected at page %d: "
+                            "first doc id %s repeated. Stopping to avoid loop.",
+                            op_name, page, first_id,
+                        )
                     return
                 last_first_id = first_id
             elif docs:
