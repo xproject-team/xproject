@@ -132,3 +132,21 @@ production token. The chat-memory note was never updated to reflect
 that the integration moved from "pending" to "live."
 
 This document is the authoritative record. The integration is live.
+
+---
+
+## Update — 2026-05-25 (shop mapping verification)
+
+Verified live against Slesh API: every one of the 21 Slesh shops is
+already mapped to the correct XProject bar via `bars.slesh_negozio_id`.
+No new mapping work required.
+
+One XProject bar — "Wine Station" (id `be2ffc20-4a0c-4181-a24f-e39aa17b2c01`)
+— has `slesh_negozio_id = NULL` and no corresponding Slesh shop. It is
+marked active (created 2026-04-16). Treated as a non-POS bar that operates
+on manual scanning only.
+
+**Action item for Omar (not code):**
+Confirm whether Wine Station is a genuine non-POS bar (manual scans only,
+no NFC wristband sales) or a leftover test record that should be marked
+inactive before Sundance.
