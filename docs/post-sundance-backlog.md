@@ -85,3 +85,59 @@ Month 2+ (2026-07-11+):
 ---
 
 Last updated: 2026-05-18
+
+---
+
+## [2026-05-26] Self-serve event-staff QR onboarding
+
+**Status:** Design phase — DO NOT build pre-Sundance.
+
+**Trigger context:** Walkthrough on 2026-05-26 surfaced 5 orphan
+users with `bar_id=NULL` (manager.focacceria, manager.malandrino,
+bartender.giulia/paolo/sofia). Root cause is that the current account-
+creation flow has no clean way to assign staff to a bar at event time.
+
+**Proposed feature:**
+
+Owner creates a new event. Platform generates a QR code (or set of
+QR codes) for that event. Each staff member scans the QR with their
+phone camera, fills in name + email + role + which bar they are
+working at. The platform creates the account, logs them in, drops
+them into the bar's chat channel, and links them to the manager
+plus other bartenders of that bar — all in under 30 seconds per
+staff member.
+
+**Constraints from Hesam (2026-05-26 conversation):**
+
+- Max 5-6 bars per event — keeps the bar-picker simple.
+- Must sync across all surfaces: account, chat membership, dashboard
+  scoping, manager-staff linkage, alert audience.
+- Must work on a phone browser (no native app dependency).
+
+**Open design questions (answer FIRST, then build):**
+
+1. **QR scope** — one per event, one per bar, or one per role-per-bar?
+2. **Authentication after scan** — staff-set password, magic link,
+   one-time pin, or QR-is-the-credential?
+3. **Existing-email handling** — recognize and add to event, or block?
+4. **Revocation** — who can remove a registered staff member?
+5. **Schema change** — add `event_staff(event_id, user_id, bar_id, role)`
+   junction table, or keep overwriting `users.bar_id`?
+6. **QR validity window** — forever, event-bounded, owner-windowed,
+   or single-use?
+7. **Scan UX** — exact form fields, landing page, welcome message.
+
+**Estimated effort once Q1-Q7 are answered:**
+
+- Backend: 1-2 days (endpoint, QR generation, dedup logic, chat join)
+- Frontend: 1-2 days (Owner config page, scan landing page, success flow)
+- Schema migration + tests: 0.5 day
+- Total: ~3-4 days for a clean MVP
+
+**Sundance-related cleanup that will be unblocked by this feature:**
+
+- The 5 orphan users can be re-onboarded properly at the next event
+- The "default password xproject2026" testing pattern can retire
+- Other venues using XProject get the same self-serve flow
+
+**Do NOT implement before Sundance 2026-06-19.** This is post-event work.

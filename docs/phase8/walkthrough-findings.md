@@ -186,6 +186,34 @@ Expected:    Bar channel always present; DM channels created on demand.
 Notes:       Bonus finding - DM functionality is wired in addition to
              the bar channel. Not tested for Sundance use.
 
+## Cross-cutting findings (data hygiene)
+
+### X1 — Five orphan users with bar_id=NULL
+Roles:       Manager (focacceria, malandrino), Bartender (giulia, paolo, sofia)
+Severity:    S2 (blocks usability for these specific users at Sundance)
+Observed:    psql query against users table on 2026-05-26 showed 5 active
+             accounts with bar_id=NULL:
+               - manager.focacceria@nomagroup.it
+               - manager.malandrino@nomagroup.it
+               - bartender.giulia@nomagroup.it
+               - bartender.paolo@nomagroup.it
+               - bartender.sofia@nomagroup.it
+             Bars 'Focacceria' and 'Malandrino' DO exist in the bars table,
+             so the 2 manager accounts have an obvious likely mapping.
+Expected:    Active staff accounts should be assigned to a bar.
+Notes:       At Sundance, if any of these 5 try to log in:
+               - They can authenticate (account is active)
+               - But /dashboard cannot load bar-scoped data
+               - They cannot see or send chat messages
+               - They get a broken-feeling experience
+             ACTION NEEDED FROM OMAR before Sundance:
+               1. Are these 5 accounts real upcoming staff, or leftover
+                  test seeds? (If test seeds: deactivate them.)
+               2. If real: which bar does each one work at?
+             Once Omar answers, run a one-line SQL UPDATE per user.
+             Long-term fix: covered by post-Sundance QR-onboarding feature
+             (see docs/post-sundance-backlog.md entry dated 2026-05-26).
+
 ## Round 4 — Warehouse walkthrough
 
 _(pending)_
