@@ -216,7 +216,75 @@ Notes:       At Sundance, if any of these 5 try to log in:
 
 ## Round 4 — Warehouse walkthrough
 
-_(pending)_
+Date executed:  2026-05-26
+Driver:         Hesam (Safari) + Claude in Chrome (terminal agent)
+Login:          warehouse.keeper@nomagroup.it / xproject2026
+Landing route:  /warehouse
+
+Verdict:        SUNDANCE-SAFE. Zero red console errors. Zero 404s.
+                All routes load. Role-based UI is clean and consistent.
+                B13 fix verified live: role badges (OWNER, MANAGER,
+                BARTENDER) render capitalized in the activity feed,
+                confirming commit 6792b69 landed correctly.
+
+### W1 — Pending Deliveries section has no empty state
+Role:        Warehouse
+Severity:    S4
+Observed:    On /warehouse/scan, after the invoice form, the "Pending
+             Deliveries" heading shows with blank space below it. No
+             placeholder text, no icon, no hint.
+Expected:    Empty-state text such as "No pending deliveries yet" with
+             optional guidance on how to add one.
+Notes:       Cosmetic only; user might briefly wonder if the page is
+             broken before realizing it's intentionally empty.
+
+### W2 — Inventory CATEGORY column is blank
+Role:        Warehouse
+Severity:    S3
+Observed:    The Inventory table has a CATEGORY column header, but the
+             one rendered row (Bacardi Rum 1L) shows no category value.
+Expected:    Either remove the column if no data is being populated, or
+             populate it from the product's category enum.
+Notes:       Could be a seed-data gap or a frontend rendering bug.
+             Needs investigation to determine which.
+
+### W3 — Inventory has only 1 distinct product
+Role:        Warehouse
+Severity:    S3 (needs triage)
+Observed:    Inventory shows 1 distinct product (Bacardi Rum 1L, 95 units)
+             despite the venue having 22 bars serving cocktails, beer, food,
+             gelato, wine, etc.
+Expected:    Unclear — could be by design (warehouse only tracks physically
+             dispatched items in its custody) or a seed-data gap.
+Notes:       Triage with Omar before Sundance. If by design, the dashboard
+             needs a label clarifying "tracked in warehouse" vs "in event bars".
+             If a bug, the warehouse view will look thin during the event.
+
+### W4 — Language toggle effect unclear
+Role:        Warehouse (also visible to all roles via Settings)
+Severity:    S3
+Observed:    "Italiano" is the selected language toggle, but the UI text
+             remained in English throughout. A note says "Persistence
+             across devices ships in v1.1" suggesting intentional partial
+             implementation.
+Expected:    Either the toggle should immediately change the UI language,
+             or the toggle should be disabled with a clearer "coming soon"
+             label until the feature is wired.
+Notes:       Today's commit 6792b69 changed the disclaimer to a positive
+             helper text, but if the toggle itself doesn't switch the UI
+             yet, the helper text "Your selection applies to both the UI
+             and the reports" is overconfident.
+
+### W5 — "+ New Delivery" navigates instead of opening a modal
+Role:        Warehouse
+Severity:    S4
+Observed:    The "+ New Delivery" CTA on the dashboard navigates to
+             /warehouse/scan rather than opening a modal/dialog. The
+             button label reads like a modal trigger.
+Expected:    Either change the button label to suggest navigation
+             ("Open New Delivery"), or convert the form to a modal.
+Notes:       Cosmetic mismatch between affordance and behavior; reasonable
+             design choice but worth aligning the label.
 
 ## Round 5 — Synthetic stress
 
