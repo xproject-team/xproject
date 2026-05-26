@@ -298,7 +298,7 @@ export default function SettingsPage() {
             </button>
           </div>
           <p className="text-xs text-[#A0AEC0] mt-2">
-            UI translation ships incrementally. Reports are already bilingual.
+            Your selection applies to both the UI and the reports.
           </p>
         </div>
       </Section>

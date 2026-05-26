@@ -49,10 +49,10 @@ function fmtDecimal(value: string | number | null | undefined, digits = 0): stri
 }
 
 const ROLE_BADGES: Record<ScannerRole, { label: string; color: string }> = {
-  owner:            { label: 'owner',     color: '#1E5A8D' },
-  warehouse_keeper: { label: 'warehouse', color: '#DD6B20' },
-  manager:          { label: 'manager',   color: '#6B21A8' },
-  bartender:        { label: 'bartender', color: '#059669' },
+  owner:            { label: 'Owner',     color: '#1E5A8D' },
+  warehouse_keeper: { label: 'Warehouse', color: '#DD6B20' },
+  manager:          { label: 'Manager',   color: '#6B21A8' },
+  bartender:        { label: 'Bartender', color: '#059669' },
 }
 
 // ─── Pending review row ──────────────────────────────────────────────────────

@@ -48,6 +48,8 @@ class FreshnessResponse(BaseModel):
     last_status:     str | None       # ok | error | circuit_open
     last_error:      str | None       # short error excerpt if applicable
     seconds_since:   int | None       # how many seconds since last_run_at
+    experience_id:   str | None       # which experience scope (None=brand-wide)
+    last_seen_ts:    int | None       # cursor: ms-since-epoch of last poll window end
     is_live:         bool             # last_run_at within 60s AND status=ok
     is_stale:        bool             # last_run_at older than 120s
     brand_id:        str | None
@@ -93,6 +95,8 @@ async def get_freshness(
             is_live=False,
             is_stale=False,
             brand_id=settings.slesh_brand_id or None,
+            experience_id=state.experience_id if state else None,
+            last_seen_ts=state.last_seen_ts if state else None,
         )
 
     now = datetime.now(tz=timezone.utc)
@@ -109,6 +113,8 @@ async def get_freshness(
         is_live=is_live,
         is_stale=is_stale,
         brand_id=state.brand_id,
+        experience_id=state.experience_id,
+        last_seen_ts=state.last_seen_ts,
     )
 
 
