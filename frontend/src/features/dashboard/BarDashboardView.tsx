@@ -519,7 +519,7 @@ export function BarDashboardView({ role }: BarDashboardViewProps) {
     return items.filter((a) => a.bar_id === assignedBarId)
   }, [alertsQuery.data, assignedBarId])
 
-  const unackedAlerts = alertsByBar.filter((a) => a.acknowledged_at === null)
+  const unackedAlerts = alertsByBar.filter((a) => a.lifecycle_state === 'active')
   const criticalAlerts = unackedAlerts.filter((a) => a.severity === 'critical')
 
   const recentTransactions = useMemo(() => {

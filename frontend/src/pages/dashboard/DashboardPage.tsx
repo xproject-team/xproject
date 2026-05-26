@@ -182,6 +182,11 @@ interface AlertSidebarAlert {
   message: string
   created_at: string
   is_acknowledged: boolean
+  // Server-computed alert lifecycle. Distinct from is_acknowledged (which
+  // is just a client convenience boolean): 'active' means truly demanding
+  // attention; 'resolved'/'expired' should NOT be counted as unacked.
+  // Backend ships this field (see features/alerts/useAlerts.ts).
+  lifecycle_state: 'active' | 'acknowledged' | 'auto_resolved' | 'expired'
 }
 interface AlertSidebarProps {
   open: boolean
@@ -192,7 +197,9 @@ interface AlertSidebarProps {
 }
 
 function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: AlertSidebarProps) {
-  const unackedCount = alerts.filter((a) => !acknowledged.has(a.id)).length
+  const unackedCount = alerts.filter(
+    (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
+  ).length
 
   return (
     <div className={[
@@ -241,10 +248,14 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: A
       </div>
 
 
-      {/* Alert list — wired to real backend via useAlertsForEvent */}
+      {/* Alert list — wired to real backend via useAlertsForEvent.
+          Filtered to active alerts only: resolved/expired must not show
+          an Acknowledge button (they cannot be acknowledged anymore). */}
       {open && (
         <div className="flex-1 overflow-y-auto py-2">
-          {alerts.map((alert) => {
+          {alerts
+            .filter((alert) => alert.lifecycle_state === 'active')
+            .map((alert) => {
             const cfg   = SEVERITY_CFG[alert.severity]
             const acked = acknowledged.has(alert.id)
 
@@ -407,6 +418,9 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
     is_acknowledged: row.acknowledged_at !== null,
     // carry the real version for the ack mutation
     _version:        row.version,
+    // carry lifecycle_state so the filter can distinguish active from
+    // resolved/expired alerts (prevents counting auto-resolved as unacked)
+    lifecycle_state: row.lifecycle_state,
   }))
   // reconciliation is used by BarDetailOverlay in v1.1 — prefetched here so
   // it's warm when the overlay opens
@@ -476,7 +490,9 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
 
-  const unacknowledgedCount = alerts.filter((a) => !acknowledged.has(a.id)).length
+  const unacknowledgedCount = alerts.filter(
+    (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
+  ).length
 
   const eventName = liveEvent?.name ?? `Event ${eventId.slice(0, 8)}`
   const eventStatusLabel = liveEvent?.status === 'live' ? 'Live' : liveEvent?.status ?? 'Preview'
@@ -492,7 +508,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           bars={barKpis}
           elapsed={elapsed}
           unacknowledgedCount={unacknowledgedCount}
-          criticalCount={alerts.filter((a) => a.severity === 'critical' && !acknowledged.has(a.id)).length}
+          criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
           onAlertsClick={handleAlertsClick}
         />
 

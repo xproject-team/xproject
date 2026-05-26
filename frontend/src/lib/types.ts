@@ -71,6 +71,11 @@ export interface AlertResponse {
   acknowledged_by?: string
   acknowledged_at?: string
   created_at?: string
+  /** Server-computed lifecycle state. Use this — not is_acknowledged —
+   *  to filter for 'truly demanding attention'. 'active' = unacked AND
+   *  not auto-resolved AND not expired. Backend writes this on every
+   *  alert response. See backend/app/modules/alerts/models.py. */
+  lifecycle_state?: 'active' | 'acknowledged' | 'auto_resolved' | 'expired'
 }
 
 // ─── Predictions ──────────────────────────────────────────────────────────────

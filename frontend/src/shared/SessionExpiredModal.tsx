@@ -23,7 +23,12 @@ export function SessionExpiredModal() {
       if (window.location.pathname === '/login') return
       // Save the page they were on so we can return them after re-auth.
       try {
-        localStorage.setItem('lastPath', location.pathname + location.search)
+        // Store {path, ts} JSON so LoginForm can ignore stale entries (TTL: 30 min)
+        const payload = JSON.stringify({
+          path: location.pathname + location.search,
+          ts:   Date.now(),
+        })
+        localStorage.setItem('lastPath', payload)
       } catch { /* quota */ }
       setOpen(true)
     }

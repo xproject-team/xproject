@@ -82,13 +82,31 @@ export function LoginForm() {
     setLoading(true)
     try {
       await login(email, password, selectedRole)
-      // Honor lastPath set by SessionExpiredModal. One-shot restore.
+      // Honor lastPath set by SessionExpiredModal. One-shot restore with TTL.
+      // Format: JSON {path, ts} written by SessionExpiredModal. We restore
+      // only if ts is within 30 min — older entries are treated as stale
+      // (e.g. user closed the laptop overnight and re-opened in the morning;
+      // they should land on the role default, not where they were yesterday).
+      const LAST_PATH_TTL_MS = 30 * 60 * 1000  // 30 minutes
       let dest = ROLE_LANDING[selectedRole]
       try {
-        const lastPath = localStorage.getItem('lastPath')
-        if (lastPath && lastPath !== '/login') {
-          dest = lastPath
-          localStorage.removeItem('lastPath')
+        const raw = localStorage.getItem('lastPath')
+        if (raw) {
+          localStorage.removeItem('lastPath')  // one-shot regardless of validity
+          try {
+            const parsed = JSON.parse(raw) as { path?: string; ts?: number }
+            const age = Date.now() - (parsed.ts ?? 0)
+            if (
+              parsed.path &&
+              parsed.path !== '/login' &&
+              age >= 0 &&
+              age < LAST_PATH_TTL_MS
+            ) {
+              dest = parsed.path
+            }
+          } catch {
+            // Old-format bare string (pre-TTL deploy) — ignore as stale.
+          }
         }
       } catch { /* storage disabled */ }
       navigate(dest)
