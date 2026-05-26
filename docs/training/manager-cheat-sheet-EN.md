@@ -27,7 +27,7 @@ If you manage multiple bars, you have separate accounts — log in with the one 
 | Chat from owner | ✅ | ✅ |
 | Other bars | ❌ | ❌ |
 
-**Anomaly alerts are Owner-only by design.** If the owner asks you to "do a routine count" of a specific product, do it without question — that's how the silent-investigation feature works. Don't ask why. Just count and report back via chat.
+**Anomaly alerts are Owner-only by design.** If the owner asks you to "do a routine count" of a specific product, do it promptly — the platform flags stock anomalies and asks for a count to confirm or rule them out. You don't need to know what triggered it; just count and report back via chat.
 
 ---
 

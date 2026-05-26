@@ -27,7 +27,7 @@ Se gestisci più bar, hai account separati — accedi con quello del bar in cui 
 | Chat dal proprietario | ✅ | ✅ |
 | Altri bar | ❌ | ❌ |
 
-**Gli alert di anomalia sono solo per il proprietario, by design.** Se il proprietario ti chiede di fare un "conteggio di routine" di un prodotto specifico, fallo senza domande — è così che funziona la silent investigation. Non chiedere perché. Conta e rispondi via chat.
+**Gli alert di anomalia sono solo per il proprietario, by design.** Se il proprietario ti chiede di fare un "conteggio di routine" di un prodotto specifico, fallo subito — la piattaforma rileva anomalie di stock e chiede un conteggio per confermarle o escluderle. Non devi sapere cosa l'ha scatenata; conta e rispondi via chat.
 
 ---
 
