@@ -49,3 +49,8 @@ backups/
 # AI assistant scratch files
 CLAUDE.md
 **/CLAUDE.md
+
+# ML model artifacts — committed selectively after verification.
+# By default exclude .joblib; once a trained model is verified,
+# `git add -f` the specific file to commit it.
+*.joblib
