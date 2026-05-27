@@ -45,3 +45,7 @@ data/*
 *.xls
 *.bak
 backups/
+
+# AI assistant scratch files
+CLAUDE.md
+**/CLAUDE.md
