@@ -169,3 +169,30 @@ Next update: after WS1 ships
   Phase 1D-full (remove in-memory shim + drop users.role column)
   moved to post-Sundance backlog.  Phase 1D-min (helper + 20 sites
   migrated) is RF33's resolution scope for pre-Sundance.
+
+
+---
+
+## 2026-05-27 update — Phase 1 (frontend off-mock) reconciled
+
+Audit on 2026-05-27 found that all five Phase 1 frontend pages are
+already wired to real backend data. The plan's assumption that
+"Bars/Products/Inventory/Warehouse/Predictions frontend wiring is
+still pending" was stale — the work shipped in prior sessions and
+was never reflected here.
+
+Verified state (all green):
+  - BarsListPage         → useBars()                /api/v1/bars
+  - ProductsListPage     → useProducts()            /api/v1/products
+  - RecipesListPage      → useRecipes()             /api/v1/recipes
+  - InventoryPage        → useBarStockForEvent()    /api/v1/bar-stock
+  - WarehousePage        → useInventoryGrid()       /api/v1/warehouse
+  - PredictionPage       → usePredictionForEvent()  /api/v1/predictions
+
+All pages routed in app/routes.tsx, gated by appropriate permissions,
+zero mockData references.
+
+Net effect on must-ship plan:
+  - Frontend wiring removed from remaining work
+  - Next critical work is Phase 2 ML (demand forecast + revenue
+    anomaly detector), then Phase 8 multi-device dress rehearsal
