@@ -57,12 +57,58 @@ REVENUE_SOURCES = ("slesh_pos", "manual_bartender")
 # Category mapping heuristic — maps product names to the 5 UI categories.
 # Rough keyword matching; future versions will use a proper product_category
 # column. Kept explicit here so it's easy to audit.
+# Order matters: first match wins. Place more-specific categories before
+# general ones. Real Slesh 2025 product names are included as keywords
+# so the training pipeline tags them correctly.
 CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "beer": ("beer", "lager", "ale", "pilsner", "stout", "birra"),
-    "spirits": ("vodka", "gin", "rum", "whisky", "whiskey", "tequila", "bourbon"),
-    "wine": ("wine", "vino", "prosecco", "champagne", "spumante"),
-    "mixers": ("tonic", "soda", "cola", "juice", "lime", "lemon"),
-    "cocktails": ("cocktail", "mojito", "spritz", "negroni", "martini", "margarita"),
+    # Beer brands actually sold at Sundance + Italian generic terms.
+    "beer": (
+        "beer", "lager", "ale", "pilsner", "stout",
+        "birra", "raffo", "nastro azzurro", "nastro",
+    ),
+    # Wine: includes the Slesh product label "Bottiglia Vino" and "Vino e bolle".
+    "wine": (
+        "wine", "vino", "prosecco", "champagne", "spumante",
+        "bottiglia vino", "vino e bolle", "bolle",
+    ),
+    # Premium cocktails: signature / super-premium menu. MUST come before
+    # the generic "cocktails" entry below, because "Cocktail Super premium"
+    # and "Cocktail signature" both contain the substring "cocktail" and
+    # would otherwise be swallowed by the generic bucket. Keyed on the
+    # SPECIFIC premium phrases only (never the bare word "cocktail").
+    "premium_cocktails": (
+        "super premium", "signature", "premium cocktail",
+        "cocktail super", "cocktail signature",
+    ),
+    # Cocktails: handles Slesh's "Cocktail" and the misspelled "Sprtiz".
+    # Premium variants are caught above before reaching here.
+    "cocktails": (
+        "cocktail", "mojito", "spritz", "sprtiz",
+        "negroni", "martini", "margarita", "aperol",
+    ),
+    # Spirits: kept for menus that add straight shots ("liscio" in Italian).
+    "spirits": (
+        "vodka", "gin", "rum", "whisky", "whiskey", "tequila", "bourbon",
+        "shot", "liscio",
+    ),
+    # Mixers + soft drinks + water + non-alcoholic (Slesh: "Soft Drink",
+    # "Analcolico", "Acqua").
+    "mixers": (
+        "tonic", "soda", "cola", "juice", "lime", "lemon",
+        "soft drink", "analcolico", "acqua", "water",
+    ),
+    # Food (Focacceria + Malandrino sell food items; Slesh names:
+    # Burger, Mortadella, Porchetta, Prosciutto, Veg, Patatina, Focaccia).
+    "food": (
+        "burger", "mortadella", "porchetta", "prosciutto", "veg",
+        "patatina", "patatine", "focaccia", "panino", "panini",
+        "tramezzino", "piadina",
+    ),
+    # Supplies + cups (Slesh: "Bicchiere", deposit items "Cauzione").
+    # Not customer-facing demand; they trail consumption.
+    "supply": (
+        "bicchiere", "bicchieri", "cup", "cauzione", "deposito",
+    ),
 }
 
 
