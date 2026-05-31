@@ -22,6 +22,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
+import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
@@ -398,6 +399,16 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const productsQuery      = useAllProducts()
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
   const alertCountsByBarQuery = useAlertsCountByBar(eventId)
+
+  // Time references for the multi-line charts.
+  // Computed ONCE per render so all 22 bar cards + the event chart
+  // share the same buckets. liveEvent.started_at may be null for
+  // events that haven\'t started — fall back to "1h ago" so charts
+  // render an empty timeline instead of crashing.
+  const nowMs = Date.now()
+  const eventStartMs = liveEvent?.started_at
+    ? new Date(liveEvent.started_at).getTime()
+    : nowMs - 3600_000
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
   // hooks still keeps the UI correct — belt AND suspenders.
@@ -549,6 +560,18 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   </span>
                 </div>
               )}
+              {/* Big event-total revenue chart — Actual (live) vs ML Predicted.
+                  Locked May 27 2026: replaces the per-bar chart in the
+                  overlay. Spans full width of the grid above so it reads
+                  as ~2 bar cards wide. ML Predicted line is null until
+                  MLPredictor lands (Phase 2 resumption). */}
+              <div className="mb-4">
+                <EventRevenueChart
+                  transactions={transactionsQuery.data ?? []}
+                  eventStartMs={eventStartMs}
+                  nowMs={nowMs}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {barKpis.map((kpi) => (
                   <BarCard
@@ -556,6 +579,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                     bar={kpi}
                     criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
                     onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
+                    transactions={transactionsQuery.data ?? []}
+                    products={productsQuery.data ?? []}
+                    eventStartMs={eventStartMs}
+                    nowMs={nowMs}
                   />
                 ))}
               </div>

@@ -10,7 +10,10 @@
  *   They'll become real once burn-rate computation, staff shifts, and
  *   alerts backends ship.
  */
-import type { BarKpi, BarStatus } from '@/lib/mockData'
+import type { BarKpi, BarStatus, StockTransactionRow } from '@/lib/mockData'
+
+import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
+import type { ProductLike } from '@/features/dashboard/category-resolver' 
 
 interface BarCardProps {
   bar: BarKpi
@@ -18,6 +21,14 @@ interface BarCardProps {
    * When > 0, a pulsing red pill renders next to the bar name. */
   criticalAlertCount?: number
   onClick: (barId: string) => void
+  /** Live event transactions across ALL bars; BarMiniChart filters by bar.id */
+  transactions: StockTransactionRow[]
+  /** Catalog products for category resolution */
+  products: ProductLike[]
+  /** Event start time (ms since epoch) — needed for adaptive time-bucketing */
+  eventStartMs: number
+  /** "Now" reference in ms — same value passed to all bar cards on this render */
+  nowMs: number
 }
 
 const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
@@ -44,10 +55,17 @@ function Placeholder({ label }: { label: string }) {
   )
 }
 
-export function BarCard({ bar, criticalAlertCount = 0, onClick }: BarCardProps) {
+export function BarCard({
+  bar,
+  criticalAlertCount = 0,
+  onClick,
+  transactions,
+  products,
+  eventStartMs,
+  nowMs,
+}: BarCardProps) {
   const cfg      = STATUS_CFG[bar.status]
   const stockPct = bar.stock_pct
-  const tiers    = bar.drinks_breakdown
 
   const revenueEuros = Math.round(bar.revenue_cents / 100)
 
@@ -85,22 +103,23 @@ export function BarCard({ bar, criticalAlertCount = 0, onClick }: BarCardProps) 
       {/* 2 — Status label */}
       <p className={`text-xs font-semibold mb-3 ${cfg.labelColor}`}>{cfg.label}</p>
 
-      {/* 4 — Drinks Sold */}
-      <div className="mb-3">
+      {/* 4 — Revenue by category over time (5 lines: 4 categories + total)
+            Replaces the old tier B/S/P/U chips. Locked May 27 2026: bars
+            display multi-line per-category chart for live-sale-crash
+            detection. Categories: beer / cocktails / premium_cocktails / wine. */}
+      <div className="mb-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <p className="text-xs text-[#4A5568]">Drinks Sold</p>
           <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
         </div>
-        <div className="flex gap-1">
-          {(['B', 'S', 'P', 'U'] as const).map((t) => (
-            <span
-              key={t}
-              className="text-[10px] font-semibold bg-[#F7FAFC] border border-[#E2E8F0] text-[#4A5568] px-1.5 py-0.5 rounded flex-1 text-center"
-            >
-              {t}:{tiers[t]}
-            </span>
-          ))}
-        </div>
+        <BarMiniChart
+          barId={bar.id}
+          transactions={transactions}
+          products={products}
+          eventStartMs={eventStartMs}
+          nowMs={nowMs}
+          height={120}
+        />
       </div>
 
       {/* 5 — Stock Level (REAL) */}
