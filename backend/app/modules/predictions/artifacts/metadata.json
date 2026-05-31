@@ -1,0 +1,161 @@
+{
+  "trained_at": "2026-05-27T15:40:34.260099+00:00",
+  "training_events": [
+    "2025-08-03",
+    "2025-06-15",
+    "2025-07-27",
+    "2025-06-29"
+  ],
+  "n_training_events": 4,
+  "feature_names": [
+    "hour_of_event",
+    "hour_of_day",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "event_total_hours",
+    "bar_cocktail_bar",
+    "bar_focacceria",
+    "bar_malandrino"
+  ],
+  "categories": [
+    "beer",
+    "wine",
+    "cocktails",
+    "spirits",
+    "mixers",
+    "food",
+    "supply"
+  ],
+  "revenue": {
+    "winner": "random_forest",
+    "r2": 0.9596107653432121,
+    "mae_eur": 207.30086454043948,
+    "all_scores": [
+      {
+        "family": "ridge",
+        "target": "revenue",
+        "r2": 0.5653324494004027,
+        "mae": 620.0022382554866,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "revenue",
+        "r2": 0.9596107653432121,
+        "mae": 207.30086454043948,
+        "n_train": 120,
+        "n_test": 71
+      }
+    ]
+  },
+  "category": {
+    "winners": {
+      "beer": "ridge",
+      "wine": "random_forest",
+      "cocktails": "random_forest",
+      "mixers": "random_forest",
+      "food": "random_forest",
+      "supply": "random_forest"
+    },
+    "all_scores": [
+      {
+        "family": "ridge",
+        "target": "category:beer",
+        "r2": 0.04264310193755172,
+        "mae": 20.27985628720484,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:beer",
+        "r2": -0.2915903451836146,
+        "mae": 22.37367358612342,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "ridge",
+        "target": "category:wine",
+        "r2": 0.44614037912762916,
+        "mae": 4.142279412440547,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:wine",
+        "r2": 0.8434343673710186,
+        "mae": 1.3801250692297815,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "ridge",
+        "target": "category:cocktails",
+        "r2": 0.573067774080476,
+        "mae": 49.23326941931352,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:cocktails",
+        "r2": 0.9616875197228841,
+        "mae": 13.146504664042219,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "ridge",
+        "target": "category:mixers",
+        "r2": 0.6595947958961543,
+        "mae": 4.763811734408086,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:mixers",
+        "r2": 0.8652165674353574,
+        "mae": 2.3507312527540614,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "ridge",
+        "target": "category:food",
+        "r2": 0.4717391575536568,
+        "mae": 9.108083135954214,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:food",
+        "r2": 0.7425365924654006,
+        "mae": 5.608945585412632,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "ridge",
+        "target": "category:supply",
+        "r2": 0.4941206439750473,
+        "mae": 25.594408927359463,
+        "n_train": 120,
+        "n_test": 71
+      },
+      {
+        "family": "random_forest",
+        "target": "category:supply",
+        "r2": 0.906734647250195,
+        "mae": 10.646557187129009,
+        "n_train": 120,
+        "n_test": 71
+      }
+    ]
+  }
+}

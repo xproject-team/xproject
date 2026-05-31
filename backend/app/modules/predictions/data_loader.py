@@ -17,9 +17,12 @@ from typing import Iterable
 
 import pandas as pd
 
-# Path is relative to repo root.  Caller must `cd` into the repo or
-# pass an explicit data_root.
-DATA_ROOT_DEFAULT = Path("data/2025/SUNDANCE")
+# Resolve data/ relative to the repo root (this file lives at
+# backend/app/modules/predictions/data_loader.py — 4 levels deep).
+# Hard-coding a relative path here was a footgun: it only worked when
+# the caller happened to `cd` into the right place.
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+DATA_ROOT_DEFAULT = _REPO_ROOT / "data" / "2025" / "SUNDANCE"
 
 # July 13 is the rain-outlier event Omar confirmed (PDF response,
 # April 2026).  Held out of training per May 27 ML design decision.
