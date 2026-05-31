@@ -464,3 +464,92 @@ async def cron_poll_slesh_for_all_live_events(ctx: dict) -> dict:
         "skipped":     skipped,
     }
 
+
+async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
+    """Cron entry point: pull shop list from Slesh and upsert into bars.
+
+    Runs at worker startup (run_at_startup=True) + once per hour on
+    minute=4. The function is inlined (no per-event enqueue) because:
+      - Bars sync is O(num_live_events) lightweight calls
+      - Hourly cadence means no contention concern
+      - Fewer moving parts = fewer crash surfaces on Sundance night
+
+    For each LIVE event:
+      1. Build a SleshAdapter from settings
+      2. Call sync_shops() which:
+         - creates new bars from Slesh shops we don't have
+         - updates names + is_active for shops we already track
+         - deactivates bars whose slesh_negozio_id no longer appears
+           in Slesh's response (NEVER deletes — preserves FK chains)
+
+    If SLESH_API_TOKEN is not configured, returns immediately. Useful
+    for dev machines without Slesh credentials and for CI.
+
+    Mirrors cron_poll_slesh_for_all_live_events for live-event
+    enumeration, but does its work inline instead of enqueueing
+    per-event jobs.
+    """
+    if not settings.slesh_api_token:
+        logger.debug("cron_sync_bars_from_slesh: skipped (no SLESH_API_TOKEN)")
+        return {"status": "skipped", "reason": "no_token"}
+
+    # Import inside function to keep module import-time cheap and
+    # avoid any module-load-order surprises with the Slesh adapter.
+    from app.modules.pos.adapters.slesh import SleshAdapter
+    from app.modules.pos.sync_service import sync_shops
+
+    totals = {"created": 0, "updated": 0, "skipped": 0, "deactivated": 0, "errors": 0}
+    events_processed = 0
+
+    async with async_session_factory() as session:
+        try:
+            stmt = select(Event.id, Event.tenant_id).where(
+                Event.status == EventStatus.LIVE,
+            )
+            rows = (await session.execute(stmt)).all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "cron_sync_bars_from_slesh: failed to list live events: %s", e,
+            )
+            return {"status": "error", "events_processed": 0}
+
+        async with SleshAdapter(token=settings.slesh_api_token) as adapter:
+            for event_id, tenant_id in rows:
+                try:
+                    result = await sync_shops(
+                        db=session,
+                        adapter=adapter,
+                        tenant_id=tenant_id,
+                        event_id=event_id,
+                    )
+                    await session.commit()
+                    totals["created"]     += result.created
+                    totals["updated"]     += result.updated
+                    totals["skipped"]     += result.skipped
+                    totals["deactivated"] += result.deactivated
+                    events_processed += 1
+                    logger.info(
+                        "cron_sync_bars_from_slesh: event=%s %s",
+                        event_id, result,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    # Slesh down, network blip, etc. Roll back this event's
+                    # partial work, log, continue with next event. Never
+                    # let one failure poison the whole run on Sundance.
+                    await session.rollback()
+                    totals["errors"] += 1
+                    logger.warning(
+                        "cron_sync_bars_from_slesh: failed for event=%s: %s",
+                        event_id, e,
+                    )
+
+    logger.info(
+        "cron_sync_bars_from_slesh: %d/%d events processed, totals=%s",
+        events_processed, len(rows), totals,
+    )
+    return {
+        "status":           "ok",
+        "events_processed": events_processed,
+        "events_total":     len(rows),
+        **totals,
+    }

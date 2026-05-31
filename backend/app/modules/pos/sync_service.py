@@ -40,20 +40,27 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────
 @dataclass
 class SyncResult:
-    """Counts from a single sync pass — for logging and CLI output."""
-    created: int          = 0
-    updated: int          = 0
-    skipped: int          = 0
-    errors:  list[str]    = field(default_factory=list)
+    """Counts from a single sync pass — for logging and CLI output.
+
+    `deactivated` was added when sync_shops gained the
+    "missing-from-Slesh = set is_active=False" path. For sync_products
+    (which doesn't have that path yet) it stays 0.
+    """
+    created:     int       = 0
+    updated:     int       = 0
+    skipped:     int       = 0
+    deactivated: int       = 0
+    errors:      list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:
-        return self.created + self.updated + self.skipped
+        return self.created + self.updated + self.skipped + self.deactivated
 
     def __str__(self) -> str:
         return (
             f"created={self.created} updated={self.updated} "
-            f"skipped={self.skipped} total={self.total}"
+            f"skipped={self.skipped} deactivated={self.deactivated} "
+            f"total={self.total}"
         )
 
 
@@ -151,6 +158,30 @@ async def sync_shops(
                 result.updated += 1
             else:
                 result.skipped += 1
+
+    # ── Deactivation pass: bars in OUR DB that Slesh no longer reports.
+    # Slesh may have disabled or deleted a shop since last sync. We
+    # never DELETE bars (FK chains: StockTransaction, BarStock, alerts,
+    # chat etc. all reference bar_id) — we set is_active=False instead.
+    # Re-activation happens automatically if Slesh sends the shop back.
+    slesh_ids_seen = {str(s.id) for s in slesh_shops}
+    stale_stmt = (
+        select(Bar)
+        .where(Bar.tenant_id == tenant_id)
+        .where(Bar.event_id == event_id)
+        .where(Bar.slesh_negozio_id.is_not(None))
+        .where(Bar.is_active.is_(True))
+    )
+    stale_rows = (await db.execute(stale_stmt)).scalars().all()
+    for bar in stale_rows:
+        if bar.slesh_negozio_id not in slesh_ids_seen:
+            bar.is_active = False
+            result.deactivated += 1
+            logger.info(
+                "sync_shops: deactivated bar id=%s name=%s slesh=%s "
+                "(no longer reported by Slesh)",
+                bar.id, bar.name, bar.slesh_negozio_id,
+            )
 
     await db.flush()
     logger.info("sync_shops: %s", result)

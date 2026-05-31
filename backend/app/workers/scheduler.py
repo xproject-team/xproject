@@ -37,6 +37,7 @@ from app.workers.tasks import (
     cron_evaluate_all_live_events,
     cron_generate_reports_for_completed_events,
     cron_poll_slesh_for_all_live_events,
+    cron_sync_bars_from_slesh,
     evaluate_alerts,
     generate_report,
     poll_slesh_for_event,
@@ -59,6 +60,7 @@ class WorkerSettings:
         cron_generate_reports_for_completed_events,
         cron_close_paused_invoices,
         cron_poll_slesh_for_all_live_events,
+        cron_sync_bars_from_slesh,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -95,6 +97,17 @@ class WorkerSettings:
             cron_poll_slesh_for_all_live_events,
             minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
             run_at_startup=True,  # Fire on boot so a freshly-started worker catches up immediately
+        ),
+        # Bars sync from Slesh. Hourly cadence (minute=4, on the hour
+        # only) is plenty — shop names + active state rarely change
+        # mid-event. run_at_startup=True ensures a freshly-restarted
+        # worker has the current Slesh shop list before any other work.
+        # See: cron_sync_bars_from_slesh in tasks.py for behavior.
+        cron(
+            cron_sync_bars_from_slesh,
+            hour=None,                       # every hour
+            minute={4},                      # on minute 4 of the hour
+            run_at_startup=True,
         ),
     ]
 
