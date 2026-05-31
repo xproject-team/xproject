@@ -20,6 +20,12 @@ from app.modules.auth.router import get_current_user
 from app.modules.auth.permissions import get_active_role
 from app.modules.events.schemas import EventCreate, EventResponse, EventUpdate
 from app.modules.events.reconciliation_schemas import ReconciliationReport
+from app.modules.events.category_totals_schemas import (
+    EventBarCategoryTotalsResponse,
+)
+from app.modules.events.category_totals_service import (
+    BarCategoryTotalsService,
+)
 from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.service import (
     EventNotFoundError,
@@ -318,7 +324,38 @@ async def get_event_weather(
 # delivery-gap detection. Owner-only — Manager-scoped variant ships later if
 # Omar requests it.
 #
-# Sundance-safety: single SQL roundtrip (no inter-row race during live event),
+# Sundance-safety
+
+@router.get(
+    "/{event_id}/bar-category-totals",
+    response_model=EventBarCategoryTotalsResponse,
+)
+async def get_event_bar_category_totals(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> EventBarCategoryTotalsResponse:
+    """Per-bar, per-category sales totals for the dashboard.
+
+    Returns each bar in the event with:
+      - 4+1 display buckets (beer / cocktails / premium_cocktails /
+        wine / food) with units + revenue rolled up
+      - Top 5 drinks by units sold, each labeled with its GRANULAR
+        category (e.g. "Cocktail signature" → premium_cocktail)
+      - total_units and total_revenue_eur across all transactions
+
+    Categorization is hybrid: Product.category enum when set,
+    name-derived fallback via _classify_category() otherwise.
+    """
+    service = BarCategoryTotalsService(db)
+    result = await service.get_for_event(tenant_id=tenant_id, event_id=event_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+    return result
+# Why this query is safe to run live: single SQL roundtrip (no inter-row race during live event),
 # event-window bounded, voided scans excluded, tenant-scoped at every CTE,
 # Decimal precision preserved across the wire.
 
