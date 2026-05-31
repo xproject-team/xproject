@@ -10,10 +10,6 @@
  * - Alerts section: silent hide until alerts backend (v1.1)
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, Brush,
-} from 'recharts'
 
 import {
   useAllProducts,
@@ -22,7 +18,8 @@ import {
   useLiveEvent,
   useTransactionsForEvent,
 } from '@/features/dashboard/hooks'
-import { buildRevenuePoints } from '@/features/dashboard/chart-buckets'
+import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
+import type { ProductLike } from '@/features/dashboard/category-resolver'
 import type { BarKpi, BarStatus } from '@/lib/mockData'
 import {
   useChannels,
@@ -61,57 +58,26 @@ function SectionHeader({ title }: { title: string }) {
 }
 
 
-// Chart tooltip
-interface TooltipProps {
-  active?: boolean
-  payload?: { dataKey: string; value: number | null; color: string }[]
-  label?: string
-}
-function RevenueTooltip({ active, payload, label }: TooltipProps) {
-  if (!active || !payload?.length) return null
-  const actualPt = payload.find((p) => p.dataKey === 'actual')
-  return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg shadow-md px-3 py-2 text-xs">
-      <p className="font-semibold text-[#1A202C] mb-1">{label}</p>
-      {actualPt && (
-        <p style={{ color: actualPt.color }}>
-          Actual: &euro;{(actualPt.value ?? 0).toLocaleString()}
-        </p>
-      )}
-      <p className="text-[#A0AEC0] italic text-[10px] mt-1">
-        Predicted: unavailable until ML prediction ships (v1.1)
-      </p>
-    </div>
-  )
-}
 
-// Revenue chart subcomponent - handles its own data fetch
+// Revenue chart subcomponent — DASH.4 rewrite (May 27 2026).
+// Renders a TALL multi-line chart matching the per-card BarMiniChart:
+// 5 lines (total + beer / cocktails / premium_cocktails / wine).
+// Same data + same colors as the card chart, just bigger with legend
+// and Y-axis visible. Locked May 27 2026 with Hesam.
 interface RevenueChartProps {
   barId: string
 }
 
 function RevenueChart({ barId }: RevenueChartProps) {
-  const liveEventQuery = useLiveEvent()
-  const transactionsQuery = useTransactionsForEvent(liveEventQuery.data?.id ?? null)
+  const liveEventQuery     = useLiveEvent()
+  const transactionsQuery  = useTransactionsForEvent(liveEventQuery.data?.id ?? null)
+  const productsQuery      = useAllProducts()
 
   const eventStartIso = liveEventQuery.data?.started_at ?? null
-  const transactions = transactionsQuery.data ?? []
 
-  const points = useMemo(() => {
-    if (!eventStartIso) return []
-    const eventStartMs = new Date(eventStartIso).getTime()
-    const nowMs = Date.now()
-    return buildRevenuePoints({
-      transactions,
-      barId,
-      eventStartMs,
-      nowMs,
-    })
-  }, [transactions, barId, eventStartIso])
-
-  if (liveEventQuery.isLoading || transactionsQuery.isLoading) {
+  if (liveEventQuery.isLoading || transactionsQuery.isLoading || productsQuery.isLoading) {
     return (
-      <div className="h-44 flex items-center justify-center text-xs text-[#A0AEC0] italic">
+      <div className="h-56 flex items-center justify-center text-xs text-[#A0AEC0] italic">
         Loading chart data...
       </div>
     )
@@ -119,89 +85,30 @@ function RevenueChart({ barId }: RevenueChartProps) {
 
   if (!eventStartIso) {
     return (
-      <div className="h-44 flex items-center justify-center text-xs text-[#A0AEC0] italic">
+      <div className="h-56 flex items-center justify-center text-xs text-[#A0AEC0] italic">
         No event start time available yet.
       </div>
     )
   }
 
-  if (points.length === 0) {
-    return (
-      <div className="h-44 flex items-center justify-center text-xs text-[#A0AEC0] italic">
-        No revenue data yet for this bar.
-      </div>
-    )
-  }
+  const eventStartMs = new Date(eventStartIso).getTime()
+  const nowMs        = Date.now()
 
   return (
-    <>
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={points}
-            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-            <XAxis
-              dataKey="time_label"
-              tick={{ fontSize: 10, fill: '#4A5568' }}
-              minTickGap={24}
-              tickLine={false}
-              axisLine={false}
-            />
-            <YAxis
-              tick={{ fontSize: 10, fill: '#4A5568' }}
-              tickLine={false}
-              axisLine={false}
-              width={46}
-              tickFormatter={(v: number) =>
-                v >= 1000 ? '\u20AC' + (v / 1000).toFixed(1) + 'k' : '\u20AC' + v
-              }
-            />
-            <Tooltip content={<RevenueTooltip />} />
-            <Line
-              type="monotone"
-              dataKey="predicted"
-              stroke="#CBD5E0"
-              strokeWidth={1.5}
-              strokeDasharray="5 5"
-              dot={false}
-              isAnimationActive={false}
-              connectNulls={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="actual"
-              stroke="#1E5A8D"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-            <Brush
-              dataKey="time_label"
-              height={22}
-              stroke="#1E5A8D"
-              fill="#F7FAFC"
-              travellerWidth={8}
-              tickFormatter={() => ''}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="flex items-center gap-5 mt-2">
-        <span className="flex items-center gap-1.5 text-xs text-[#4A5568]">
-          <span className="inline-block w-6 h-0.5 bg-[#1E5A8D] rounded" />
-          Actual (cumulative)
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-[#A0AEC0] italic">
-          <svg width="24" height="4">
-            <line x1="0" y1="2" x2="24" y2="2" stroke="#CBD5E0" strokeWidth="1.5" strokeDasharray="4 3" />
-          </svg>
-          ML Predicted &mdash; available in v1.1
-        </span>
-      </div>
-    </>
+    <div className="space-y-2">
+      <BarMiniChart
+        barId={barId}
+        transactions={transactionsQuery.data ?? []}
+        products={(productsQuery.data ?? []) as ProductLike[]}
+        eventStartMs={eventStartMs}
+        nowMs={nowMs}
+        height={280}
+      />
+      <p className="text-[10px] text-[#A0AEC0] italic">
+        ML Predicted overlay arrives when MLPredictor is wired
+        (Phase 2 resumption).
+      </p>
+    </div>
   )
 }
 
