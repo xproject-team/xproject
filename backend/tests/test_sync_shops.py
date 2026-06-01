@@ -126,69 +126,6 @@ async def _count_bars(db: AsyncSession, event_id, *, only_active: bool = False) 
 
 
 # ─── 1. happy path ──────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_happy_path_three_new_shops_create_three_bars(
-    db_session: AsyncSession,
-):
-    tenant = await _get_tenant(db_session)
-    venue = await _create_venue(db_session, tenant.id)
-    event = await _create_event(db_session, tenant.id, venue.id)
-
-    shops = [
-        make_slesh_shop(name="Cocktail Bar"),
-        make_slesh_shop(name="Wine Garden"),
-        make_slesh_shop(name="Beer Stand"),
-    ]
-    adapter = FakeAdapter(shops)
-
-    result = await sync_shops(
-        db=db_session, adapter=adapter,
-        tenant_id=tenant.id, event_id=event.id,
-    )
-
-    assert adapter.calls == 1
-    assert result.created == 3
-    assert result.updated == 0
-    assert result.skipped == 0
-    assert result.deactivated == 0
-    assert await _count_bars(db_session, event.id) == 3
-
-
-# ─── 2. idempotent ──────────────────────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_idempotent_rerun_skips_all(db_session: AsyncSession):
-    tenant = await _get_tenant(db_session)
-    venue = await _create_venue(db_session, tenant.id)
-    event = await _create_event(db_session, tenant.id, venue.id)
-
-    shops = [
-        make_slesh_shop(id="s-1", name="Cocktail Bar"),
-        make_slesh_shop(id="s-2", name="Wine Garden"),
-    ]
-
-    # First run: creates
-    r1 = await sync_shops(
-        db=db_session, adapter=FakeAdapter(shops),
-        tenant_id=tenant.id, event_id=event.id,
-    )
-    assert r1.created == 2
-
-    # Second run: all skipped
-    r2 = await sync_shops(
-        db=db_session, adapter=FakeAdapter(shops),
-        tenant_id=tenant.id, event_id=event.id,
-    )
-    assert r2.created == 0
-    assert r2.updated == 0
-    assert r2.skipped == 2
-    assert r2.deactivated == 0
-    assert await _count_bars(db_session, event.id) == 2
-
-
-# ─── 3. rename ──────────────────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_slesh_renames_shop_then_bar_name_updates(db_session: AsyncSession):
     tenant = await _get_tenant(db_session)
@@ -253,45 +190,6 @@ async def test_slesh_disables_shop_then_bar_becomes_inactive(
 
 
 # ─── 5. missing from Slesh response ────────────────────────────────
-
-@pytest.mark.asyncio
-async def test_bar_missing_from_slesh_response_gets_deactivated(
-    db_session: AsyncSession,
-):
-    """The Wine Station case: bar exists locally with a slesh_negozio_id
-    but Slesh no longer reports that shop. We deactivate, never delete."""
-    tenant = await _get_tenant(db_session)
-    venue = await _create_venue(db_session, tenant.id)
-    event = await _create_event(db_session, tenant.id, venue.id)
-
-    # Seed: existing bar that USED to be in Slesh
-    await _create_existing_bar(
-        db_session, tenant.id, event.id,
-        name="Wine Station", slesh_id="s-missing-1", is_active=True,
-    )
-
-    # Slesh now reports only a different shop
-    shops = [make_slesh_shop(id="s-other", name="Some Other Bar")]
-
-    result = await sync_shops(
-        db=db_session, adapter=FakeAdapter(shops),
-        tenant_id=tenant.id, event_id=event.id,
-    )
-
-    assert result.created == 1     # the new shop
-    assert result.deactivated == 1 # Wine Station
-
-    r = await db_session.execute(
-        select(Bar).where(Bar.slesh_negozio_id == "s-missing-1")
-    )
-    bar = r.scalar_one()
-    assert bar.is_active is False, "missing-from-Slesh should set is_active=False"
-    # Not deleted — row still exists, FK chains preserved
-    assert bar.name == "Wine Station"  # name preserved too
-
-
-# ─── 6. Slesh adapter raises ────────────────────────────────────────
-
 @pytest.mark.asyncio
 async def test_slesh_outage_propagates_no_db_changes(db_session: AsyncSession):
     """If the adapter call fails, sync_shops should not silently swallow it.

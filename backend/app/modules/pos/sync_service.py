@@ -46,20 +46,23 @@ class SyncResult:
     "missing-from-Slesh = set is_active=False" path. For sync_products
     (which doesn't have that path yet) it stays 0.
     """
-    created:     int       = 0
-    updated:     int       = 0
-    skipped:     int       = 0
-    deactivated: int       = 0
+    created:           int       = 0
+    updated:           int       = 0
+    skipped:           int       = 0
+    deactivated:       int       = 0
+    proposals_created: int       = 0
     errors:      list[str] = field(default_factory=list)
 
     @property
     def total(self) -> int:
-        return self.created + self.updated + self.skipped + self.deactivated
+        return (self.created + self.updated + self.skipped
+                + self.deactivated + self.proposals_created)
 
     def __str__(self) -> str:
         return (
             f"created={self.created} updated={self.updated} "
             f"skipped={self.skipped} deactivated={self.deactivated} "
+            f"proposals_created={self.proposals_created} "
             f"total={self.total}"
         )
 
@@ -128,23 +131,21 @@ async def sync_shops(
     slesh_shops = await adapter.list_shops(experience_id=experience_id)
     logger.info("sync_shops: %d shops returned by Slesh", len(slesh_shops))
 
+    # Track shops with NO existing bar by slesh_negozio_id.
+    # Per Design B (S4): do NOT auto-create bars. Surface unmatched
+    # shops as pending proposals; owner approves via the UI.
+    unmatched_shops: list = []
+
     for s in slesh_shops:
         # Look up by slesh_negozio_id (the linkage column on `bars`)
         existing = await _find_bar_by_slesh_id(db, tenant_id, s.id)
-
         if existing is None:
-            bar = Bar(
-                tenant_id        = tenant_id,
-                event_id         = event_id,
-                name             = s.name,
-                slesh_negozio_id = s.id,
-                bar_type         = "drinks",          # default, can be edited later
-                is_active        = bool(s.is_enabled),
+            # Defer: create a pending proposal instead of a new bar.
+            unmatched_shops.append(s)
+            logger.debug(
+                "sync_shops: deferred (no bar linkage) name=%s slesh=%s",
+                s.name, s.id,
             )
-            db.add(bar)
-            result.created += 1
-            logger.debug("sync_shops: created bar id=? name=%s slesh=%s",
-                         s.name, s.id)
         else:
             # Update mutable fields (name + is_active). Linkage stays.
             changed = False
@@ -159,6 +160,22 @@ async def sync_shops(
             else:
                 result.skipped += 1
 
+    # ── Create proposals for unmatched shops ────────────────────────────
+    # Idempotent: re-running with the same shops will NOT duplicate
+    # proposals (unique constraint on tenant_id, event_id, slesh_shop_id).
+    if unmatched_shops:
+        from app.modules.pos.proposals_service import ShopMatchProposalsService
+        prop_service = ShopMatchProposalsService(db)
+        new_proposals = await prop_service.propose_for_shops(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            unmatched_shops=unmatched_shops,
+        )
+        result.proposals_created += len(new_proposals)
+        logger.info(
+            "sync_shops: %d new proposals created (of %d unmatched shops)",
+            len(new_proposals), len(unmatched_shops),
+        )
     # ── Deactivation pass: bars in OUR DB that Slesh no longer reports.
     # Slesh may have disabled or deleted a shop since last sync. We
     # never DELETE bars (FK chains: StockTransaction, BarStock, alerts,

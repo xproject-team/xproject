@@ -45,3 +45,4 @@ slowapi==0.1.9
 # PDF generation (reports module)
 reportlab==4.4.10
 matplotlib==3.10.8
+rapidfuzz==3.14.5
