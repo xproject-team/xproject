@@ -91,7 +91,8 @@ export default function EventCreatePage() {
 
   // Section 1 — Event Details
   const [eventName,   setEventName]   = useState('')
-  const [eventDate,   setEventDate]   = useState('')
+  const [eventStartAt, setEventStartAt] = useState('')
+  const [eventEndAt,   setEventEndAt]   = useState('')
   const [guests,      setGuests]      = useState('')
   const [venueId,     setVenueId]     = useState('')
 
@@ -181,7 +182,8 @@ export default function EventCreatePage() {
   // Validation errors — keys map to fields/sections
   type Errors = {
     name?:  string
-    date?:  string
+    start?: string
+    end?: string
     venue?: string
     bars?:  string   // section-level error
     menu?:  string   // section-level error (drinks OR food)
@@ -193,7 +195,11 @@ export default function EventCreatePage() {
   function validate(): Errors {
     const errs: Errors = {}
     if (!eventName.trim()) errs.name  = 'Event name is required'
-    if (!eventDate.trim()) errs.date  = 'Date is required'
+    if (!eventStartAt.trim()) errs.start = 'Start time is required'
+    if (!eventEndAt.trim())   errs.end   = 'End time is required'
+    if (eventStartAt && eventEndAt && new Date(eventEndAt) <= new Date(eventStartAt)) {
+      errs.end = 'End time must be after start time'
+    }
     if (!venueId)          errs.venue = 'Venue is required'
     const namedBars = bars.filter((b) => b.name.trim() !== '')
     if (namedBars.length === 0) errs.bars = 'Add at least one bar with a name'
@@ -213,7 +219,7 @@ export default function EventCreatePage() {
 
   // Save handler — validates locally, then POSTs to backend via useCreateEvent.
   // Note: bars/menu/recipes/stock sections collect UI state but the backend
-  // POST /events endpoint only accepts name/venue_id/scheduled_date/expected_guest_count.
+  // POST /events endpoint only accepts name/venue_id/scheduled_at/scheduled_end_at/expected_guest_count.
   // Sub-entities will be wired to their own endpoints (/bars, /products, etc.)
   // in a follow-up sprint.
   function handleSaveDraft() {
@@ -222,7 +228,7 @@ export default function EventCreatePage() {
     if (Object.keys(errs).length > 0) {
       setOpen((prev) => ({
         ...prev,
-        1: !!(errs.name || errs.date || errs.venue) || prev[1],
+        1: !!(errs.name || errs.start || errs.end || errs.venue) || prev[1],
         2: !!errs.bars || prev[2],
         3: !!errs.menu || prev[3],
         4: !!errs.menu || prev[4],
@@ -233,7 +239,8 @@ export default function EventCreatePage() {
       {
         name: eventName.trim(),
         venue_id: venueId,
-        scheduled_date: eventDate,
+        scheduled_at: eventStartAt,
+        scheduled_end_at: eventEndAt,
         expected_guest_count: Number(guests) || null,
       },
       {
@@ -303,14 +310,24 @@ export default function EventCreatePage() {
                 {errors.name && <p className="text-xs text-[#E53E3E] mt-1">{errors.name}</p>}
               </div>
               <div>
-                <Label>Date</Label>
+                <Label>Start time</Label>
                 <input
-                  type="date"
-                  value={eventDate}
-                  onChange={(e) => { setEventDate(e.target.value); if (errors.date) setErrors({ ...errors, date: undefined }) }}
-                  className={errors.date ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
+                  type="datetime-local"
+                  value={eventStartAt}
+                  onChange={(e) => { setEventStartAt(e.target.value); if (errors.start) setErrors({ ...errors, start: undefined }) }}
+                  className={errors.start ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
                 />
-                {errors.date && <p className="text-xs text-[#E53E3E] mt-1">{errors.date}</p>}
+                {errors.start && <p className="text-xs text-[#E53E3E] mt-1">{errors.start}</p>}
+              </div>
+              <div>
+                <Label>End time</Label>
+                <input
+                  type="datetime-local"
+                  value={eventEndAt}
+                  onChange={(e) => { setEventEndAt(e.target.value); if (errors.end) setErrors({ ...errors, end: undefined }) }}
+                  className={errors.end ? `${inputCls} border-[#E53E3E] ring-2 ring-red-100` : inputCls}
+                />
+                {errors.end && <p className="text-xs text-[#E53E3E] mt-1">{errors.end}</p>}
               </div>
               <div>
                 <Label>Expected Guests</Label>

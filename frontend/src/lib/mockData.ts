@@ -21,9 +21,12 @@ export interface Venue {
 /**
  * Event — matches backend EventResponse exactly.
  *
- * Breaking changes from pre-wire version:
- *   `date`     → `scheduled_date` (ISO date string, YYYY-MM-DD)
- *   `location` → `venue.name` (access via nested object)
+ * Breaking changes:
+ *   `date`           → `scheduled_at` + `scheduled_end_at` (ISO datetime strings)
+ *                      (replaced original `scheduled_date` June 1 2026 — Omar\'s
+ *                       flow requires precise start + end times for cron-based
+ *                       auto-go-live and auto-end behaviour)
+ *   `location`       → `venue.name` (access via nested object)
  *
  * New fields required for backend integration:
  *   `venue`     — nested Venue object (always populated by API)
@@ -37,8 +40,11 @@ export interface Event {
   name: string
   /** Backend ENUM: draft / active / live / completed (lowercase in JSON) */
   status: 'draft' | 'active' | 'live' | 'completed'
-  /** ISO date string YYYY-MM-DD (what the event is scheduled for) */
-  scheduled_date: string
+  /** ISO datetime string (when the event starts). Required. */
+  scheduled_at: string
+  /** ISO datetime string (when the event ends). Required.
+   *  Used by auto-end cron + the 60-min silence heuristic. */
+  scheduled_end_at: string
   /** Nested venue object — read venue.name for display */
   venue: Venue
   expected_guest_count: number | null
@@ -57,7 +63,10 @@ export interface Event {
 export interface EventCreatePayload {
   name: string
   venue_id: string
-  scheduled_date: string
+  /** ISO datetime — when the event starts. Required (no fallback default). */
+  scheduled_at: string
+  /** ISO datetime — when the event ends. Required. Must be > scheduled_at. */
+  scheduled_end_at: string
   expected_guest_count?: number | null
 }
 
@@ -69,7 +78,10 @@ export interface EventCreatePayload {
 export interface EventUpdatePayload {
   name?: string
   venue_id?: string
-  scheduled_date?: string
+  /** ISO datetime — optional in PATCH. Backend keeps existing value if absent. */
+  scheduled_at?: string
+  /** ISO datetime — optional in PATCH. Must remain > scheduled_at if both provided. */
+  scheduled_end_at?: string
   expected_guest_count?: number | null
   ended_at?: string | null
   version: number
@@ -206,7 +218,8 @@ export const MOCK_EVENT: Event = {
   tenant_id: 'tenant-mock',
   name: 'Sundance 2026',
   status: 'live',
-  scheduled_date: '2026-06-15',
+  scheduled_at: '2026-06-15T19:00:00+02:00',
+    scheduled_end_at: '2026-06-15T23:00:00+02:00',
   venue: { id: 'venue-villa-roma', name: 'Villa Roma', address: null, capacity: null },
   expected_guest_count: 350,
   bars_count: 4,
@@ -225,7 +238,8 @@ export const MOCK_EVENTS: Event[] = [
     tenant_id: 'tenant-mock',
     name: 'Sundance 2026',
     status: 'live',
-    scheduled_date: '2026-06-15',
+    scheduled_at: '2026-06-15T19:00:00+02:00',
+    scheduled_end_at: '2026-06-15T23:00:00+02:00',
     venue: { id: 'venue-villa-roma', name: 'Villa Roma', address: null, capacity: null },
     expected_guest_count: 350,
     bars_count: 4,
@@ -240,7 +254,8 @@ export const MOCK_EVENTS: Event[] = [
     tenant_id: 'tenant-mock',
     name: 'Summer Gala',
     status: 'draft',
-    scheduled_date: '2026-07-20',
+    scheduled_at: '2026-07-20T19:00:00+02:00',
+    scheduled_end_at: '2026-07-20T23:00:00+02:00',
     venue: { id: 'venue-rooftop', name: 'Rooftop Terrace', address: null, capacity: null },
     expected_guest_count: 200,
     bars_count: 3,
@@ -255,7 +270,8 @@ export const MOCK_EVENTS: Event[] = [
     tenant_id: 'tenant-mock',
     name: 'NYE Party 2026',
     status: 'draft',
-    scheduled_date: '2026-12-31',
+    scheduled_at: '2026-12-31T22:00:00+01:00',
+    scheduled_end_at: '2027-01-01T03:00:00+01:00',
     venue: { id: 'venue-grand-ballroom', name: 'Grand Ballroom', address: null, capacity: null },
     expected_guest_count: 500,
     bars_count: 6,
@@ -270,7 +286,8 @@ export const MOCK_EVENTS: Event[] = [
     tenant_id: 'tenant-mock',
     name: 'Spring Festival 2025',
     status: 'completed',
-    scheduled_date: '2025-04-12',
+    scheduled_at: '2025-04-12T19:00:00+02:00',
+    scheduled_end_at: '2025-04-12T23:00:00+02:00',
     venue: { id: 'venue-garden', name: 'Garden Terrace', address: null, capacity: null },
     expected_guest_count: 280,
     bars_count: 3,

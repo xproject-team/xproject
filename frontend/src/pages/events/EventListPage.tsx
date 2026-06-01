@@ -209,7 +209,7 @@ export default function EventListPage() {
                       {event.name}
                     </span>
                   </td>
-                  <td className={`px-5 py-4 ${textCls}`}>{formatDate(event.scheduled_date)}</td>
+                  <td className={`px-5 py-4 ${textCls}`}>{formatDate(event.scheduled_at)}</td>
                   <td className="px-5 py-4">
                     <StatusBadge status={effective} />
                   </td>

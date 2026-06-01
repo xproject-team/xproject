@@ -4,11 +4,11 @@ Contains:
   - Venue: a physical location (belongs to a tenant)
   - Event: an event held at a venue (belongs to a tenant and a venue)
 """
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,8 +45,18 @@ class Event(TenantScopedModel):
     expected_guest_count: Mapped[int | None] = mapped_column(
         Integer, nullable=True,
     )
-    scheduled_date: Mapped[date] = mapped_column(
-        Date, nullable=False,
+    # Replaced `scheduled_date: date` with two DateTimes (2026-06-01,
+    # commit u1 migration). Owner now picks exact start + end time at
+    # event creation. Used by:
+    #   - auto-go-live cron (promotes draft -> live at scheduled_at)
+    #   - auto-end cron (live -> completed if past scheduled_end_at
+    #     AND no Slesh tx in last 60min)
+    #   - manual go-live window: [scheduled_at - 1h, scheduled_at]
+    scheduled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    scheduled_end_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
     )
     version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=1,

@@ -113,7 +113,8 @@ class EventRepository:
             tenant_id=tenant_id,
             name=data.name,
             venue_id=data.venue_id,
-            scheduled_date=data.scheduled_date,
+            scheduled_at=data.scheduled_at,
+            scheduled_end_at=data.scheduled_end_at,
             expected_guest_count=data.expected_guest_count,
             status=EventStatus.DRAFT,
         )

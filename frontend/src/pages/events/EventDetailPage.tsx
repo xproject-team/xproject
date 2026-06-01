@@ -14,6 +14,17 @@ import {
 import { useVenues } from '@/features/venues/hooks'
 import { usePermissions } from '@/features/auth/usePermissions'
 
+// Convert ISO datetime string (with timezone) to the format
+// expected by <input type="datetime-local">. The input doesn't
+// accept timezone suffixes — strip everything from the 'Z' or
+// '+' onward, and trim seconds.
+function toDatetimeLocal(iso: string | undefined | null): string {
+  if (!iso) return ''
+  // "2026-06-19T19:00:00+02:00" -> "2026-06-19T19:00"
+  return iso.replace(/(:\d\d)?([Z+-].*)?$/, '').slice(0, 16)
+}
+
+
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<Event['status'], { label: string; cls: string }> = {
@@ -136,7 +147,8 @@ function EventDetailContent({ event }: { event: Event }) {
   type Draft = {
     name: string
     expected_guest_count: number
-    scheduled_date: string
+    scheduled_at: string
+    scheduled_end_at: string
     venue_id: string
     bars_count: number
   }
@@ -144,7 +156,8 @@ function EventDetailContent({ event }: { event: Event }) {
   const [draft, setDraft] = useState<Draft>({
     name: effective.name,
     expected_guest_count: effective.expected_guest_count ?? 0,
-    scheduled_date: effective.scheduled_date,
+    scheduled_at: effective.scheduled_at,
+    scheduled_end_at: effective.scheduled_end_at,
     venue_id: effective.venue.id,
     bars_count: effective.bars_count,
   })
@@ -191,7 +204,8 @@ function EventDetailContent({ event }: { event: Event }) {
         payload: {
           name: draft.name,
           venue_id: draft.venue_id,
-          scheduled_date: draft.scheduled_date,
+          scheduled_at: draft.scheduled_at,
+          scheduled_end_at: draft.scheduled_end_at,
           expected_guest_count: draft.expected_guest_count,
           version: event.version,
         },
@@ -217,7 +231,8 @@ function EventDetailContent({ event }: { event: Event }) {
     setDraft({
       name: effective.name,
       expected_guest_count: effective.expected_guest_count ?? 0,
-      scheduled_date: effective.scheduled_date,
+      scheduled_at: effective.scheduled_at,
+      scheduled_end_at: effective.scheduled_end_at,
       venue_id: effective.venue.id,
       bars_count: effective.bars_count,
     })
@@ -301,7 +316,7 @@ function EventDetailContent({ event }: { event: Event }) {
             <StatusBadge status={effective.status} />
           </div>
           <p className="text-sm text-[#4A5568] mt-1">
-            {formatDate(effective.scheduled_date)} · {effective.venue.name}
+            {formatDate(effective.scheduled_at)} · {effective.venue.name}
           </p>
         </div>
 
@@ -440,12 +455,14 @@ function EventDetailContent({ event }: { event: Event }) {
             <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Date</p>
             {isEditing && !lockMatrix.date ? (
               <>
-                <input type="date" value={draft.scheduled_date} onChange={(e) => setDraft({ ...draft, scheduled_date: e.target.value })}
+                <input type="datetime-local" value={toDatetimeLocal(draft.scheduled_at)} onChange={(e) => setDraft({ ...draft, scheduled_at: e.target.value })}
                   className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.scheduled_date)}</p>
+                <input type="datetime-local" value={toDatetimeLocal(draft.scheduled_end_at)} onChange={(e) => setDraft({ ...draft, scheduled_end_at: e.target.value })}
+                  className="w-full mt-1 px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]" />
+                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.scheduled_at)} → {formatDate(effective.scheduled_end_at)}</p>
               </>
             ) : (
-              <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.scheduled_date)}</FieldDisplay>
+              <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.scheduled_at)} → {formatDate(effective.scheduled_end_at)}</FieldDisplay>
             )}
           </div>
 

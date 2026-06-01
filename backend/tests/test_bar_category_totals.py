@@ -15,7 +15,7 @@ Spec: dashboard redesign LOCKED May 27 2026.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -66,7 +66,8 @@ async def _create_event(
         tenant_id=tenant_id,
         venue_id=venue_id,
         name=f"Test Event {uuid4().hex[:8]}",
-        scheduled_date=date(2026, 6, 19),
+        scheduled_at=datetime(2026, 6, 19, 19, 0, tzinfo=timezone.utc),
+        scheduled_end_at=datetime(2026, 6, 19, 23, 0, tzinfo=timezone.utc),
         status=EventStatus.DRAFT,
         expected_guest_count=1000,
         started_at=datetime.now(timezone.utc),

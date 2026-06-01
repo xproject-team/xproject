@@ -57,7 +57,8 @@ async def make_event(
         name=f"test-event-{uuid.uuid4().hex[:8]}",
         status=status,
         expected_guest_count=100,
-        scheduled_date=datetime.now(timezone.utc),
+        scheduled_at=datetime.now(timezone.utc),
+        scheduled_end_at=datetime.now(timezone.utc).replace(hour=23),
         version=1,
     )
     session.add(e)

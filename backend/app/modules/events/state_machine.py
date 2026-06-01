@@ -34,9 +34,9 @@ ALLOWED_TRANSITIONS: dict[EventStatus, set[EventStatus]] = {
 # Contract §3. Enforced by service layer before calling repository.update().
 
 EDITABLE_FIELDS_PER_STATUS: dict[EventStatus, set[str]] = {
-    EventStatus.DRAFT:     {"name", "venue_id", "scheduled_date",
+    EventStatus.DRAFT:     {"name", "venue_id", "scheduled_at", "scheduled_end_at",
                             "expected_guest_count", "ended_at"},
-    EventStatus.ACTIVE:    {"name", "venue_id", "scheduled_date",
+    EventStatus.ACTIVE:    {"name", "venue_id", "scheduled_at", "scheduled_end_at",
                             "expected_guest_count", "ended_at"},
     EventStatus.LIVE:      {"name", "expected_guest_count", "ended_at"},  # limited
     EventStatus.COMPLETED: set(),  # immutable

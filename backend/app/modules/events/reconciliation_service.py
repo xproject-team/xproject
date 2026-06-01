@@ -171,7 +171,7 @@ async def compute_report(
     # ── Step 1: load + validate the event ───────────────────────────────
     event_row = await db.execute(
         text("""
-            SELECT id, name, status::text, started_at, ended_at, scheduled_date
+            SELECT id, name, status::text, started_at, ended_at, scheduled_at, scheduled_end_at
             FROM events
             WHERE tenant_id = :tenant AND id = :event_id
         """),

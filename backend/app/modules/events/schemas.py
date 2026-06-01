@@ -8,7 +8,7 @@ Conventions:
   + computed fields (bars_count) + nested related entities (venue).
 - model_config = {"from_attributes": True} lets us build schemas from ORM objects.
 """
-from datetime import date, datetime
+from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,7 +29,8 @@ class EventCreate(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=255)
     venue_id: UUID
-    scheduled_date: date
+    scheduled_at: datetime
+    scheduled_end_at: datetime
     expected_guest_count: int | None = Field(default=None, ge=0)
 
 
@@ -48,7 +49,8 @@ class EventUpdate(BaseModel):
     """
     name: str | None = Field(default=None, min_length=1, max_length=255)
     venue_id: UUID | None = None
-    scheduled_date: date | None = None
+    scheduled_at: datetime | None = None
+    scheduled_end_at: datetime | None = None
     expected_guest_count: int | None = Field(default=None, ge=0)
     ended_at: datetime | None = None
     version: int = Field(..., ge=1)
@@ -61,7 +63,7 @@ class EventResponse(BaseModel):
 
     Includes:
       - Core fields (id, name, status, ...)
-      - scheduled_date (when the event is planned)
+      - scheduled_at + scheduled_end_at (when the event runs)
       - Nested venue (so frontend can render venue.name without separate fetch)
       - bars_count (computed in service layer via COUNT query)
       - version (for the frontend to send back in next PATCH)
@@ -73,7 +75,8 @@ class EventResponse(BaseModel):
     tenant_id: UUID
     name: str
     status: EventStatus
-    scheduled_date: date
+    scheduled_at: datetime
+    scheduled_end_at: datetime
     venue: VenueResponse
     expected_guest_count: int | None
     bars_count: int

@@ -17,7 +17,7 @@ Spec: BARS work item, May 27 2026 — Hesam/Omar bars-sync architecture.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Iterable
 from uuid import uuid4
@@ -88,7 +88,8 @@ async def _create_event(db: AsyncSession, tenant_id, venue_id) -> Event:
         tenant_id=tenant_id,
         venue_id=venue_id,
         name=f"E-{uuid4().hex[:8]}",
-        scheduled_date=date(2026, 6, 19),
+        scheduled_at=datetime(2026, 6, 19, 19, 0, tzinfo=timezone.utc),
+        scheduled_end_at=datetime(2026, 6, 19, 23, 0, tzinfo=timezone.utc),
         status=EventStatus.DRAFT,  # DRAFT avoids the one-LIVE-per-tenant constraint
         expected_guest_count=1000,
         started_at=datetime.now(timezone.utc),
