@@ -45,6 +45,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'transactions', eventId] as const,
   burnRate:       (eventId: string) =>
     [...dashboardKeys.all, 'burnRate', eventId] as const,
+  barCategoryTotals: (eventId: string) =>
+    [...dashboardKeys.all, 'barCategoryTotals', eventId] as const,
 } as const
 
 // ─── Poll interval for "live" data during an event ────────────────────────────
@@ -169,6 +171,56 @@ export function useBurnRatesForEvent(eventId: string | null | undefined) {
     queryFn: async () => {
       const { data } = await api.get<BurnRateRow[]>(
         `/stock-transactions/burn-rate/by-event/${eventId}`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DASH.6 — per-bar category totals + top-5 drinks per bar.
+// Powers the redesigned Drinks Breakdown section in BarDetailOverlay.
+// Backend: GET /events/{event_id}/bar-category-totals (DASH.2 endpoint).
+// One query per event; each call returns ALL bars\'s breakdowns. The
+// overlay filters to one bar client-side from the array.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface BarCategoryBucketDTO {
+  bucket:       'beer' | 'cocktails' | 'premium_cocktails' | 'wine' | 'food'
+  units:        number
+  revenue_eur:  string   // backend serializes Decimal as string
+}
+
+export interface BarTopDrinkDTO {
+  product_name: string
+  category:     string   // granular: e.g. 'premium_cocktail', 'wine_red'
+  units:        number
+  revenue_eur:  string
+}
+
+export interface BarCategoryTotalsDTO {
+  bar_id:             string
+  bar_name:           string
+  categories:         BarCategoryBucketDTO[]
+  top_5_drinks:       BarTopDrinkDTO[]
+  total_units:        number
+  total_revenue_eur:  string
+}
+
+export interface EventBarCategoryTotalsResponse {
+  event_id: string
+  bars:     BarCategoryTotalsDTO[]
+}
+
+export function useBarCategoryTotals(eventId: string | null | undefined) {
+  return useQuery<EventBarCategoryTotalsResponse>({
+    queryKey: dashboardKeys.barCategoryTotals(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<EventBarCategoryTotalsResponse>(
+        `/events/${eventId}/bar-category-totals`,
       )
       return data
     },

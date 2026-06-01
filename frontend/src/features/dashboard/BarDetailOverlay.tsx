@@ -17,8 +17,13 @@ import {
   useBurnRatesForEvent,
   useLiveEvent,
   useTransactionsForEvent,
+  useBarCategoryTotals
 } from '@/features/dashboard/hooks'
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
+import {
+  BarCategoryBreakdown,
+  BarTopDrinks,
+} from '@/features/dashboard/BarCategoryBreakdown' 
 import type { ProductLike } from '@/features/dashboard/category-resolver'
 import type { BarKpi, BarStatus } from '@/lib/mockData'
 import {
@@ -42,13 +47,6 @@ const STATUS_LABEL: Record<BarStatus, { text: string; cls: string }> = {
   critical: { text: 'Critical', cls: 'bg-red-100 text-[#E53E3E]' },
 }
 
-const TIER_CFG = {
-  B: { label: 'Basic', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-  S: { label: 'Standard', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  P: { label: 'Premium', bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200' },
-  U: { label: 'Ultra-premium', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-} as const
-
 function SectionHeader({ title }: { title: string }) {
   return (
     <h2 className="text-[10px] font-bold text-[#4A5568] uppercase tracking-widest mb-3 pb-2 border-b border-[#E2E8F0]">
@@ -56,8 +54,6 @@ function SectionHeader({ title }: { title: string }) {
     </h2>
   )
 }
-
-
 
 // Revenue chart subcomponent — DASH.4 rewrite (May 27 2026).
 // Renders a TALL multi-line chart matching the per-card BarMiniChart:
@@ -111,8 +107,6 @@ function RevenueChart({ barId }: RevenueChartProps) {
     </div>
   )
 }
-
-
 
 // ─── Stock table (real per-product rows, sorted by stock% ascending) ────────
 
@@ -257,8 +251,6 @@ function StockTable({ barId, eventId }: StockTableProps) {
     </div>
   )
 }
-
-
 
 // Chat section - intentional v1.1 placeholder with explicit sync contract
 // pointer. The overlay chat is designed to be a MINI-VIEW of the full sidebar
@@ -479,6 +471,11 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
   const mainLiveEventQuery = useLiveEvent()
   const liveEventId = mainLiveEventQuery.data?.id ?? null
 
+  // DASH.6 — fetch per-bar category totals for the Drinks Breakdown section.
+  const categoryTotalsQuery = useBarCategoryTotals(liveEventId)
+  const barCategoryRow =
+    categoryTotalsQuery.data?.bars.find((br) => br.bar_id === b?.id) ?? null
+
   const revenueEuros = b ? Math.round(b.revenue_cents / 100) : 0
 
   return (
@@ -537,26 +534,19 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
 
                 <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
                   <SectionHeader title="Drinks Breakdown" />
-                  <div className="flex gap-3">
-                    {(['B', 'S', 'P', 'U'] as const).map((tier) => {
-                      const count = b.drinks_breakdown[tier]
-                      const pct = Math.round((count / Math.max(b.drinks_sold, 1)) * 100)
-                      const cfg = TIER_CFG[tier]
-                      return (
-                        <div
-                          key={tier}
-                          className={[
-                            'flex flex-col items-center px-4 py-3 rounded-xl border flex-1',
-                            cfg.bg, cfg.text, cfg.border,
-                          ].join(' ')}
-                        >
-                          <span className="text-2xl font-bold leading-none">{count}</span>
-                          <span className="text-[11px] font-semibold mt-1">{cfg.label}</span>
-                          <span className="text-[10px] opacity-60 mt-0.5">{pct}%</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  {categoryTotalsQuery.isLoading ? (
+                    <p className="text-sm text-[#A0AEC0] italic">Loading breakdown...</p>
+                  ) : (
+                    <>
+                      <BarCategoryBreakdown bar={barCategoryRow} />
+                      <div className="mt-4">
+                        <h3 className="text-[11px] uppercase tracking-wide font-semibold text-[#4A5568] mb-2">
+                          Top 5 drinks (by units)
+                        </h3>
+                        <BarTopDrinks bar={barCategoryRow} />
+                      </div>
+                    </>
+                  )}
                 </section>
 
                 <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
