@@ -33,6 +33,7 @@ from arq.connections import RedisSettings
 
 from app.core.config import settings
 from app.workers.tasks import (
+    cron_auto_transition_event_statuses,
     cron_close_paused_invoices,
     cron_evaluate_all_live_events,
     cron_generate_reports_for_completed_events,
@@ -61,6 +62,7 @@ class WorkerSettings:
         cron_close_paused_invoices,
         cron_poll_slesh_for_all_live_events,
         cron_sync_bars_from_slesh,
+        cron_auto_transition_event_statuses,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -108,6 +110,21 @@ class WorkerSettings:
             hour=None,                       # every hour
             minute={4},                      # on minute 4 of the hour
             run_at_startup=True,
+        ),
+        # Event state machine auto-transitions. Every 5 min on offset
+        # {4, 9, 14, ...} which only overlaps with the hourly bars sync
+        # at :04 (acceptable — both short-running, read-mostly).
+        # Three responsibilities per tick:
+        #   1. DRAFT events past scheduled_at -> auto-activate + start
+        #   2. ACTIVE events past scheduled_at -> auto-start
+        #   3. LIVE events past scheduled_end_at AND silent 60 min ->
+        #      auto-end
+        # Safety net for Omar forgetting to click Start/End at Sundance.
+        cron(
+            cron_auto_transition_event_statuses,
+            minute={4, 9, 14, 19, 24, 29, 34, 39, 44, 49, 54, 59},
+            run_at_startup=True,   # Fire on boot in case worker
+                                   # restarts after a missed schedule.
         ),
     ]
 

@@ -553,3 +553,163 @@ async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
         "events_total":     len(rows),
         **totals,
     }
+
+
+async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
+    """Cron entry point: auto-transition events based on scheduled times.
+
+    Runs every 5 min on minute={5} (off-slot from existing crons —
+    {0}, {1}, {2}, {3}, {4} are taken).
+
+    Three responsibilities per tick (all idempotent — safe to retry):
+
+    1. DRAFT events with scheduled_at <= now()
+       Auto-promote: activate (DRAFT→ACTIVE) then start (ACTIVE→LIVE)
+       Two-step transition because the state machine requires it.
+       Owner forgot to do either step. Cron rescues.
+
+    2. ACTIVE events with scheduled_at <= now()
+       Auto-promote: start (ACTIVE→LIVE)
+       Owner activated but forgot to start.
+
+    3. LIVE events with scheduled_end_at <= now() AND no Slesh
+       transaction in the last 60 minutes
+       Auto-promote: end (LIVE→COMPLETED)
+       The 60-min silence guard prevents a transient outage from
+       accidentally ending a still-busy event.
+
+    Honest design notes:
+      - We call the existing service methods (activate_event,
+        start_event, end_event). They handle assert_transition,
+        idempotency, the one-live-per-tenant invariant, and commit
+        the transaction. Cron stays a thin orchestrator.
+      - Each event\'s transition is wrapped in its own try/except so
+        one failure doesn't poison the whole tick.
+      - On Sundance night, this is the safety net for Omar forgetting
+        to click "Start" at 7pm. The 5-min cadence means a worst-case
+        delay of ~5 min from scheduled_at to actual LIVE.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select, func, and_, or_
+    from app.modules.events.models import Event, EventStatus
+    from app.modules.events.service import EventService
+    from app.modules.stock_transactions.models import StockTransaction
+
+    now = datetime.now(timezone.utc)
+    silence_threshold = now - timedelta(minutes=60)
+
+    counters = {
+        "activated":   0,   # DRAFT -> ACTIVE
+        "started":     0,   # ACTIVE -> LIVE
+        "completed":   0,   # LIVE -> COMPLETED
+        "skipped_silence": 0,  # LIVE past end, but recent tx -> wait
+        "errors":      0,
+    }
+
+    async with async_session_factory() as session:
+        # ── Responsibility 1+2: promote DRAFT/ACTIVE -> LIVE ─────────
+        try:
+            stmt = select(Event).where(
+                and_(
+                    Event.status.in_([EventStatus.DRAFT, EventStatus.ACTIVE]),
+                    Event.scheduled_at <= now,
+                )
+            )
+            due_events = (await session.execute(stmt)).scalars().all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron_auto_transition: failed to list due events: %s", e)
+            return {"status": "error", **counters}
+
+        for event in due_events:
+            try:
+                # Build a service for this tenant. Reuse the same session
+                # so cron writes commit through one connection per tick.
+                service = EventService(db=session)
+
+                if event.status == EventStatus.DRAFT:
+                    await service.activate_event(event.tenant_id, event.id)
+                    counters["activated"] += 1
+                    # Now ACTIVE — chain into start
+                    await service.start_event(event.tenant_id, event.id)
+                    counters["started"] += 1
+                    logger.info(
+                        "cron_auto_transition: DRAFT->LIVE event=%s (%s)",
+                        event.id, event.name,
+                    )
+                elif event.status == EventStatus.ACTIVE:
+                    await service.start_event(event.tenant_id, event.id)
+                    counters["started"] += 1
+                    logger.info(
+                        "cron_auto_transition: ACTIVE->LIVE event=%s (%s)",
+                        event.id, event.name,
+                    )
+            except Exception as e:  # noqa: BLE001
+                # Most likely cause: LiveEventConflictError (another live
+                # event in this tenant). Log and continue — owner gets
+                # notified via the existing 409 flow when they retry manually.
+                await session.rollback()
+                counters["errors"] += 1
+                logger.warning(
+                    "cron_auto_transition: promotion failed for event=%s: %s",
+                    event.id, e,
+                )
+
+        # ── Responsibility 3: end stale LIVE events ──────────────────
+        try:
+            stmt = select(Event).where(
+                and_(
+                    Event.status == EventStatus.LIVE,
+                    Event.scheduled_end_at <= now,
+                )
+            )
+            stale_live = (await session.execute(stmt)).scalars().all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron_auto_transition: failed to list stale live events: %s", e)
+            return {"status": "partial_error", **counters}
+
+        for event in stale_live:
+            try:
+                # 60-min silence guard: only end if no recent stock tx
+                # Tighter silence query: filter by THIS event's id.
+                # StockTransaction has an event_id column, so we can ask
+                # precisely "was there any tx for THIS event in the last
+                # 60 minutes?" — no need to lean on the one-live-per-tenant
+                # invariant as a proxy.
+                last_tx_stmt = (
+                    select(func.max(StockTransaction.created_at))
+                    .where(StockTransaction.tenant_id == event.tenant_id)
+                    .where(StockTransaction.event_id == event.id)
+                )
+                last_tx = (await session.execute(last_tx_stmt)).scalar()
+
+                if last_tx is not None and last_tx >= silence_threshold:
+                    counters["skipped_silence"] += 1
+                    logger.info(
+                        "cron_auto_transition: NOT ending event=%s (%s) "
+                        "— last tx at %s, within 60-min window",
+                        event.id, event.name, last_tx,
+                    )
+                    continue
+
+                service = EventService(db=session)
+                await service.end_event(event.tenant_id, event.id)
+                counters["completed"] += 1
+                logger.info(
+                    "cron_auto_transition: LIVE->COMPLETED event=%s (%s)",
+                    event.id, event.name,
+                )
+            except Exception as e:  # noqa: BLE001
+                await session.rollback()
+                counters["errors"] += 1
+                logger.warning(
+                    "cron_auto_transition: ending failed for event=%s: %s",
+                    event.id, e,
+                )
+
+    # Final log if anything happened
+    interesting = (counters["activated"] or counters["started"]
+                   or counters["completed"] or counters["errors"])
+    if interesting:
+        logger.info("cron_auto_transition tick: %s", counters)
+
+    return {"status": "ok", **counters}
