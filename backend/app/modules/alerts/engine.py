@@ -467,12 +467,4 @@ class AlertsOrchestrator:
         for k, v in deviation.items():
             totals[k] = totals.get(k, 0) + v
 
-        deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
-        for k, v in deviation.items():
-            totals[k] = totals.get(k, 0) + v
-
-        deviation = await self.recipe_deviation.evaluate(tenant_id, event_id, name_maps=name_maps)
-        for k, v in deviation.items():
-            totals[k] = totals.get(k, 0) + v
-
         return totals

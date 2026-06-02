@@ -181,6 +181,7 @@ async def make_stock_transaction(
     source: TransactionSource = TransactionSource.MANUAL_ADJUSTMENT,
     idempotency_key: str | None = None,
     parent_transaction_id: uuid.UUID | None = None,
+    bar_stock_id: uuid.UUID | None = None,
 ) -> StockTransaction:
     st = StockTransaction(
         tenant_id=tenant_id,
@@ -191,6 +192,7 @@ async def make_stock_transaction(
         source=source,
         source_idempotency_key=idempotency_key or uuid.uuid4().hex,
         parent_transaction_id=parent_transaction_id,
+        bar_stock_id=bar_stock_id,
     )
     session.add(st)
     await session.flush()
@@ -209,25 +211,42 @@ async def make_sale_with_children(
     age_minutes: int = 0,
 ) -> list[StockTransaction]:
     """Create a parent sale + child transactions (matching real POS flow).
-    The burn-rate evaluator filters on parent_transaction_id IS NOT NULL,
-    so tests must use this helper to produce transactions that count.
+    The burn-rate evaluator filters on bar_stock_id IS NOT NULL (i.e.
+    transactions that actually decremented a bar_stock row). Real
+    production tx always have bar_stock_id set; this helper mirrors
+    that by looking up the existing bar_stock row for (event,bar,product)
+    and stamping its id on both parent and child rows.
 
     age_minutes: backdates created_at by this many minutes — useful for
     demand-spike tests that need to populate different time windows.
     """
     from datetime import timedelta
-    from sqlalchemy import update
+    from sqlalchemy import update, select as sa_select
     backdate_ts = datetime.now(timezone.utc) - timedelta(minutes=age_minutes) if age_minutes else None
+
+    # Look up the bar_stock row created by the test's make_bar_stock call.
+    # Real production tx always have this set; mirroring that here.
+    bs_row = (await session.execute(
+        sa_select(BarStock.id).where(
+            BarStock.tenant_id == tenant_id,
+            BarStock.event_id  == event_id,
+            BarStock.bar_id    == bar_id,
+            BarStock.product_id == product_id,
+        )
+    )).scalar_one_or_none()
+
     results = []
     for _ in range(count):
         parent = await make_stock_transaction(
             session, tenant_id, event_id, bar_id, product_id,
             qty=qty, source=TransactionSource.MANUAL_ADJUSTMENT,
+            bar_stock_id=bs_row,
         )
         child = await make_stock_transaction(
             session, tenant_id, event_id, bar_id, product_id,
             qty=qty, source=TransactionSource.MANUAL_ADJUSTMENT,
             parent_transaction_id=parent.id,
+            bar_stock_id=bs_row,
         )
         if backdate_ts is not None:
             await session.execute(

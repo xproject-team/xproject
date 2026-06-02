@@ -489,7 +489,7 @@ class StockTransactionService:
         event = await self.events.get_by_id(tenant_id, event_id)
         if event is None: return []
         event_start = getattr(event, "started_at", None) or event.created_at
-        base = [StockTransaction.tenant_id==tenant_id, StockTransaction.event_id==event_id, StockTransaction.parent_transaction_id.is_not(None)]
+        base = [StockTransaction.tenant_id==tenant_id, StockTransaction.event_id==event_id, StockTransaction.bar_stock_id.is_not(None)]
         if bar_id is not None: base.append(StockTransaction.bar_id==bar_id)
         full_stmt = select(StockTransaction.product_id, StockTransaction.bar_id).where(and_(*base)).group_by(StockTransaction.product_id, StockTransaction.bar_id)
         pairs = (await self.db.execute(full_stmt)).all()
