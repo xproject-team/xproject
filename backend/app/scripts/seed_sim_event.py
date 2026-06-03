@@ -54,8 +54,13 @@ OWNER_PASS   = "simulator"
 VENUE_NAME   = "Sundance 2025 Simulation"
 EVENT_NAME   = "Sim Sundance 2025-06-15"
 
-# 8 Slesh shop names (verbatim from 2025-06-15 export)
+# Bar names — UNION of every shop name observed across the 5
+# historical events (data_DD_MM_2025/2-ordini_bracciali/*.xlsx).
+# Per Omar's product policy, every Sundance event has a different
+# bar lineup; this list is the COMPLETE catalog so the sim tenant
+# can run any historical event without skip-unknown-bar errors.
 SIM_BAR_NAMES = [
+    "Ape Magna",
     "Beer Bar",
     "Cocktail Bar",
     "Figo",
@@ -64,6 +69,11 @@ SIM_BAR_NAMES = [
     "Guardaroba",
     "La Nina",
     "Malandrino",
+    "Merch",
+    "Pret a Polpett",
+    "Stravizio",
+    "Totò",
+    "Twist&Chips",
 ]
 
 # Slesh category one-hot -> our ProductType + reasonable defaults
@@ -97,11 +107,10 @@ def _refine_drink_category(name: str, default: ProductCategory) -> ProductCatego
     return default
 
 
-# Path to the Slesh 2025 product catalog
-PRODOTTI_CATEGORIA_XLSX = (
-    Path.home() / "Desktop" / "2025" / "data_15_06_2025" /
-    "3-prodotti" / "Prodotti-categoria-SUNDANCE 15_06-slesh-1775121334676.xlsx"
-)
+# Root of all 5 historical events. Each event has its own
+# Prodotti-categoria XLSX with its own menu; the seed unions
+# all of them.
+HISTORICAL_DATA_ROOT = Path.home() / "Desktop" / "2025"
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────
@@ -191,7 +200,10 @@ async def _get_or_create_bars(db: AsyncSession, tenant_id, event_id) -> list[Bar
         if b is None:
             b = Bar(
                 tenant_id=tenant_id, event_id=event_id, name=name,
-                bar_type="food" if name in ("Focacceria", "Gelateria", "Malandrino") else "drinks",
+                bar_type="food" if name in (
+                    "Focacceria", "Gelateria", "Malandrino",
+                    "Pret a Polpett", "Twist&Chips", "Totò", "Ape Magna",
+                ) else ("merch" if name == "Merch" else "drinks"),
                 is_active=True,
             )
             db.add(b); await db.flush()
@@ -201,18 +213,73 @@ async def _get_or_create_bars(db: AsyncSession, tenant_id, event_id) -> list[Bar
 
 
 async def _upsert_products(db: AsyncSession, tenant_id) -> dict[str, Product]:
-    """Read the 2025 Prodotti-categoria XLSX, upsert each product by name."""
-    if not PRODOTTI_CATEGORIA_XLSX.exists():
-        print(f"  ❌ XLSX not found: {PRODOTTI_CATEGORIA_XLSX}")
+    """Scan ALL 5 historical events\' Prodotti-categoria XLSX files,
+    take the union, upsert each product by name.
+
+    Different events have different menus (Omar product policy).
+    The sim tenant gets the complete catalog so any event can be
+    replayed without skipping rows. Conflicts (same product name,
+    different prices across events) resolve last-write-wins by
+    sorted event directory name — deterministic and reproducible.
+    """
+    rows_unioned: dict[str, tuple] = {}  # name -> (name, prezzo, totale, bev, food, guard)
+    event_dirs = sorted(HISTORICAL_DATA_ROOT.glob("data_*_2025"))
+    if not event_dirs:
+        print(f"  ❌ no event dirs found under {HISTORICAL_DATA_ROOT}")
         sys.exit(1)
 
-    wb = openpyxl.load_workbook(PRODOTTI_CATEGORIA_XLSX, read_only=True)
-    ws = wb.active
-    products_by_name: dict[str, Product] = {}
-    rows = list(ws.iter_rows(min_row=2, values_only=True))
-    wb.close()
+    for event_dir in event_dirs:
+        # Look for the Prodotti file that has category columns.
+        # Naming varies:
+        #   15_06_2025 → "Prodotti-categoria-SUNDANCE..." (cols: name,prezzo,totale,beverage,Food,Guardaroba)
+        #   13_07_2025 → "Prodotti-Sundance...-1775123995664.xlsx" (cols: name,prezzo,totale,beverage,Food)
+        # The OTHER Prodotti-*.xlsx in each dir has 4 cols
+        # (name, Totale prodotti, Totale fatturato, Totale Consumabili)
+        # and no category info — skip that one.
+        picked = None
+        for f in sorted((event_dir / "3-prodotti").glob("Prodotti-*.xlsx")):
+            wb = openpyxl.load_workbook(f, read_only=True)
+            ws = wb.active
+            headers = [str(c.value).strip() if c.value else "" for c in ws[1]]
+            # Heuristic: file has "Prezzo" (price) col AND at least one
+            # category one-hot column.
+            has_price = "Prezzo" in headers
+            has_category = any(c in headers for c in ("beverage", "Food", "Guardaroba"))
+            wb.close()
+            if has_price and has_category:
+                picked = f
+                break  # first match by sorted name wins
+        if picked is None:
+            print(f"  ⚠️  no category-aware Prodotti file in {event_dir.name}")
+            continue
 
-    for row in rows:
+        # Re-open and read all rows; locate columns by header (not position)
+        wb = openpyxl.load_workbook(picked, read_only=True)
+        ws = wb.active
+        headers = [str(c.value).strip() if c.value else "" for c in ws[1]]
+        col = {h: headers.index(h) for h in headers if h}
+        idx_name  = col.get("Prodotto", 0)
+        idx_prezzo = col.get("Prezzo", 1)
+        idx_totale = col.get("Totale", 2)
+        idx_bev   = col.get("beverage")
+        idx_food  = col.get("Food")
+        idx_guard = col.get("Guardaroba")
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or row[idx_name] is None:
+                continue
+            name = str(row[idx_name]).strip()
+            prezzo = row[idx_prezzo] if idx_prezzo is not None else None
+            totale = row[idx_totale] if idx_totale is not None else None
+            bev   = row[idx_bev]   if idx_bev   is not None else 0
+            food  = row[idx_food]  if idx_food  is not None else 0
+            guard = row[idx_guard] if idx_guard is not None else 0
+            # Build a normalized 6-tuple matching the original shape
+            rows_unioned[name] = (name, prezzo, totale, bev, food, guard)
+        wb.close()
+    print(f"  scanned {len(event_dirs)} events; union of products: {len(rows_unioned)}")
+
+    products_by_name: dict[str, Product] = {}
+    for row in rows_unioned.values():
         name, prezzo, totale, bev, food, guard = row
         if name is None:
             continue
