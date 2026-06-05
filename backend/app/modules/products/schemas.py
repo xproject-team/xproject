@@ -39,6 +39,8 @@ class ProductResponse(BaseModel):
     default_price_cents: int | None = Field(default=None, ge=0)
     external_pos_id: str | None = None
     barcode: str | None = None
+    iva_pct: float | None = None
+    cauzione_cents: int | None = None
     is_archived: bool
 
 
@@ -58,6 +60,8 @@ class ProductCreate(BaseModel):
     unit: ProductUnit
     default_price_cents: int | None = Field(default=None, ge=0)
     external_pos_id: str | None = Field(default=None, max_length=128)
+    iva_pct: float | None = Field(default=None, ge=0, le=1)
+    cauzione_cents: int | None = Field(default=None, ge=0)
     barcode: str | None = Field(
         default=None,
         max_length=64,

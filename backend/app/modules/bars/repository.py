@@ -75,6 +75,8 @@ class BarRepository:
             name=data.name,
             slesh_negozio_id=data.slesh_negozio_id,
             bar_type=data.bar_type,
+            device_count=data.device_count,
+            slesh_category=data.slesh_category,
             is_active=data.is_active,
         )
         self.db.add(bar)

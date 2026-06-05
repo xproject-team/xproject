@@ -8,7 +8,7 @@ Conventions:
   + computed fields (bars_count) + nested related entities (venue).
 - model_config = {"from_attributes": True} lets us build schemas from ORM objects.
 """
-from datetime import datetime
+from datetime import datetime, time
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +32,17 @@ class EventCreate(BaseModel):
     scheduled_at: datetime
     scheduled_end_at: datetime
     expected_guest_count: int | None = Field(default=None, ge=0)
+
+    # Slesh-aligned fields (Phase B w1) — all optional
+    stripe_ragione_sociale: str | None = Field(default=None, max_length=255)
+    staff_arrival_time: time | None = None
+    wristband_qty_per_type: dict | None = None
+    topup_denominations_user: list[int] | None = None
+    topup_denominations_staff: list[int] | None = None
+    refund_min_credit_cents: int | None = Field(default=None, ge=0)
+    refund_fee_cents: int | None = Field(default=None, ge=0)
+    refund_window_open_at: datetime | None = None
+    refund_window_close_at: datetime | None = None
 
 
 # ─── Event — Update (PATCH /events/{id}) ──────────────────────────────────────
@@ -79,6 +90,15 @@ class EventResponse(BaseModel):
     scheduled_end_at: datetime
     venue: VenueResponse
     expected_guest_count: int | None
+    stripe_ragione_sociale: str | None
+    staff_arrival_time: time | None
+    wristband_qty_per_type: dict | None
+    topup_denominations_user: list[int] | None
+    topup_denominations_staff: list[int] | None
+    refund_min_credit_cents: int | None
+    refund_fee_cents: int | None
+    refund_window_open_at: datetime | None
+    refund_window_close_at: datetime | None
     bars_count: int
     version: int
     started_at: datetime | None

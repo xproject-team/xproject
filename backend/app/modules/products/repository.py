@@ -114,6 +114,8 @@ class ProductRepository:
             default_price_cents=data.default_price_cents,
             external_pos_id=data.external_pos_id,
             barcode=data.barcode,
+            iva_pct=data.iva_pct,
+            cauzione_cents=data.cauzione_cents,
             is_archived=False,
         )
         self.db.add(product)

@@ -29,6 +29,8 @@ class BarResponse(BaseModel):
     name: str
     slesh_negozio_id: str | None = None
     bar_type: str
+    device_count: int = 0
+    slesh_category: str | None = None
     is_active: bool
 
 
@@ -38,6 +40,8 @@ class BarCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     slesh_negozio_id: str | None = Field(default=None, max_length=128)
     bar_type: BarType = "drinks"
+    device_count: int = Field(default=0, ge=0)
+    slesh_category: str | None = Field(default=None, max_length=64)
     is_active: bool = True
 
 
@@ -50,4 +54,6 @@ class BarUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slesh_negozio_id: str | None = Field(default=None, max_length=128)
     bar_type: BarType | None = None
+    device_count: int | None = Field(default=None, ge=0)
+    slesh_category: str | None = Field(default=None, max_length=64)
     is_active: bool | None = None

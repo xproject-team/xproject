@@ -116,6 +116,15 @@ class EventRepository:
             scheduled_at=data.scheduled_at,
             scheduled_end_at=data.scheduled_end_at,
             expected_guest_count=data.expected_guest_count,
+            stripe_ragione_sociale=data.stripe_ragione_sociale,
+            staff_arrival_time=data.staff_arrival_time,
+            wristband_qty_per_type=data.wristband_qty_per_type,
+            topup_denominations_user=data.topup_denominations_user,
+            topup_denominations_staff=data.topup_denominations_staff,
+            refund_min_credit_cents=data.refund_min_credit_cents,
+            refund_fee_cents=data.refund_fee_cents,
+            refund_window_open_at=data.refund_window_open_at,
+            refund_window_close_at=data.refund_window_close_at,
             status=EventStatus.DRAFT,
         )
         self.db.add(event)
