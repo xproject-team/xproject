@@ -143,3 +143,15 @@ async def test_no_orphan_rows_in_critical_tables():
         """))).all()
     orphans = [r for r in rows if r[1] > 0]
     assert orphans == [], f"Orphan rows found: {orphans}"
+
+
+@pytest.mark.asyncio
+async def test_bars_device_count_not_null():
+    """device_count must be NOT NULL — a nullable column 500'd /bars once
+    (Phase B w2 added it nullable; w3 fixed it). Lock it forever."""
+    async with TestSessionLocal() as session:
+        nullable = (await session.execute(text("""
+            SELECT is_nullable FROM information_schema.columns
+            WHERE table_name = 'bars' AND column_name = 'device_count'
+        """))).scalar_one()
+    assert nullable == "NO", f"bars.device_count is nullable ({nullable})"

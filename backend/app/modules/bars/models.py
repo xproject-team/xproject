@@ -50,8 +50,8 @@ class Bar(TenantScopedModel):
 
     # POS device count assigned to this bar. From Excel sheet 3:
     # MAIN BAR=9, NO.3 BAR=1, STAGE BAR=4, Malandrino=2, etc.
-    device_count: Mapped[int | None] = mapped_column(
-        Integer, nullable=True,
+    device_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0,
     )
 
     # Slesh-side category label. Distinct from bar_type (which is
