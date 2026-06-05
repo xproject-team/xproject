@@ -14,6 +14,7 @@ import EventCreatePage       from '@/pages/events/EventCreatePage'
 import EventDetailPage       from '@/pages/events/EventDetailPage'
 import { EventReconciliationPage } from '@/pages/events/EventReconciliationPage'
 import InventoryPage         from '@/pages/inventory/InventoryPage'
+import AllocationPage        from '@/pages/inventory/AllocationPage'
 import AlertsPage            from '@/pages/alerts/AlertsPage'
 import BarsListPage          from '@/pages/bars/BarsListPage'
 import BarDetailPage         from '@/pages/bars/BarDetailPage'
@@ -287,6 +288,19 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag={['canViewAllBars', 'canViewOwnBar']}>
             <InventoryPage />
+          </RequirePermission>
+        }
+      />
+
+      {/*
+       * /inventory/allocate — Owner only (canViewAllBars)
+       * Phase C1: starting bottle counts per bar (Sundance 1 manual mode)
+       */}
+      <Route
+        path="/inventory/allocate"
+        element={
+          <RequirePermission flag="canViewAllBars">
+            <AllocationPage />
           </RequirePermission>
         }
       />
