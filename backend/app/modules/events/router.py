@@ -37,6 +37,7 @@ from app.modules.events.service import (
     EventNotFoundError,
     EventService,
     FullEventValidationError,
+    EventNotDraftError,
     LiveEventConflictError,
     StaleVersionError,
     VenueNotFoundError,
@@ -198,6 +199,61 @@ async def create_full_event(
     service = EventService(db)
     try:
         result = await service.create_full(tenant_id, payload)
+    except VenueNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "venue_not_found", "message": str(e)},
+        )
+    except FullEventValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "full_event_validation_failed",
+                "message": str(e),
+                "items": [it.model_dump() for it in e.errors],
+            },
+        )
+    event_dict = await service.build_response_dict(result["event"])
+    return FullEventCreateResponse(
+        event=EventResponse(**event_dict),
+        bars_created=result["bars_created"],
+        products_created=result["products_created"],
+        products_reused=result["products_reused"],
+        menu_items_created=result["menu_items_created"],
+        allocations_created=result["allocations_created"],
+    )
+
+
+@router.put(
+    "/{event_id}/full",
+    response_model=FullEventCreateResponse,
+)
+async def update_full_event(
+    event_id: UUID,
+    payload: FullEventCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> FullEventCreateResponse:
+    """Restructure a DRAFT event from the wizard (replace semantics).
+
+    Error responses:
+    - 404 event_not_found / venue_not_found
+    - 422 event_not_draft (LIVE/completed events cannot be restructured)
+    - 422 full_event_validation_failed (per-item report in detail.items)
+    """
+    service = EventService(db)
+    try:
+        result = await service.update_full(tenant_id, event_id, payload)
+    except EventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except EventNotDraftError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "event_not_draft", "message": str(e)},
+        )
     except VenueNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

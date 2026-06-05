@@ -225,3 +225,71 @@ async def test_create_full_venue_not_found():
                 await svc.create_full(tenant.id, payload)
         finally:
             await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_replaces_children():
+    """update_full replaces bars/menu/allocations; catalog products persist."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Bar A"), FullEventBar(name="Bar B")],
+                products=[_drink("Gin 1L"), _drink("Vodka 1L")],
+                menu=[
+                    FullEventMenuItem(bar_index=0, product_index=0, price_cents=1200),
+                    FullEventMenuItem(bar_index=1, product_index=1, price_cents=1000),
+                ],
+                allocations=[FullEventAllocation(bar_index=0, product_index=0, qty=10)],
+            ))
+            event_id = created["event"].id
+
+            # Restructure: 1 bar, 1 new product
+            res = await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Bar C")],
+                products=[_drink("Rum 1L")],
+                menu=[FullEventMenuItem(bar_index=0, product_index=0, price_cents=900)],
+                allocations=[FullEventAllocation(bar_index=0, product_index=0, qty=5)],
+            ))
+            assert res["bars_created"] == 1
+            from app.modules.events.models import Event
+            assert await _count(session, Bar, tenant.id) == 1            # replaced
+            assert await _count(session, EventProduct, tenant.id) == 1   # replaced
+            assert await _count(session, BarStock, tenant.id) == 1       # replaced
+            assert await _count(session, Product, tenant.id) == 3        # catalog persists (2+1)
+            assert await _count(session, Event, tenant.id) == 1          # same event
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_rejects_non_draft():
+    """Only DRAFT events can be restructured via the wizard."""
+    from app.modules.events.models import EventStatus
+    from app.modules.events.service import EventNotDraftError
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Bar A")],
+                products=[_drink("Gin 1L")],
+            ))
+            event = created["event"]
+            event.status = EventStatus.LIVE
+            await session.commit()
+
+            with pytest.raises(EventNotDraftError):
+                await svc.update_full(tenant.id, event.id, FullEventCreate(
+                    event=_event_create(venue.id),
+                    bars=[FullEventBar(name="Bar B")],
+                    products=[_drink("Vodka 1L")],
+                ))
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
