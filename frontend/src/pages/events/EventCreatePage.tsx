@@ -70,6 +70,17 @@ const csvEurosToCents = (s: string): number[] =>
   s.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x !== '')
     .map((x) => Math.round(Number(x.replace(',', '.')) * 100)).filter((n) => !Number.isNaN(n) && n >= 0)
 const productKey = (name: string, type: string) => `${type}::${name.trim().toLowerCase()}`
+// datetime-local <-> UTC ISO. datetime-local is naive LOCAL time; we store UTC.
+// Converting both directions keeps round-trips stable (no per-edit drift).
+const toUtcIso = (local: string): string => (local ? new Date(local).toISOString() : '')
+const toLocalInput = (iso: string): string => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 
 export default function EventCreatePage() {
   const navigate = useNavigate()
@@ -143,8 +154,8 @@ export default function EventCreatePage() {
     setName(String(ev.name ?? ''))
     const venue = ev.venue as { id?: string } | undefined
     setVenueId(venue?.id ?? '')
-    setStartAt(String(ev.scheduled_at ?? '').slice(0, 16))
-    setEndAt(String(ev.scheduled_end_at ?? '').slice(0, 16))
+    setStartAt(toLocalInput(String(ev.scheduled_at ?? '')))
+    setEndAt(toLocalInput(String(ev.scheduled_end_at ?? '')))
     setGuests(String(ev.expected_guest_count ?? ''))
     if (ev.staff_arrival_time) setStaffArrival(String(ev.staff_arrival_time).slice(0, 5))
     setStripeRagione(String(ev.stripe_ragione_sociale ?? ''))
@@ -156,8 +167,8 @@ export default function EventCreatePage() {
     if (ts) setTopupStaff(ts.map((c) => c / 100).join(', '))
     if (ev.refund_min_credit_cents != null) setRefundMin(String((ev.refund_min_credit_cents as number) / 100))
     if (ev.refund_fee_cents != null) setRefundFee(String((ev.refund_fee_cents as number) / 100))
-    if (ev.refund_window_open_at) setRefundOpen(String(ev.refund_window_open_at).slice(0, 16))
-    if (ev.refund_window_close_at) setRefundClose(String(ev.refund_window_close_at).slice(0, 16))
+    if (ev.refund_window_open_at) setRefundOpen(toLocalInput(String(ev.refund_window_open_at)))
+    if (ev.refund_window_close_at) setRefundClose(toLocalInput(String(ev.refund_window_close_at)))
 
     // Bars → local rows + backend-id → local-id map
     const barIdMap = new Map<string, number>()
@@ -278,7 +289,7 @@ export default function EventCreatePage() {
 
     const payload: FullEventCreatePayload = {
       event: {
-        name: name.trim(), venue_id: venueId, scheduled_at: startAt, scheduled_end_at: endAt,
+        name: name.trim(), venue_id: venueId, scheduled_at: toUtcIso(startAt), scheduled_end_at: toUtcIso(endAt),
         expected_guest_count: Number(guests) || null,
         stripe_ragione_sociale: stripeRagione.trim() || null,
         staff_arrival_time: staffArrival.trim() || null,
@@ -287,8 +298,8 @@ export default function EventCreatePage() {
         topup_denominations_staff: csvEurosToCents(topupStaff),
         refund_min_credit_cents: eurosToCents(refundMin),
         refund_fee_cents: eurosToCents(refundFee),
-        refund_window_open_at: refundOpen || null,
-        refund_window_close_at: refundClose || null,
+        refund_window_open_at: refundOpen ? toUtcIso(refundOpen) : null,
+        refund_window_close_at: refundClose ? toUtcIso(refundClose) : null,
       },
       bars: payloadBars.map((b) => ({ name: b.name.trim(), slesh_negozio_id: b.slesh_negozio_id.trim() || null, bar_type: b.bar_type, device_count: b.device_count, slesh_category: b.slesh_category.trim() || null, is_active: true })),
       products, menu, allocations,
