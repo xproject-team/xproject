@@ -105,3 +105,87 @@ class EventResponse(BaseModel):
     ended_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+# ─── Full Event Create (Phase D — Create Event wizard composite) ─────────────
+
+from app.modules.products.models import (  # noqa: E402
+    ProductCategory,
+    ProductType,
+    ProductUnit,
+)
+
+
+class FullEventBar(BaseModel):
+    """One bar in the composite payload (index-referenced by menu/allocations)."""
+    name: str = Field(..., min_length=1, max_length=255)
+    slesh_negozio_id: str | None = Field(default=None, max_length=128)
+    bar_type: str = "drinks"
+    device_count: int = Field(default=0, ge=0)
+    slesh_category: str | None = Field(default=None, max_length=64)
+    is_active: bool = True
+
+
+class FullEventProductInput(BaseModel):
+    """One product in the composite payload.
+
+    Products are TENANT-GLOBAL: if an active product with the same name +
+    product_type already exists, it is REUSED (menus rotate across Sundance
+    events but overlap heavily — ACQUA exists once, forever).
+    """
+    name: str = Field(..., min_length=1, max_length=255)
+    product_type: ProductType
+    category: ProductCategory | None = None
+    tier_rank: int | None = Field(default=None, ge=1, le=4)
+    unit: ProductUnit
+    default_price_cents: int | None = Field(default=None, ge=0)
+    iva_pct: float | None = Field(default=None, ge=0, le=1)
+    cauzione_cents: int | None = Field(default=None, ge=0)
+
+
+class FullEventMenuItem(BaseModel):
+    """Listini line: product (by index) sold at bar (by index) at an event price."""
+    bar_index: int = Field(..., ge=0)
+    product_index: int = Field(..., ge=0)
+    price_cents: int = Field(..., ge=0)
+    tier_rank_override: int | None = Field(default=None, ge=1, le=4)
+    is_available: bool = True
+
+
+class FullEventAllocation(BaseModel):
+    """Starting stock: qty of product (by index) allocated to bar (by index)."""
+    bar_index: int = Field(..., ge=0)
+    product_index: int = Field(..., ge=0)
+    qty: int = Field(..., ge=0)
+
+
+class FullEventCreate(BaseModel):
+    """POST /events/full — create a complete event in ONE transaction.
+
+    Event + bars + products + menu (event_products) + starting allocations
+    (bar_stock). All-or-nothing: any invalid item rejects the whole payload
+    with a per-item error report; nothing is committed on failure.
+    Indices in menu/allocations refer to positions in bars[]/products[].
+    """
+    event: EventCreate
+    bars: list[FullEventBar] = Field(default_factory=list, max_length=100)
+    products: list[FullEventProductInput] = Field(default_factory=list, max_length=500)
+    menu: list[FullEventMenuItem] = Field(default_factory=list, max_length=2000)
+    allocations: list[FullEventAllocation] = Field(default_factory=list, max_length=2000)
+
+
+class FullEventItemError(BaseModel):
+    """Validation failure for one item in a composite section."""
+    section: str
+    index: int
+    error: str
+
+
+class FullEventCreateResponse(BaseModel):
+    """Result of a successful composite create."""
+    event: EventResponse
+    bars_created: int
+    products_created: int
+    products_reused: int
+    menu_items_created: int
+    allocations_created: int

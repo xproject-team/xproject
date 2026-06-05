@@ -31,6 +31,20 @@ from app.modules.events.state_machine import (
 # ─── Domain exceptions ────────────────────────────────────────────────────────
 # Router layer maps each to the appropriate HTTP status code.
 
+from app.modules.events.schemas import (
+    FullEventCreate,
+    FullEventItemError,
+)
+
+
+class FullEventValidationError(Exception):
+    """Composite event create rejected — one or more items invalid."""
+
+    def __init__(self, errors: list[FullEventItemError]) -> None:
+        self.errors = errors
+        super().__init__(f"{len(errors)} invalid item(s) in full event payload")
+
+
 class EventNotFoundError(Exception):
     """Event does not exist OR belongs to a different tenant. Maps to 404."""
 
@@ -105,6 +119,194 @@ class EventService:
         event = await self.repo.create(tenant_id, data)
         await self.db.commit()
         return event
+
+    # ─── Full create (Phase D — Create Event wizard composite) ───────────────
+
+    async def create_full(
+        self,
+        tenant_id: UUID,
+        data: FullEventCreate,
+    ) -> dict:
+        """Create event + bars + products + menu + allocations ATOMICALLY.
+
+        All-or-nothing: everything is validated before anything is created;
+        one commit at the very end. Products are reused by (name,
+        product_type) when an active match exists in the tenant catalog.
+        Bars get chat channels via the same soft-dependency policy as
+        BarService.create_bar (failures logged-and-swallowed, never fatal).
+        """
+        from sqlalchemy import func, select
+
+        from app.modules.bar_stock.models import BarStock
+        from app.modules.bars.models import Bar
+        from app.modules.chat.service import ChatService
+        from app.modules.event_products.models import EventProduct
+        from app.modules.products.models import Product
+        from app.modules.products.service import _validate_shape, derive_tier_rank
+
+        # 1. Venue must exist in tenant
+        venue = await self.repo.get_venue(tenant_id, data.event.venue_id)
+        if venue is None:
+            raise VenueNotFoundError(f"Venue {data.event.venue_id} not found")
+
+        # 2. Validate EVERYTHING before creating anything
+        errors: list[FullEventItemError] = []
+        n_bars, n_products = len(data.bars), len(data.products)
+
+        seen_products: set[tuple[str, str]] = set()
+        for i, prod in enumerate(data.products):
+            key = (prod.name.strip().lower(), str(prod.product_type))
+            if key in seen_products:
+                errors.append(FullEventItemError(
+                    section="products", index=i,
+                    error=f"duplicate product '{prod.name}' in payload",
+                ))
+            seen_products.add(key)
+            try:
+                _validate_shape(prod.product_type, prod.category, prod.tier_rank)
+            except Exception as exc:
+                errors.append(FullEventItemError(
+                    section="products", index=i, error=str(exc),
+                ))
+
+        def _check_indices(section: str, rows) -> None:
+            seen: set[tuple[int, int]] = set()
+            for i, r in enumerate(rows):
+                if r.bar_index >= n_bars:
+                    errors.append(FullEventItemError(
+                        section=section, index=i,
+                        error=f"bar_index {r.bar_index} out of range (bars: {n_bars})",
+                    ))
+                if r.product_index >= n_products:
+                    errors.append(FullEventItemError(
+                        section=section, index=i,
+                        error=(
+                            f"product_index {r.product_index} out of range "
+                            f"(products: {n_products})"
+                        ),
+                    ))
+                key = (r.bar_index, r.product_index)
+                if key in seen:
+                    errors.append(FullEventItemError(
+                        section=section, index=i,
+                        error=f"duplicate (bar_index, product_index) pair {key}",
+                    ))
+                seen.add(key)
+
+        _check_indices("menu", data.menu)
+        _check_indices("allocations", data.allocations)
+
+        if errors:
+            raise FullEventValidationError(errors)
+
+        # 3. Event (always DRAFT)
+        event = await self.repo.create(tenant_id, data.event)
+
+        # 4. Bars + chat channels (soft dependency, same as BarService)
+        bar_rows: list = []
+        chat = ChatService(self.db)
+        for b in data.bars:
+            bar = Bar(
+                tenant_id=tenant_id,
+                event_id=event.id,
+                name=b.name,
+                slesh_negozio_id=b.slesh_negozio_id,
+                bar_type=b.bar_type,
+                device_count=b.device_count,
+                slesh_category=b.slesh_category,
+                is_active=b.is_active,
+            )
+            self.db.add(bar)
+            await self.db.flush()
+            bar_rows.append(bar)
+            try:
+                await chat.create_bar_channel(
+                    bar_id=bar.id, bar_name=bar.name, tenant_id=tenant_id,
+                )
+            except Exception:
+                # Soft dependency: bar creation must succeed even if chat
+                # provisioning hiccups. Backfill endpoint exists for recovery.
+                pass
+
+        # 5. Products — reuse active (name, type) match, else create
+        product_rows: list = []
+        products_created = products_reused = 0
+        for prod in data.products:
+            existing = (
+                await self.db.execute(
+                    select(Product).where(
+                        Product.tenant_id == tenant_id,
+                        func.lower(Product.name) == prod.name.strip().lower(),
+                        Product.product_type == prod.product_type,
+                        Product.is_archived == False,  # noqa: E712
+                    )
+                )
+            ).scalars().first()
+            if existing is not None:
+                product_rows.append(existing)
+                products_reused += 1
+                continue
+            row = Product(
+                tenant_id=tenant_id,
+                name=prod.name.strip(),
+                product_type=prod.product_type,
+                category=prod.category,
+                tier_rank=derive_tier_rank(
+                    prod.product_type, prod.category, prod.tier_rank,
+                ),
+                unit=prod.unit,
+                default_price_cents=prod.default_price_cents,
+                external_pos_id=None,
+                barcode=None,
+                iva_pct=prod.iva_pct,
+                cauzione_cents=prod.cauzione_cents,
+                is_archived=False,
+            )
+            self.db.add(row)
+            await self.db.flush()
+            product_rows.append(row)
+            products_created += 1
+
+        # 6. Menu (event_products — Listini with per-event prices)
+        for mrow in data.menu:
+            self.db.add(EventProduct(
+                tenant_id=tenant_id,
+                event_id=event.id,
+                bar_id=bar_rows[mrow.bar_index].id,
+                product_id=product_rows[mrow.product_index].id,
+                price_cents=mrow.price_cents,
+                tier_rank_override=mrow.tier_rank_override,
+                is_available=mrow.is_available,
+            ))
+        await self.db.flush()
+
+        # 7. Starting allocations (fresh event → plain creates; qty=0 skipped)
+        allocations_created = 0
+        for arow in data.allocations:
+            if arow.qty == 0:
+                continue
+            self.db.add(BarStock(
+                tenant_id=tenant_id,
+                event_id=event.id,
+                bar_id=bar_rows[arow.bar_index].id,
+                product_id=product_rows[arow.product_index].id,
+                allocated_qty=arow.qty,
+                current_qty=arow.qty,
+                returned_qty=0,
+            ))
+            allocations_created += 1
+        await self.db.flush()
+
+        # 8. ONE commit seals the whole composite
+        await self.db.commit()
+        return {
+            "event": event,
+            "bars_created": len(bar_rows),
+            "products_created": products_created,
+            "products_reused": products_reused,
+            "menu_items_created": len(data.menu),
+            "allocations_created": allocations_created,
+        }
 
     # ─── Update ───────────────────────────────────────────────────────────────
 

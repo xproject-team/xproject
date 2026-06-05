@@ -18,7 +18,13 @@ from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
 from app.modules.auth.permissions import get_active_role
-from app.modules.events.schemas import EventCreate, EventResponse, EventUpdate
+from app.modules.events.schemas import (
+    EventCreate,
+    EventResponse,
+    EventUpdate,
+    FullEventCreate,
+    FullEventCreateResponse,
+)
 from app.modules.events.reconciliation_schemas import ReconciliationReport
 from app.modules.events.category_totals_schemas import (
     EventBarCategoryTotalsResponse,
@@ -30,6 +36,7 @@ from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.service import (
     EventNotFoundError,
     EventService,
+    FullEventValidationError,
     LiveEventConflictError,
     StaleVersionError,
     VenueNotFoundError,
@@ -171,6 +178,50 @@ async def create_event(
 
 
 # ─── Update ───────────────────────────────────────────────────────────────────
+
+@router.post(
+    "/full",
+    response_model=FullEventCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_full_event(
+    payload: FullEventCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> FullEventCreateResponse:
+    """Create event + bars + products + menu + allocations in ONE transaction.
+
+    All-or-nothing (Phase D wizard backend). Error responses:
+    - 404 venue_not_found
+    - 422 full_event_validation_failed (per-item report in detail.items)
+    """
+    service = EventService(db)
+    try:
+        result = await service.create_full(tenant_id, payload)
+    except VenueNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "venue_not_found", "message": str(e)},
+        )
+    except FullEventValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "full_event_validation_failed",
+                "message": str(e),
+                "items": [it.model_dump() for it in e.errors],
+            },
+        )
+    event_dict = await service.build_response_dict(result["event"])
+    return FullEventCreateResponse(
+        event=EventResponse(**event_dict),
+        bars_created=result["bars_created"],
+        products_created=result["products_created"],
+        products_reused=result["products_reused"],
+        menu_items_created=result["menu_items_created"],
+        allocations_created=result["allocations_created"],
+    )
+
 
 @router.patch("/{event_id}", response_model=EventResponse)
 async def update_event(
