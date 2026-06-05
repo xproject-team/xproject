@@ -108,3 +108,18 @@ export function extractFullEventErrors(err: unknown): FullEventItemError[] | nul
   }
   return null
 }
+
+
+/** PUT /events/{id}/full — restructure a DRAFT event from the wizard. */
+export function useUpdateFullEvent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (args: { eventId: string; payload: FullEventCreatePayload }): Promise<FullEventCreateResult> => {
+      const res = await api.put<FullEventCreateResult>(`/events/${args.eventId}/full`, args.payload)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: eventKeys.list() })
+    },
+  })
+}

@@ -263,6 +263,17 @@ function AuthenticatedRoutes() {
           </RequirePermission>
         }
       />
+      {/*
+       * /events/:id/edit — Create Event wizard in edit mode (DRAFT events)
+       */}
+      <Route
+        path="/events/:id/edit"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventCreatePage />
+          </RequirePermission>
+        }
+      />
       <Route
         path="/events/:id"
         element={

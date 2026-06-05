@@ -334,7 +334,7 @@ function EventDetailContent({ event }: { event: Event }) {
           {/* Edit / Save / Cancel */}
           {effectiveCanEdit && !isEditing && (
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() => effective.status === 'draft' ? navigate(`/events/${effective.id}/edit`) : setIsEditing(true)}
               className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
             >
               Edit Event
