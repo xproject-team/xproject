@@ -5,7 +5,7 @@ In Slesh terminology this is a 'negozio' — could be a cocktail bar,
 a food truck, or any other sales station.
 """
 from uuid import UUID
-from sqlalchemy import Boolean, ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,4 +41,23 @@ class Bar(TenantScopedModel):
     # Is this bar currently active for the event?
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True,
+    )
+
+    # ─── Slesh-aligned fields (Phase B w2, June 2 2026) ──────────────
+    # Mirrors Omar's "Project Plan - Cashless" Excel sheets 3 (Device
+    # Count) and 4 (Listini Bar). Both nullable — bars can exist
+    # before device assignment / Slesh categorization.
+
+    # POS device count assigned to this bar. From Excel sheet 3:
+    # MAIN BAR=9, NO.3 BAR=1, STAGE BAR=4, Malandrino=2, etc.
+    device_count: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+
+    # Slesh-side category label. Distinct from bar_type (which is
+    # XProject-native: food/drinks/merch). Slesh uses labels like
+    # "Panineria" (sandwich shop), "Bar", "Bar + Cassa". We snapshot
+    # the Slesh-side label here for Slesh-fidelity reporting.
+    slesh_category: Mapped[str | None] = mapped_column(
+        String(40), nullable=True,
     )

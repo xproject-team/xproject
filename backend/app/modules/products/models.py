@@ -10,6 +10,7 @@ Design rationale:
 - Soft-delete via is_archived preserves FK chains from future events,
   recipes, and stock allocations (hard delete would break historical data)
 """
+from decimal import Decimal
 from enum import Enum as PyEnum
 from uuid import UUID
 
@@ -19,6 +20,7 @@ from sqlalchemy import (
     Enum,
     Index,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     text,
@@ -179,4 +181,24 @@ class Product(TenantScopedModel):
         nullable=False,
         server_default=text("false"),
         index=True,
+    )
+
+    # ─── Slesh-aligned fields (Phase B w2, June 2 2026) ──────────────
+    # Mirrors Omar's "Project Plan - Cashless" Excel sheet 4 (Listini
+    # Bar) columns Iva + Cauzione. Both nullable — products can be
+    # added before tax/deposit policy is set.
+
+    # IVA (VAT) rate as decimal — e.g. 0.100 = 10%, 0.220 = 22%.
+    # Italian standard food/drink rate is 10%. Stored on product
+    # rather than transaction because the rate is product-policy,
+    # not event-time.
+    iva_pct: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 3), nullable=True,
+    )
+
+    # Deposit (cauzione) in cents. Used for refundable items like
+    # the €1 glass deposit (Bicchiere). NULL = no deposit. When set,
+    # POS adds this to the sale price; refund happens on item return.
+    cauzione_cents: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
     )
