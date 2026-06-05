@@ -66,6 +66,9 @@ export default function AllocationPage() {
   const [search, setSearch] = useState('')
   const [banner, setBanner] = useState<string | null>(null)
   const [itemErrors, setItemErrors] = useState<BulkAllocateItemError[]>([])
+  const [showPaste, setShowPaste] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteReport, setPasteReport] = useState<string | null>(null)
 
   const visibleProducts = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -98,6 +101,71 @@ export default function AllocationPage() {
   const barName = (id: string) => bars.find((b) => b.id === id)?.name ?? id
   const productName = (id: string) =>
     products.find((p) => p.id === id)?.name ?? id
+
+  /** C3 — parse a pasted Excel/CSV matrix and apply it as dirty grid edits.
+   *  Expected shape (same as the grid):
+   *    row 1:  <anything> | Bar Name | Bar Name | ...
+   *    rows:   Product Name | qty | qty | ...
+   *  Matching is by name, case-insensitive. Nothing is saved here — matched
+   *  cells become dirty edits, reviewed and saved with the normal Save button.
+   */
+  const applyPaste = () => {
+    const text = pasteText.trim()
+    if (text === '') return
+    const delim = text.includes('\t') ? '\t' : text.includes(';') ? ';' : ','
+    const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '')
+    if (lines.length < 2) {
+      setPasteReport('Need a header row of bar names plus at least one product row.')
+      return
+    }
+
+    const norm = (x: string) => x.trim().toLowerCase()
+    const barByName = new Map(bars.map((b) => [norm(b.name), b.id]))
+    const productByName = new Map(products.map((pr) => [norm(pr.name), pr.id]))
+
+    const header = lines[0].split(delim)
+    const colBarIds: Array<string | null> = header.map((h, i) =>
+      i === 0 ? null : barByName.get(norm(h)) ?? null,
+    )
+    const unknownBars = header
+      .slice(1)
+      .filter((h, i) => h.trim() !== '' && colBarIds[i + 1] === null)
+
+    let matched = 0
+    const unknownProducts: string[] = []
+    const badCells: string[] = []
+    const newEdits: Record<string, number> = {}
+
+    for (const line of lines.slice(1)) {
+      const cells = line.split(delim)
+      const pname = cells[0] ?? ''
+      const productId = productByName.get(norm(pname)) ?? null
+      if (productId === null) {
+        if (pname.trim() !== '') unknownProducts.push(pname.trim())
+        continue
+      }
+      for (let c = 1; c < cells.length; c++) {
+        const barId = colBarIds[c]
+        if (barId === null || barId === undefined) continue
+        const raw = cells[c].trim()
+        if (raw === '') continue
+        const n = Math.floor(Number(raw))
+        if (Number.isNaN(n) || n < 0) {
+          badCells.push(`${pname.trim()} / ${header[c].trim()}: "${raw}"`)
+          continue
+        }
+        newEdits[cellKey(barId, productId)] = n
+        matched++
+      }
+    }
+
+    setEdits((prev) => ({ ...prev, ...newEdits }))
+    const parts = [`Applied ${matched} cell(s) to the grid — review and press Save.`]
+    if (unknownBars.length > 0) parts.push(`Unknown bars skipped: ${unknownBars.join(', ')}.`)
+    if (unknownProducts.length > 0) parts.push(`Unknown products skipped: ${unknownProducts.join(', ')}.`)
+    if (badCells.length > 0) parts.push(`Invalid quantities skipped: ${badCells.join('; ')}.`)
+    setPasteReport(parts.join(' '))
+  }
 
   const onSave = () => {
     if (effectiveEventId === null || dirtyCells.length === 0) return
@@ -202,6 +270,44 @@ export default function AllocationPage() {
         onChange={(e) => setSearch(e.target.value)}
         className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-64"
       />
+
+      {/* C3 — Excel/CSV paste-in */}
+      <div>
+        <button
+          onClick={() => setShowPaste((v) => !v)}
+          className="text-sm text-[#3182CE] underline"
+        >
+          {showPaste ? 'Hide paste panel' : 'Paste from Excel…'}
+        </button>
+        {showPaste && (
+          <div className="mt-2 space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <p className="text-xs text-[#718096]">
+              Copy a range from Excel and paste it here. First row: bar names.
+              First column: product names. Cells: quantities. Names must match
+              the grid (case-insensitive). Nothing is saved until you press
+              Save.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              rows={6}
+              placeholder={'\tMain Bar\tBeer Bar\nGin Bombay 1L\t24\t0\nVodka Grey Goose 1L\t12\t6'}
+              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono bg-white"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={applyPaste}
+                className="px-3 py-1.5 rounded-md text-sm font-medium text-white bg-[#3182CE]"
+              >
+                Apply to grid
+              </button>
+              {pasteReport !== null && (
+                <span className="text-xs text-[#4A5568]">{pasteReport}</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Grid */}
       {loading ? (
