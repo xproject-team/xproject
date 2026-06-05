@@ -12,6 +12,7 @@ We deliberately DO NOT expose a generic PATCH for quantities — all
 quantity changes go through one of the four semantic actions, which
 makes the downstream audit log (Step 6) cleanly mappable.
 """
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -101,3 +102,60 @@ class AdjustRequest(BaseModel):
         max_length=500,
         description="Audit note explaining why this manual adjustment was needed.",
     )
+
+
+class BulkAllocateItem(BaseModel):
+    """One row of a bulk allocation — (bar, product, qty)."""
+
+    bar_id: UUID
+    product_id: UUID
+    qty: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "mode='set':   target allocated_qty for this (bar, product). "
+            "mode='topup': quantity to add (must be > 0)."
+        ),
+    )
+
+
+class BulkAllocateRequest(BaseModel):
+    """POST /bar-stock/bulk-allocate — allocate many rows in one transaction.
+
+    Semantics by mode:
+    - 'set' (default): each item's qty is the TARGET allocated_qty.
+        delta = qty - existing.allocated_qty
+        allocated_qty = qty;  current_qty += delta (never below 0).
+        Re-posting the same payload is a no-op → idempotent. This is
+        the mode the Inventory Allocation page and CSV paste-in use.
+    - 'topup': identical semantics to single POST /bar-stock/allocate
+        (allocated_qty += qty, current_qty += qty), applied per item.
+
+    All-or-nothing: every item is validated before anything is applied;
+    one commit at the end. Any invalid item rejects the whole batch with
+    a per-item error report.
+    """
+
+    event_id: UUID
+    mode: Literal["set", "topup"] = "set"
+    items: list[BulkAllocateItem] = Field(..., min_length=1, max_length=500)
+
+
+class BulkAllocateItemError(BaseModel):
+    """Validation failure for one item, reported by payload index."""
+
+    index: int
+    bar_id: UUID
+    product_id: UUID
+    error: str
+
+
+class BulkAllocateResponse(BaseModel):
+    """Result of a successful bulk allocation."""
+
+    event_id: UUID
+    mode: str
+    created: int
+    updated: int
+    unchanged: int
+    rows: list[BarStockResponse]

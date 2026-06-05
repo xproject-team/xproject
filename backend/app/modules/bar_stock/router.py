@@ -25,6 +25,8 @@ from app.modules.bar_stock.schemas import (
     AdjustRequest,
     AllocateRequest,
     BarStockResponse,
+    BulkAllocateRequest,
+    BulkAllocateResponse,
     ConsumeRequest,
     ReturnRequest,
 )
@@ -33,6 +35,7 @@ from app.modules.bar_stock.service import (
     BarNotInEventError,
     BarStockNotFoundError,
     BarStockService,
+    BulkAllocationValidationError,
     EventNotFoundError,
     ExcessiveReturnError,
     InsufficientStockError,
@@ -149,6 +152,57 @@ async def allocate_stock(
             detail={"error": "product_archived", "message": str(e)},
         )
     return BarStockResponse.model_validate(stock)
+
+
+# ─── Bulk allocate (Phase C2 — Sundance 1 manual inventory) ──────────────────
+
+@router.post(
+    "/bulk-allocate",
+    response_model=BulkAllocateResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def bulk_allocate_stock(
+    payload: BulkAllocateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> BulkAllocateResponse:
+    """Allocate many (bar, product, qty) rows in ONE transaction.
+
+    mode='set' (default): qty is the TARGET allocated_qty — idempotent,
+                          used by the Inventory Allocation page + CSV paste.
+    mode='topup':         allocated/current += qty, same as single /allocate.
+
+    All-or-nothing: any invalid item rejects the whole batch.
+
+    Error responses:
+    - 404 event_not_found
+    - 422 bulk_validation_failed (carries per-item error list in detail.items)
+    """
+    service = BarStockService(db)
+    try:
+        result = await service.bulk_allocate(tenant_id, payload)
+    except EventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except BulkAllocationValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "bulk_validation_failed",
+                "message": str(e),
+                "items": [err.model_dump(mode="json") for err in e.errors],
+            },
+        )
+    return BulkAllocateResponse(
+        event_id=payload.event_id,
+        mode=payload.mode,
+        created=result["created"],
+        updated=result["updated"],
+        unchanged=result["unchanged"],
+        rows=[BarStockResponse.model_validate(r) for r in result["rows"]],
+    )
 
 
 # ─── Consume ──────────────────────────────────────────────────────────────────
