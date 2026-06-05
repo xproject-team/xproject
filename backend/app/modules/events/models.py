@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -77,5 +77,60 @@ class Event(TenantScopedModel):
         JSONB, nullable=True,
     )
     weather_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    # ─── Slesh-aligned event fields (Phase B w1, June 2 2026) ────────────
+    # Added to mirror Omar's official Slesh "Project Plan - Cashless"
+    # template (docs/sundance-1-setup-plan.md). All nullable to keep
+    # existing rows valid. UI surfaces these on the Create Event wizard
+    # tabs Overview + Parametri.
+
+    # Stripe legal entity (Italian: ragione sociale) — required for
+    # Stripe payments on Sundance. Filled from Excel sheet 1.
+    stripe_ragione_sociale: Mapped[str | None] = mapped_column(
+        String(255), nullable=True,
+    )
+
+    # Time of day staff are expected to arrive (separate from
+    # scheduled_at which is the public event start). Time-only, no date —
+    # date is implied by scheduled_at.
+    staff_arrival_time: Mapped[Time | None] = mapped_column(
+        Time(), nullable=True,
+    )
+
+    # Wristband planning JSON. Shape TBD with Omar; current Excel says
+    # "1800 x 4 tipologie diverse (7200 in totale)". Likely shape:
+    # {"early_bird": 1800, "general": 1800, "vip": 1800, "staff": 1800}
+    wristband_qty_per_type: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True,
+    )
+
+    # Top-up denominations in CENTS (consistent with money convention).
+    # User app: typically [500, 1000, 2000, 5000, 10000] (5/10/20/50/100€)
+    # Staff app: typically [500] (€5 single)
+    topup_denominations_user: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True,
+    )
+    topup_denominations_staff: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True,
+    )
+
+    # Refund policy. Sundance defaults from Excel sheet 2:
+    #   min credit = €1 (100 cents), fee = €0.50 (50 cents)
+    refund_min_credit_cents: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+    refund_fee_cents: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+    )
+
+    # Refund request window. Refunds outside this window are rejected.
+    # Filled from Excel sheet 2 (dates were placeholder "xx/xx/2026" —
+    # Omar needs to confirm).
+    refund_window_open_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    refund_window_close_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
