@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
-from app.modules.auth.models import Tenant, User, UserRole
+from app.modules.auth.models import Tenant, User, UserRole, UserRoleAssignment
 from app.modules.bar_stock.models import BarStock
 from app.modules.bars.models import Bar
 from app.modules.events.models import Event, EventStatus
@@ -132,19 +132,32 @@ async def _get_or_create_owner(db: AsyncSession, tenant_id) -> User:
         select(User).where(User.tenant_id == tenant_id, User.email == OWNER_EMAIL)
     )
     u = r.scalar_one_or_none()
-    if u is not None:
+    if u is None:
+        u = User(
+            tenant_id=tenant_id,
+            email=OWNER_EMAIL,
+            hashed_password=hash_password(OWNER_PASS),
+            full_name="Sim Owner",
+            role=UserRole.OWNER,
+            is_active=True,
+        )
+        db.add(u); await db.flush()
+        print(f"  + created owner id={u.id}")
+    else:
         print(f"  owner exists (id={u.id})")
-        return u
-    u = User(
-        tenant_id=tenant_id,
-        email=OWNER_EMAIL,
-        hashed_password=hash_password(OWNER_PASS),
-        full_name="Sim Owner",
-        role=UserRole.OWNER,
-        is_active=True,
+    # Login authorizes against the user_roles TABLE, not the legacy User.role
+    # column. The p1 migration backfilled pre-existing users; anyone seeded
+    # afterwards needs the grant explicitly or they 403 on a role-scoped login.
+    existing = await db.execute(
+        select(UserRoleAssignment).where(
+            UserRoleAssignment.user_id == u.id,
+            UserRoleAssignment.role == UserRole.OWNER,
+        )
     )
-    db.add(u); await db.flush()
-    print(f"  + created owner id={u.id}")
+    if existing.scalar_one_or_none() is None:
+        db.add(UserRoleAssignment(user_id=u.id, role=UserRole.OWNER))
+        await db.flush()
+        print("  + granted OWNER authorization row")
     return u
 
 
