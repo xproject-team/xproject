@@ -91,7 +91,7 @@ Decoded 6-sheet template, mapped 14 new fields + 2 partial overlaps.
 6. Inventory  7. Lineup
 Plus Excel paste-in on Tabs 4+5, "Go LIVE" validation button.
 
-**Phase D-bis — Food BarCard variant**
+**Phase D-bis — Food BarCard variant** ✅ DONE (820e2ef)
 Different middle section when bar_type='food'.
 Same wrapper, name, alert pill, overlay click.
 Per-food-item counts instead of drink categories.
