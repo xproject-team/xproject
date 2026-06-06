@@ -487,8 +487,20 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   if (anyError) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-[#E53E3E]">
-        Failed to load dashboard data. Check the backend is reachable.
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-sm">
+        <p className="text-[#E53E3E]">Failed to load dashboard data. Check the backend is reachable.</p>
+        <button
+          onClick={() => {
+            barsQuery.refetch()
+            barStockQuery.refetch()
+            transactionsQuery.refetch()
+            productsQuery.refetch()
+          }}
+          className="px-4 py-2 rounded-lg font-semibold text-white text-xs bg-[#3182CE] hover:bg-[#2B6CB0] transition-colors"
+        >
+          Retry now
+        </button>
+        <p className="text-[10px] text-[#A0AEC0]">Reconnecting automatically every 15s…</p>
       </div>
     )
   }
