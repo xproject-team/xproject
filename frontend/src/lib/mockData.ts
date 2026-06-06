@@ -730,6 +730,14 @@ export interface ProductRow {
 // Fields marked "placeholder (v1.1)" are not yet computable from the backend.
 // They render as "—" or "coming soon" treatments in BarCard for now.
 
+/** Per-food-item counts for the food-bar card variant (Phase D-bis).
+ * sold = allocated_qty - current_qty; remaining = current_qty. */
+export interface FoodItemCount {
+  name:      string
+  sold:      number
+  remaining: number
+}
+
 export interface BarKpi {
   // ── Real fields ──
   id:             string
@@ -741,6 +749,8 @@ export interface BarKpi {
   current_stock:  number              // SUM(bar_stock.current_qty) across all drinks at this bar
   initial_stock:  number              // SUM(bar_stock.allocated_qty)
   stock_pct:      number              // 0..100, rounded
+  bar_type:       BarType             // 'drinks' | 'food' — drives the card variant
+  food_items:     FoodItemCount[]     // per-item counts for food bars; [] for drink bars
 
   // ── Placeholder fields (v1.1) ──
   burn_rate:     number | null                 // btl/hr — needs time-windowed tx analysis

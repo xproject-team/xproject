@@ -10,7 +10,7 @@
  *   They'll become real once burn-rate computation, staff shifts, and
  *   alerts backends ship.
  */
-import type { BarKpi, BarStatus, StockTransactionRow } from '@/lib/mockData'
+import type { BarKpi, BarStatus, FoodItemCount, StockTransactionRow } from '@/lib/mockData'
 
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
 import type { ProductLike } from '@/features/dashboard/category-resolver' 
@@ -52,6 +52,44 @@ function Placeholder({ label }: { label: string }) {
     <span className="text-[#A0AEC0] italic" title={`${label} — coming soon`}>
       —
     </span>
+  )
+}
+
+// ─── Food-bar middle section (Phase D-bis) ──────────────────────────────────
+// Food bars don't have drink categories or a burn chart; they show per-item
+// counts (sold + remaining). Same card wrapper, name, alert pill, overlay.
+function FoodBarCardBody({ items }: { items: FoodItemCount[] }) {
+  const totalSold = items.reduce((sum, i) => sum + i.sold, 0)
+  const top = items.slice(0, 6)
+  return (
+    <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs text-[#4A5568]">Food Items Sold</p>
+        <p className="text-sm font-bold text-[#1A202C]">{totalSold}</p>
+      </div>
+      {top.length === 0 ? (
+        <p className="text-[11px] text-[#A0AEC0] italic py-3 text-center">
+          No food items allocated yet
+        </p>
+      ) : (
+        <ul className="space-y-1">
+          {top.map((it) => (
+            <li key={it.name} className="flex items-center justify-between text-xs">
+              <span className="text-[#1A202C] truncate pr-2">{it.name}</span>
+              <span className="shrink-0 tabular-nums">
+                <span className="font-semibold text-[#1A202C]">{it.sold}</span>
+                <span className="text-[#A0AEC0]"> · {it.remaining} left</span>
+              </span>
+            </li>
+          ))}
+          {items.length > top.length && (
+            <li className="text-[10px] text-[#A0AEC0] italic pt-0.5">
+              +{items.length - top.length} more…
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -107,20 +145,24 @@ export function BarCard({
             Replaces the old tier B/S/P/U chips. Locked May 27 2026: bars
             display multi-line per-category chart for live-sale-crash
             detection. Categories: beer / cocktails / premium_cocktails / wine. */}
-      <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-xs text-[#4A5568]">Drinks Sold</p>
-          <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
+      {bar.bar_type === 'food' ? (
+        <FoodBarCardBody items={bar.food_items} />
+      ) : (
+        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-[#4A5568]">Drinks Sold</p>
+            <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
+          </div>
+          <BarMiniChart
+            barId={bar.id}
+            transactions={transactions}
+            products={products}
+            eventStartMs={eventStartMs}
+            nowMs={nowMs}
+            height={120}
+          />
         </div>
-        <BarMiniChart
-          barId={bar.id}
-          transactions={transactions}
-          products={products}
-          eventStartMs={eventStartMs}
-          nowMs={nowMs}
-          height={120}
-        />
-      </div>
+      )}
 
       {/* 5 — Stock Level (REAL) */}
       <div className="mb-3">

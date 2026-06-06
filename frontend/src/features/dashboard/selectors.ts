@@ -16,6 +16,7 @@
  */
 import type {
   BarKpi,
+  FoodItemCount,
   BarRow,
   BarStatus,
   BarStockRow,
@@ -88,6 +89,23 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
     // All stock rows at this bar (across every product allocated here)
     const stockAtBar = barStock.filter((s) => s.bar_id === bar.id)
 
+    // Per-food-item counts for the food-bar card variant (Phase D-bis).
+    // Food bars list each item (sold = allocated - current); drink bars get [].
+    const food_items: FoodItemCount[] =
+      bar.bar_type === 'food'
+        ? stockAtBar
+            .filter((s) => productById.get(s.product_id)?.product_type === 'food')
+            .map((s) => {
+              const p = productById.get(s.product_id)
+              return {
+                name: p?.name ?? 'Unknown item',
+                sold: Math.max(0, s.allocated_qty - s.current_qty),
+                remaining: s.current_qty,
+              }
+            })
+            .sort((a, b) => b.sold - a.sold)
+        : []
+
     // Parent transactions at this bar
     const txAtBar = parentTxs.filter((t) => t.bar_id === bar.id)
 
@@ -148,6 +166,8 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       current_stock,
       initial_stock,
       stock_pct,
+      bar_type:         bar.bar_type,
+      food_items,
       // Placeholder fields (v1.1)
       burn_rate:            bar_burn_rate,
       burn_trend:           null,
