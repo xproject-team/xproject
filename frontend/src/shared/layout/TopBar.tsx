@@ -10,7 +10,7 @@ const ROLE_BADGE: Record<
 > = {
   owner:     { label: 'Owner',     bg: 'bg-[#E6FBF6]', text: 'text-[#1ABC9C]', border: 'border-[#1ABC9C]/40', dot: '#1E5A8D' },
   manager:   { label: 'Manager',   bg: 'bg-[#EBF5FB]', text: 'text-[#3498DB]', border: 'border-[#3498DB]/40', dot: '#6B21A8' },
-  warehouse: { label: 'Warehouse', bg: 'bg-[#FEF9E7]', text: 'text-[#D69E2E]', border: 'border-[#D69E2E]/40', dot: '#DD6B20' },
+  warehouse: { label: 'Warehouse Staff', bg: 'bg-[#FEF9E7]', text: 'text-[#D69E2E]', border: 'border-[#D69E2E]/40', dot: '#DD6B20' },
   bartender: { label: 'Bartender', bg: 'bg-[#FDEDEC]', text: 'text-[#E74C3C]', border: 'border-[#E74C3C]/40', dot: '#059669' },
 }
 
