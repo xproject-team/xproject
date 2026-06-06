@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     # Auth
     secret_key:                  str = "changeme-in-production-use-256-bit-random"
     algorithm:                   str = "HS256"
-    access_token_expire_minutes: int = 30
+    # 16h so a single login covers a full Sundance event day (staff
+    # arrive ~11:00, nights can run past midnight). Override per-env via
+    # ACCESS_TOKEN_EXPIRE_MINUTES. TODO post-Sundance: replace long-lived
+    # tokens with a proper /auth/refresh refresh-token flow.
+    access_token_expire_minutes: int = 960
 
     # Infrastructure — defaults are LOCAL dev (override in Docker/prod)
     database_url: str = "postgresql+asyncpg://xproject:xproject@localhost:5432/xproject"
