@@ -47,6 +47,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'burnRate', eventId] as const,
   barCategoryTotals: (eventId: string) =>
     [...dashboardKeys.all, 'barCategoryTotals', eventId] as const,
+  kpiSummary: (eventId: string) =>
+    [...dashboardKeys.all, 'kpiSummary', eventId] as const,
 } as const
 
 // ─── Poll interval for "live" data during an event ────────────────────────────
@@ -221,6 +223,64 @@ export function useBarCategoryTotals(eventId: string | null | undefined) {
     queryFn: async () => {
       const { data } = await api.get<EventBarCategoryTotalsResponse>(
         `/events/${eventId}/bar-category-totals`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DASH — event-level KPI summary (dashboard top strip).
+// Backend: GET /events/{event_id}/kpi-summary (events module, Step 2).
+// Authoritative rollup: drinks (100% Omar) by family + food (GROSS) by
+// FoodType with the event's revenue-share % applied to yield Omar's NET
+// cut. total_revenue_eur = drinks + food NET. Decimals arrive as strings.
+// ─────────────────────────────────────────────────────────────────────
+
+export type DrinkFamily = 'cocktails' | 'beer' | 'wine' | 'soft' | 'other'
+
+export interface DrinkCategoryLineDTO {
+  family:      DrinkFamily
+  units:       number
+  revenue_eur: string
+}
+
+export interface FoodTypeLineDTO {
+  food_type:   string   // FoodType value, or 'other' for untyped food
+  units:       number
+  revenue_eur: string   // GROSS (pre-share)
+}
+
+export interface DrinksSummaryDTO {
+  units:       number
+  revenue_eur: string   // 100% Omar
+  by_category: DrinkCategoryLineDTO[]
+}
+
+export interface FoodSummaryDTO {
+  units:             number
+  gross_revenue_eur: string
+  share_pct:         number   // Omar's %, default 100
+  net_revenue_eur:   string   // gross * share / 100
+  by_type:           FoodTypeLineDTO[]
+}
+
+export interface EventKpiSummaryDTO {
+  event_id:          string
+  total_revenue_eur: string   // drinks + food NET = Omar's take
+  drinks:            DrinksSummaryDTO
+  food:              FoodSummaryDTO
+}
+
+export function useEventKpiSummary(eventId: string | null | undefined) {
+  return useQuery<EventKpiSummaryDTO>({
+    queryKey: dashboardKeys.kpiSummary(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<EventKpiSummaryDTO>(
+        `/events/${eventId}/kpi-summary`,
       )
       return data
     },
