@@ -28,6 +28,7 @@ import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
+import { KpiBreakdownPanel } from '@/features/dashboard/KpiBreakdownPanel'
 import {
   useAllProducts,
   useBarsForEvent,
@@ -548,6 +549,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
           onAlertsClick={handleAlertsClick}
         />
+        <KpiBreakdownPanel kpi={kpiQuery.data ?? null} />
 
         {/* Zone B — Bar card grid */}
         <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">
