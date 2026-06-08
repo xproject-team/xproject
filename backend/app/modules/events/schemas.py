@@ -104,7 +104,7 @@ class EventResponse(BaseModel):
     refund_fee_cents: int | None
     refund_window_open_at: datetime | None
     refund_window_close_at: datetime | None
-    food_revenue_share_pct: int | None
+    food_revenue_share_pct: int | None = None
     bars_count: int
     version: int
     started_at: datetime | None
