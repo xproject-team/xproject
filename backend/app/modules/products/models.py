@@ -70,6 +70,19 @@ class ProductUnit(str, PyEnum):
     ML          = "ml"           # volume-based ingredient
 
 
+class FoodType(str, PyEnum):
+    # Type of FOOD product. Fixed taxonomy for the dashboard food breakdown.
+    # Only set when product_type = FOOD; drink/ingredient/supply leave it NULL
+    # (drinks use the category column instead). Confirmed with Omar, June 2026.
+    BURGERS = "burgers"
+    SANDWICHES = "sandwiches"
+    FRIED = "fried"
+    SKEWERS = "skewers"
+    PIZZA = "pizza"
+    GELATO = "gelato"
+    OTHER = "other"
+
+
 # ─── Tier rank derivation (drinks only) ───────────────────────────────────────
 # When product_type=DRINK and tier_rank is not explicitly provided, the service
 # layer derives it from category using this map. Callers may override by
@@ -138,6 +151,20 @@ class Product(TenantScopedModel):
         Enum(
             ProductCategory,
             name="product_category",
+            values_callable=lambda enum: [e.value for e in enum],
+            native_enum=True,
+            create_type=False,
+        ),
+        nullable=True,
+        index=True,
+    )
+
+    # Food taxonomy. Only set when product_type=FOOD; drinks leave this NULL.
+    # Drives the dashboard food-by-type breakdown. Added x1, June 2026.
+    food_type: Mapped[FoodType | None] = mapped_column(
+        Enum(
+            FoodType,
+            name="food_type",
             values_callable=lambda enum: [e.value for e in enum],
             native_enum=True,
             create_type=False,

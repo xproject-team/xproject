@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Time
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, SmallInteger, String, Time
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,14 @@ class EventStatus(str, PyEnum):
 class Event(TenantScopedModel):
     """A scheduled event hosted at a venue."""
     __tablename__ = "events"
+
+    __table_args__ = (
+        CheckConstraint(
+            "food_revenue_share_pct IS NULL OR "
+            "(food_revenue_share_pct >= 0 AND food_revenue_share_pct <= 100)",
+            name="events_food_share_pct_range",
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     venue_id: Mapped[UUID] = mapped_column(
@@ -133,4 +141,13 @@ class Event(TenantScopedModel):
     )
     refund_window_close_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
+    )
+
+    # Revenue model (XProject-native, not Slesh).
+    # Omar share of FOOD gross revenue (integer percent 0-100). Food is a
+    # partnership: the owner keeps this percent, the food company the rest.
+    #   omar_food_revenue = food_gross * food_revenue_share_pct / 100
+    # NULL = 100 (no split). One value per event. Added x1, June 2026.
+    food_revenue_share_pct: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True,
     )
