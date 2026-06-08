@@ -1,9 +1,12 @@
 /**
- * EventCreatePage — Slesh-aligned Create/Edit Event wizard (Phase D).
+ * EventCreatePage — Create/Edit Event wizard.
  *
- * Seven tabs mirroring Omar's Slesh planning Excel:
- *   1 Overview   2 Parametri   3 Bars   4 Device Count
- *   5 Listini    6 Inventory   7 Lineup (stub)
+ * Six tabs covering what XProject acts on:
+ *   1 Overview   2 Bars   3 Device Count   4 Listini   5 Inventory   6 Lineup (stub)
+ *
+ * Slesh-only config (wristbands, top-ups, refund policy, Stripe) lives in
+ * Slesh, not here, so the wizard no longer collects it. The dormant DB
+ * columns remain; they are simply not populated from this form.
  *
  * Create mode (no :id): POST /events/full.
  * Edit mode (/events/:id/edit, DRAFT only): hydrates from the event's
@@ -46,13 +49,8 @@ interface ListiniRow {
   iva: string
   cauzione: string
 }
-interface WristbandRow {
-  id: number
-  label: string
-  qty: number
-}
 
-const TABS = ['1 · Overview', '2 · Parametri', '3 · Bars', '4 · Device Count', '5 · Listini', '6 · Inventory', '7 · Lineup']
+const TABS = ['1 · Overview', '2 · Bars', '3 · Device Count', '4 · Listini', '5 · Inventory', '6 · Lineup']
 
 const inputCls =
   'w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]'
@@ -66,9 +64,6 @@ const eurosToCents = (s: string): number | null => {
   if (String(s).trim() === '' || Number.isNaN(n) || n < 0) return null
   return Math.round(n * 100)
 }
-const csvEurosToCents = (s: string): number[] =>
-  s.split(/[,;\s]+/).map((x) => x.trim()).filter((x) => x !== '')
-    .map((x) => Math.round(Number(x.replace(',', '.')) * 100)).filter((n) => !Number.isNaN(n) && n >= 0)
 const productKey = (name: string, type: string) => `${type}::${name.trim().toLowerCase()}`
 // datetime-local <-> UTC ISO. datetime-local is naive LOCAL time; we store UTC.
 // Converting both directions keeps round-trips stable (no per-edit drift).
@@ -112,18 +107,6 @@ export default function EventCreatePage() {
   const [endAt, setEndAt] = useState('')
   const [guests, setGuests] = useState('1600')
   const [staffArrival, setStaffArrival] = useState('11:00')
-  const [stripeRagione, setStripeRagione] = useState('')
-  const [wristbands, setWristbands] = useState<WristbandRow[]>([
-    { id: 1, label: 'Tipo 1', qty: 1800 }, { id: 2, label: 'Tipo 2', qty: 1800 },
-    { id: 3, label: 'Tipo 3', qty: 1800 }, { id: 4, label: 'Tipo 4', qty: 1800 },
-  ])
-
-  const [topupUser, setTopupUser] = useState('5, 10, 20, 50, 100')
-  const [topupStaff, setTopupStaff] = useState('5')
-  const [refundMin, setRefundMin] = useState('1')
-  const [refundFee, setRefundFee] = useState('0.50')
-  const [refundOpen, setRefundOpen] = useState('')
-  const [refundClose, setRefundClose] = useState('')
 
   const [bars, setBars] = useState<BarRow[]>([])
   const [nextBarId, setNextBarId] = useState(1)
@@ -158,17 +141,6 @@ export default function EventCreatePage() {
     setEndAt(toLocalInput(String(ev.scheduled_end_at ?? '')))
     setGuests(String(ev.expected_guest_count ?? ''))
     if (ev.staff_arrival_time) setStaffArrival(String(ev.staff_arrival_time).slice(0, 5))
-    setStripeRagione(String(ev.stripe_ragione_sociale ?? ''))
-    const wb = ev.wristband_qty_per_type as Record<string, number> | null
-    if (wb && Object.keys(wb).length) setWristbands(Object.entries(wb).map(([label, qty], i) => ({ id: i + 1, label, qty: Number(qty) })))
-    const tu = ev.topup_denominations_user as number[] | null
-    if (tu) setTopupUser(tu.map((c) => c / 100).join(', '))
-    const ts = ev.topup_denominations_staff as number[] | null
-    if (ts) setTopupStaff(ts.map((c) => c / 100).join(', '))
-    if (ev.refund_min_credit_cents != null) setRefundMin(String((ev.refund_min_credit_cents as number) / 100))
-    if (ev.refund_fee_cents != null) setRefundFee(String((ev.refund_fee_cents as number) / 100))
-    if (ev.refund_window_open_at) setRefundOpen(toLocalInput(String(ev.refund_window_open_at)))
-    if (ev.refund_window_close_at) setRefundClose(toLocalInput(String(ev.refund_window_close_at)))
 
     // Bars → local rows + backend-id → local-id map
     const barIdMap = new Map<string, number>()
@@ -284,22 +256,11 @@ export default function EventCreatePage() {
 
     if (preErrors.length > 0) return { payload: null, preErrors }
 
-    const wbObj: Record<string, number> = {}
-    for (const w of wristbands) if (w.label.trim() !== '') wbObj[w.label.trim()] = w.qty
-
     const payload: FullEventCreatePayload = {
       event: {
         name: name.trim(), venue_id: venueId, scheduled_at: toUtcIso(startAt), scheduled_end_at: toUtcIso(endAt),
         expected_guest_count: Number(guests) || null,
-        stripe_ragione_sociale: stripeRagione.trim() || null,
         staff_arrival_time: staffArrival.trim() || null,
-        wristband_qty_per_type: Object.keys(wbObj).length ? wbObj : null,
-        topup_denominations_user: csvEurosToCents(topupUser),
-        topup_denominations_staff: csvEurosToCents(topupStaff),
-        refund_min_credit_cents: eurosToCents(refundMin),
-        refund_fee_cents: eurosToCents(refundFee),
-        refund_window_open_at: refundOpen ? toUtcIso(refundOpen) : null,
-        refund_window_close_at: refundClose ? toUtcIso(refundClose) : null,
       },
       bars: payloadBars.map((b) => ({ name: b.name.trim(), slesh_negozio_id: b.slesh_negozio_id.trim() || null, bar_type: b.bar_type, device_count: b.device_count, slesh_category: b.slesh_category.trim() || null, is_active: true })),
       products, menu, allocations,
@@ -307,7 +268,7 @@ export default function EventCreatePage() {
     return { payload, preErrors: [] }
   }
 
-  const SECTION_TAB: Record<string, number> = { bars: 2, products: 4, menu: 4, allocations: 5 }
+  const SECTION_TAB: Record<string, number> = { bars: 1, products: 3, menu: 3, allocations: 4 }
   const saving = createFull.isPending || updateFull.isPending
 
   function onSave() {
@@ -338,7 +299,7 @@ export default function EventCreatePage() {
       <div className="flex items-center justify-between mb-5">
         <div>
           <h1 className="text-2xl font-bold text-[#1A202C]">{editMode ? 'Edit Event' : 'Create Event'}</h1>
-          <p className="text-sm text-[#4A5568] mt-1">{editMode ? 'Editing a draft — Save replaces the bars, menu, and allocations.' : 'Mirrors the Slesh planning sheet. Saved as a draft; activate from the event page.'}</p>
+          <p className="text-sm text-[#4A5568] mt-1">{editMode ? 'Editing a draft — Save replaces the bars, menu, and allocations.' : 'Set up the event. Saved as a draft; activate from the event page.'}</p>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/events')} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC]">Cancel</button>
@@ -365,23 +326,10 @@ export default function EventCreatePage() {
           <div><Label>End</Label><input type="datetime-local" className={inputCls} value={endAt} onChange={(e) => setEndAt(e.target.value)} /></div>
           <div><Label>Expected Guests</Label><input type="number" className={inputCls} value={guests} onChange={(e) => setGuests(e.target.value)} /></div>
           <div><Label>Staff Arrival Time</Label><input type="time" className={inputCls} value={staffArrival} onChange={(e) => setStaffArrival(e.target.value)} /></div>
-          <div className="sm:col-span-2"><Label>Stripe — Ragione Sociale</Label><input className={inputCls} value={stripeRagione} onChange={(e) => setStripeRagione(e.target.value)} placeholder="Sundance srls" /></div>
-          <div className="sm:col-span-2"><Label>Wristbands (label × quantity)</Label><div className="space-y-2">{wristbands.map((w) => (<div key={w.id} className="flex gap-2"><input className={`${inputCls} flex-1`} value={w.label} onChange={(e) => setWristbands((p) => p.map((x) => x.id === w.id ? { ...x, label: e.target.value } : x))} /><input type="number" className={`${inputCls} w-32`} value={w.qty} onChange={(e) => setWristbands((p) => p.map((x) => x.id === w.id ? { ...x, qty: Number(e.target.value) || 0 } : x))} /></div>))}</div></div>
         </div>
       )}
 
       {tab === 1 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div><Label>Top-up — User (€, comma-separated)</Label><input className={inputCls} value={topupUser} onChange={(e) => setTopupUser(e.target.value)} /></div>
-          <div><Label>Top-up — Staff (€)</Label><input className={inputCls} value={topupStaff} onChange={(e) => setTopupStaff(e.target.value)} /></div>
-          <div><Label>Refund — Min credit (€)</Label><input className={inputCls} value={refundMin} onChange={(e) => setRefundMin(e.target.value)} /></div>
-          <div><Label>Refund — Handling fee (€)</Label><input className={inputCls} value={refundFee} onChange={(e) => setRefundFee(e.target.value)} /></div>
-          <div><Label>Refund window — Opens</Label><input type="datetime-local" className={inputCls} value={refundOpen} onChange={(e) => setRefundOpen(e.target.value)} /></div>
-          <div><Label>Refund window — Closes</Label><input type="datetime-local" className={inputCls} value={refundClose} onChange={(e) => setRefundClose(e.target.value)} /></div>
-        </div>
-      )}
-
-      {tab === 2 && (
         <div>
           <button onClick={addBar} className="mb-3 text-sm font-semibold text-white px-3 py-1.5 rounded-lg bg-[#3182CE]">+ Add bar</button>
           <div className="space-y-2">
@@ -397,13 +345,13 @@ export default function EventCreatePage() {
         </div>
       )}
 
-      {tab === 3 && (
+      {tab === 2 && (
         <div className="space-y-2 max-w-md">
           {payloadBars.length === 0 ? <p className="text-sm text-[#718096]">Add bars first (Bars tab).</p> : payloadBars.map((b) => (<div key={b.id} className="flex items-center gap-3"><span className="flex-1 text-sm text-[#1A202C]">{b.name}</span><input type="number" min={0} className={`${inputCls} w-28`} value={b.device_count} onChange={(e) => updateBar(b.id, 'device_count', Number(e.target.value) || 0)} /></div>))}
         </div>
       )}
 
-      {tab === 4 && (
+      {tab === 3 && (
         <div>
           <button onClick={addListini} className="mb-3 text-sm font-semibold text-white px-3 py-1.5 rounded-lg bg-[#3182CE]">+ Add product</button>
           <div className="space-y-2">
@@ -421,7 +369,7 @@ export default function EventCreatePage() {
         </div>
       )}
 
-      {tab === 5 && (
+      {tab === 4 && (
         <div>
           {payloadBars.length === 0 || uniqueProducts.length === 0 ? <p className="text-sm text-[#718096]">Add bars and Listini products first — the grid builds from them.</p> : (
             <div className="overflow-x-auto border border-[#E2E8F0] rounded-lg">
@@ -434,7 +382,7 @@ export default function EventCreatePage() {
         </div>
       )}
 
-      {tab === 6 && (<div className="text-sm text-[#718096] max-w-lg"><p className="mb-2">Lineup (3 stages × 5 slots) is captured closer to the event.</p><p>Stages/lineup tables are deferred (Phase B4); this tab mirrors the Slesh sheet order.</p></div>)}
+      {tab === 5 && (<div className="text-sm text-[#718096] max-w-lg"><p className="mb-2">Lineup (3 stages × 5 slots) is captured closer to the event.</p><p>Stages/lineup tables are deferred (Phase B4).</p></div>)}
     </div>
   )
 }
