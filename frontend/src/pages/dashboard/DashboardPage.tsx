@@ -28,7 +28,7 @@ import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
-import { KpiBreakdownPanel } from '@/features/dashboard/KpiBreakdownPanel'
+import { SalesBreakdownModal } from '@/features/dashboard/SalesBreakdownModal'
 import {
   useAllProducts,
   useBarsForEvent,
@@ -78,9 +78,10 @@ interface KpiStripProps {
   unacknowledgedCount: number
   criticalCount: number
   onAlertsClick: () => void
+  onBreakdownClick: () => void
 }
 
-function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsClick }: KpiStripProps) {
+function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsClick, onBreakdownClick }: KpiStripProps) {
   const totalRevenue = kpi ? formatEur(kpi.total_revenue_eur) : '\u2014'
   const drinkUnits   = kpi?.drinks.units ?? 0
   const drinkRevenue = kpi ? formatEur(kpi.drinks.revenue_eur) : '\u2014'
@@ -103,8 +104,13 @@ function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsCl
         </div>
       </div>
 
-      {/* Drinks */}
-      <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
+      {/* Drinks - tap for breakdown */}
+      <button
+        type="button"
+        onClick={onBreakdownClick}
+        title="View sales breakdown"
+        className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-[#F7FAFC] rounded-lg px-3 py-1 -mx-3 transition-colors text-left cursor-pointer"
+      >
         <div>
           <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
             Drinks
@@ -114,10 +120,15 @@ function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsCl
             <span className="text-sm font-semibold text-[#4A5568] ml-2">{drinkRevenue}</span>
           </p>
         </div>
-      </div>
+      </button>
 
-      {/* Food */}
-      <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
+      {/* Food - tap for breakdown */}
+      <button
+        type="button"
+        onClick={onBreakdownClick}
+        title="View sales breakdown"
+        className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-[#F7FAFC] rounded-lg px-3 py-1 -mx-3 transition-colors text-left cursor-pointer"
+      >
         <div>
           <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
             Food
@@ -130,7 +141,7 @@ function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsCl
             <p className="text-[10px] text-[#4A5568] mt-0.5 whitespace-nowrap">Omar {foodShare}% share</p>
           )}
         </div>
-      </div>
+      </button>
 
       {/* Active Alerts — wired to real backend via useAlertsForEvent */}
       <button
@@ -457,6 +468,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // ── UI state ──
   const [elapsed,     setElapsed]     = useState(START_ELAPSED)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
   // Acknowledged set derived from server data — not local state. The source of
   // truth is alerts[i].acknowledged_at on the server; this Set is just a fast
@@ -550,8 +562,9 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           unacknowledgedCount={unacknowledgedCount}
           criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
           onAlertsClick={handleAlertsClick}
+          onBreakdownClick={() => setBreakdownOpen(true)}
         />
-        <KpiBreakdownPanel menu={menuQuery.data ?? null} />
+        <SalesBreakdownModal menu={menuQuery.data ?? null} open={breakdownOpen} onClose={() => setBreakdownOpen(false)} />
 
         {/* Zone B — Bar card grid */}
         <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">
