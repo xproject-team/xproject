@@ -38,6 +38,7 @@ import {
   useTransactionsForEvent,
   useBurnRatesForEvent,
   useEventKpiSummary,
+  useMenuPerformance,
   type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
 import {
@@ -411,6 +412,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const transactionsQuery  = useTransactionsForEvent(eventId)
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
   const kpiQuery           = useEventKpiSummary(eventId)
+  const menuQuery          = useMenuPerformance(eventId)
   const productsQuery      = useAllProducts()
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
   const alertCountsByBarQuery = useAlertsCountByBar(eventId)
@@ -549,7 +551,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
           onAlertsClick={handleAlertsClick}
         />
-        <KpiBreakdownPanel kpi={kpiQuery.data ?? null} />
+        <KpiBreakdownPanel menu={menuQuery.data ?? null} />
 
         {/* Zone B — Bar card grid */}
         <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">

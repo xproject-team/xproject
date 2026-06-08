@@ -49,6 +49,8 @@ export const dashboardKeys = {
     [...dashboardKeys.all, 'barCategoryTotals', eventId] as const,
   kpiSummary: (eventId: string) =>
     [...dashboardKeys.all, 'kpiSummary', eventId] as const,
+  menuPerformance: (eventId: string) =>
+    [...dashboardKeys.all, 'menuPerformance', eventId] as const,
 } as const
 
 // ─── Poll interval for "live" data during an event ────────────────────────────
@@ -281,6 +283,57 @@ export function useEventKpiSummary(eventId: string | null | undefined) {
     queryFn: async () => {
       const { data } = await api.get<EventKpiSummaryDTO>(
         `/events/${eventId}/kpi-summary`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    refetchInterval: LIVE_REFETCH_MS,
+  })
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// DASH — full menu performance (dashboard breakdown panel).
+// Backend: GET /events/{event_id}/menu-performance (events module, Step 4).
+// Every drink + food menu item with units sold (zero-sold included):
+// drinks totalled per product across bars, grouped by family; food grouped
+// by truck. Decimals arrive as strings.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface MenuItemLineDTO {
+  product_id:   string
+  product_name: string
+  units:        number
+  revenue_eur:  string
+}
+
+export interface DrinkCategoryGroupDTO {
+  family:               DrinkFamily
+  items:                MenuItemLineDTO[]
+  subtotal_units:       number
+  subtotal_revenue_eur: string
+}
+
+export interface FoodTruckGroupDTO {
+  bar_id:               string
+  bar_name:             string
+  items:                MenuItemLineDTO[]
+  subtotal_units:       number
+  subtotal_revenue_eur: string
+}
+
+export interface EventMenuPerformanceDTO {
+  event_id: string
+  drinks:   DrinkCategoryGroupDTO[]
+  food:     FoodTruckGroupDTO[]
+}
+
+export function useMenuPerformance(eventId: string | null | undefined) {
+  return useQuery<EventMenuPerformanceDTO>({
+    queryKey: dashboardKeys.menuPerformance(eventId ?? 'none'),
+    queryFn: async () => {
+      const { data } = await api.get<EventMenuPerformanceDTO>(
+        `/events/${eventId}/menu-performance`,
       )
       return data
     },
