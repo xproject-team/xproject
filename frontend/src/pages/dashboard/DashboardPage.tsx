@@ -36,10 +36,11 @@ import {
   useReconciliation,
   useTransactionsForEvent,
   useBurnRatesForEvent,
+  useEventKpiSummary,
+  type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
 import {
   selectBarKpis,
-  selectDashboardTotals,
 } from '@/features/dashboard/selectors'
 import { useAlertsForEvent, useAcknowledgeAlert, useAlertsCountByBar } from '@/features/alerts/useAlerts'
 import { useAlertsSocket } from '@/features/alerts/useAlertsSocket'
@@ -64,17 +65,26 @@ function formatCents(cents: number): string {
 
 // ─── Zone A — KPI Strip ───────────────────────────────────────────────────────
 
+function formatEur(eur: string | number): string {
+  const n = typeof eur === 'string' ? parseFloat(eur) : eur
+  return formatCents(Math.round((Number.isFinite(n) ? n : 0) * 100))
+}
+
 interface KpiStripProps {
-  bars: BarKpi[]
+  kpi: EventKpiSummaryDTO | null
   elapsed: number
   unacknowledgedCount: number
   criticalCount: number
   onAlertsClick: () => void
 }
 
-function KpiStrip({ bars, elapsed, unacknowledgedCount, criticalCount, onAlertsClick }: KpiStripProps) {
-  const { totalRevenueCents, totalDrinksSold, tierTotals } =
-    selectDashboardTotals(bars)
+function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsClick }: KpiStripProps) {
+  const totalRevenue = kpi ? formatEur(kpi.total_revenue_eur) : '\u2014'
+  const drinkUnits   = kpi?.drinks.units ?? 0
+  const drinkRevenue = kpi ? formatEur(kpi.drinks.revenue_eur) : '\u2014'
+  const foodUnits    = kpi?.food.units ?? 0
+  const foodNet      = kpi ? formatEur(kpi.food.net_revenue_eur) : '\u2014'
+  const foodShare    = kpi?.food.share_pct ?? 100
 
   return (
     <div className="bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-center gap-0 overflow-x-auto shrink-0 shadow-sm">
@@ -86,34 +96,37 @@ function KpiStrip({ bars, elapsed, unacknowledgedCount, criticalCount, onAlertsC
             Total Revenue
           </p>
           <p className="text-2xl font-bold text-[#1A202C] leading-none">
-            {formatCents(totalRevenueCents)}
+            {totalRevenue}
           </p>
         </div>
-        {/* TODO(v1.1): prediction delta requires prediction backend */}
       </div>
 
-      {/* Drinks Sold */}
+      {/* Drinks */}
       <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
         <div>
           <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Drinks Sold
+            Drinks
           </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none">{totalDrinksSold}</p>
+          <p className="text-2xl font-bold text-[#1A202C] leading-none">
+            {drinkUnits}
+            <span className="text-sm font-semibold text-[#4A5568] ml-2">{drinkRevenue}</span>
+          </p>
         </div>
-        <div className="flex flex-col gap-1">
-          <div className="flex gap-1.5">
-            {(['B', 'S', 'P', 'U'] as const).map((t) => {
-              const TIER_LABELS = { B: 'Basic', S: 'Standard', P: 'Premium', U: 'Ultra' } as const
-              return (
-                <span
-                  key={t}
-                  className="text-[10px] font-bold bg-[#F7FAFC] border border-[#E2E8F0] text-[#4A5568] px-2 py-0.5 rounded whitespace-nowrap"
-                >
-                  {TIER_LABELS[t]} {tierTotals[t]}
-                </span>
-              )
-            })}
-          </div>
+      </div>
+
+      {/* Food */}
+      <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
+        <div>
+          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
+            Food
+          </p>
+          <p className="text-2xl font-bold text-[#1A202C] leading-none">
+            {foodUnits}
+            <span className="text-sm font-semibold text-[#4A5568] ml-2">{foodNet}</span>
+          </p>
+          {foodShare !== 100 && (
+            <p className="text-[10px] text-[#4A5568] mt-0.5 whitespace-nowrap">Omar {foodShare}% share</p>
+          )}
         </div>
       </div>
 
@@ -396,6 +409,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const barStockQuery      = useBarStockForEvent(eventId)
   const transactionsQuery  = useTransactionsForEvent(eventId)
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
+  const kpiQuery           = useEventKpiSummary(eventId)
   const productsQuery      = useAllProducts()
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
   const alertCountsByBarQuery = useAlertsCountByBar(eventId)
@@ -528,7 +542,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
         {/* Zone A — KPI Strip */}
         <KpiStrip
-          bars={barKpis}
+          kpi={kpiQuery.data ?? null}
           elapsed={elapsed}
           unacknowledgedCount={unacknowledgedCount}
           criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
