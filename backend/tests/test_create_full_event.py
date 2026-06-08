@@ -32,6 +32,7 @@ from app.modules.events.service import EventService, VenueNotFoundError
 from app.modules.venues.models import Venue
 from app.modules.events.service import FullEventValidationError
 from app.modules.products.models import (
+    FoodType,
     Product,
     ProductCategory,
     ProductType,
@@ -291,5 +292,73 @@ async def test_update_full_rejects_non_draft():
                     bars=[FullEventBar(name="Bar B")],
                     products=[_drink("Vodka 1L")],
                 ))
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+def _food(name, food_type):
+    return FullEventProductInput(
+        name=name,
+        product_type=ProductType.FOOD,
+        unit=ProductUnit.PIECE,
+        default_price_cents=1200,
+        iva_pct=0.10,
+        food_type=food_type,
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_full_persists_food_type_and_share():
+    """food_type (per product) + food_revenue_share_pct (per event) round-trip."""
+    from app.modules.events.models import Event
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            ev = _event_create(venue.id)
+            ev.food_revenue_share_pct = 30
+            payload = FullEventCreate(
+                event=ev,
+                bars=[
+                    FullEventBar(name="Cocktail Bar"),
+                    FullEventBar(name="Food Truck", bar_type="food"),
+                ],
+                products=[_drink("Gin Tonic"), _food("Hamburger", FoodType.BURGERS)],
+                menu=[
+                    FullEventMenuItem(bar_index=0, product_index=0, price_cents=1200),
+                    FullEventMenuItem(bar_index=1, product_index=1, price_cents=1200),
+                ],
+                allocations=[
+                    FullEventAllocation(bar_index=1, product_index=1, qty=50),
+                ],
+            )
+            result = await svc.create_full(tenant.id, payload)
+            event_id = result["event"].id
+
+            ev_row = (
+                await session.execute(select(Event).where(Event.id == event_id))
+            ).scalar_one()
+            assert ev_row.food_revenue_share_pct == 30
+
+            food = (
+                await session.execute(
+                    select(Product).where(
+                        Product.tenant_id == tenant.id,
+                        Product.product_type == ProductType.FOOD,
+                    )
+                )
+            ).scalar_one()
+            assert food.food_type == FoodType.BURGERS
+
+            drink = (
+                await session.execute(
+                    select(Product).where(
+                        Product.tenant_id == tenant.id,
+                        Product.product_type == ProductType.DRINK,
+                    )
+                )
+            ).scalar_one()
+            assert drink.food_type is None
         finally:
             await delete_tenant_cascade(session, tenant.id)
