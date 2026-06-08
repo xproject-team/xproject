@@ -32,6 +32,8 @@ from app.modules.events.category_totals_schemas import (
 from app.modules.events.category_totals_service import (
     BarCategoryTotalsService,
 )
+from app.modules.events.event_kpi_schemas import EventKpiSummary
+from app.modules.events.event_kpi_service import EventKpiSummaryService
 from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.service import (
     EventNotFoundError,
@@ -465,6 +467,37 @@ async def get_event_bar_category_totals(
 # Why this query is safe to run live: single SQL roundtrip (no inter-row race during live event),
 # event-window bounded, voided scans excluded, tenant-scoped at every CTE,
 # Decimal precision preserved across the wire.
+
+
+@router.get(
+    "/{event_id}/kpi-summary",
+    response_model=EventKpiSummary,
+)
+async def get_event_kpi_summary(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> EventKpiSummary:
+    """Event-level KPI rollup for the dashboard top strip.
+
+    Returns:
+      - total_revenue_eur: Omar's NET take = drinks (100%) + food (x share)
+      - drinks: units + revenue, broken into 4 families
+        (cocktails / beer / wine / soft) + "other"
+      - food: units + GROSS revenue by FoodType, the event's share %, and
+        Omar's NET cut
+
+    404 if the event is not found for this tenant. An existing event with
+    no revenue rows yet returns a zeroed summary (200).
+    """
+    service = EventKpiSummaryService(db)
+    result = await service.get_for_event(tenant_id=tenant_id, event_id=event_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+    return result
 
 @router.get(
     "/{event_id}/reconciliation-report",
