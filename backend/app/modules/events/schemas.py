@@ -44,6 +44,11 @@ class EventCreate(BaseModel):
     refund_window_open_at: datetime | None = None
     refund_window_close_at: datetime | None = None
 
+    # Food revenue partnership share (XProject-native, not Slesh): the owner
+    # keeps this percent of food gross, the food company keeps the rest.
+    # 0-100; NULL = 100 (no split).
+    food_revenue_share_pct: int | None = Field(default=None, ge=0, le=100)
+
 
 # ─── Event — Update (PATCH /events/{id}) ──────────────────────────────────────
 
@@ -99,6 +104,7 @@ class EventResponse(BaseModel):
     refund_fee_cents: int | None
     refund_window_open_at: datetime | None
     refund_window_close_at: datetime | None
+    food_revenue_share_pct: int | None
     bars_count: int
     version: int
     started_at: datetime | None
@@ -110,6 +116,7 @@ class EventResponse(BaseModel):
 # ─── Full Event Create (Phase D — Create Event wizard composite) ─────────────
 
 from app.modules.products.models import (  # noqa: E402
+    FoodType,
     ProductCategory,
     ProductType,
     ProductUnit,
@@ -141,6 +148,7 @@ class FullEventProductInput(BaseModel):
     default_price_cents: int | None = Field(default=None, ge=0)
     iva_pct: float | None = Field(default=None, ge=0, le=1)
     cauzione_cents: int | None = Field(default=None, ge=0)
+    food_type: FoodType | None = None
 
 
 class FullEventMenuItem(BaseModel):

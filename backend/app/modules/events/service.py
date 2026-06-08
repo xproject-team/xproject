@@ -233,7 +233,8 @@ class EventService:
                 ),
                 unit=prod.unit, default_price_cents=prod.default_price_cents,
                 external_pos_id=None, barcode=None, iva_pct=prod.iva_pct,
-                cauzione_cents=prod.cauzione_cents, is_archived=False,
+                cauzione_cents=prod.cauzione_cents, food_type=prod.food_type,
+                is_archived=False,
             )
             self.db.add(row)
             await self.db.flush()
@@ -326,6 +327,7 @@ class EventService:
         event.refund_fee_cents = e.refund_fee_cents
         event.refund_window_open_at = e.refund_window_open_at
         event.refund_window_close_at = e.refund_window_close_at
+        event.food_revenue_share_pct = e.food_revenue_share_pct
         event.version = event.version + 1
 
         # Replace children: delete bars cascades event_products + bar_stock

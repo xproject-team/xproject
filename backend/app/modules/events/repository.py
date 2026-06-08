@@ -125,6 +125,7 @@ class EventRepository:
             refund_fee_cents=data.refund_fee_cents,
             refund_window_open_at=data.refund_window_open_at,
             refund_window_close_at=data.refund_window_close_at,
+            food_revenue_share_pct=data.food_revenue_share_pct,
             status=EventStatus.DRAFT,
         )
         self.db.add(event)
