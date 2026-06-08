@@ -95,6 +95,14 @@ class ProductArchivedError(Exception):
     """Attempted sale or adjustment on an archived product. -> 422."""
 
 
+class NotAFoodError(Exception):
+    """ingest_food_sale called on a non-food product. -> 422."""
+
+    def __init__(self, message: str, *, actual_type: str | None = None) -> None:
+        super().__init__(message)
+        self.actual_type = actual_type
+
+
 class MissingIdempotencyKeyError(Exception):
     """source=slesh_pos requires an idempotency key. -> 422."""
 
@@ -296,6 +304,88 @@ class StockTransactionService:
             children=children,
             idempotency_replay=False,
         )
+
+    # --- Food sale ingestion (revenue-only, no recipe cascade) ---
+
+    async def ingest_food_sale(
+        self,
+        tenant_id: UUID,
+        data: SaleIngestRequest,
+    ) -> IngestResult:
+        """Ingest a FOOD sale as one priced slesh_pos ledger row.
+
+        Mirrors ingest_sale's idempotency + validation + parent write, but
+        has NO recipe cascade (food has no recipes) and requires the product
+        to be FOOD. Decrements the food's bar_stock like a parent decrement.
+        Caller owns the commit boundary (same as ingest_sale).
+        """
+        if data.source is TransactionSource.SLESH_POS:
+            if not data.source_idempotency_key:
+                raise MissingIdempotencyKeyError(
+                    "source=slesh_pos requires source_idempotency_key"
+                )
+            existing = await self.repo.find_by_idempotency_key(
+                tenant_id, data.source, data.source_idempotency_key,
+            )
+            if existing is not None:
+                children = await self.repo.get_children(tenant_id, existing.id)
+                return IngestResult(
+                    parent=existing, children=list(children), idempotency_replay=True,
+                )
+
+        event = await self.events.get_by_id(tenant_id, data.event_id)
+        if event is None:
+            raise EventNotFoundError(f"Event {data.event_id} not found")
+        bar = await self.bars.get_by_id(tenant_id, data.bar_id)
+        if bar is None:
+            raise BarNotFoundError(f"Bar {data.bar_id} not found")
+        if bar.event_id != data.event_id:
+            raise BarNotInEventError(
+                f"Bar {data.bar_id} belongs to a different event"
+            )
+        product = await self.products.get_by_id(tenant_id, data.product_id)
+        if product is None:
+            raise ProductNotFoundError(f"Product {data.product_id} not found")
+        if product.is_archived:
+            raise ProductArchivedError(
+                f"Product '{product.name}' is archived and cannot be sold"
+            )
+        if product.product_type is not ProductType.FOOD:
+            raise NotAFoodError(
+                f"Product '{product.name}' is a {product.product_type.value}, not food.",
+                actual_type=product.product_type.value,
+            )
+
+        food_stock = await self.bar_stock.find_by_triple(
+            tenant_id, data.event_id, data.bar_id, data.product_id,
+        )
+        parent_plan = plan_parent_decrement(
+            food_stock, product_id=data.product_id, qty=data.qty,
+        )
+        apply_plan_to_stock(food_stock, parent_plan)
+        if food_stock is not None:
+            self.db.add(food_stock)
+
+        parent_tx = self.repo.build(
+            tenant_id=tenant_id,
+            event_id=data.event_id,
+            bar_id=data.bar_id,
+            product_id=data.product_id,
+            bar_stock_id=parent_plan.bar_stock_id,
+            qty=parent_plan.requested_qty,
+            deficit_qty=parent_plan.deficit_qty,
+            price_cents=data.price_cents,
+            source=data.source,
+            source_idempotency_key=data.source_idempotency_key,
+            parent_transaction_id=None,
+            note=data.note,
+            payment_type=data.payment_type,
+        )
+        await self.repo.insert(parent_tx)
+
+        await self._publish_sale_event(tenant_id, data, parent_tx, [])
+
+        return IngestResult(parent=parent_tx, children=[], idempotency_replay=False)
 
     # ─── Manual adjustment ────────────────────────────────────────────────────
 

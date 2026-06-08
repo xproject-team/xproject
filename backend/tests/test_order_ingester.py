@@ -7,7 +7,7 @@ Tests use lightweight fakes so we never touch the DB:
 These tests prove:
 - Orders without a shop reference are skipped wholesale
 - Refunded cart lines are skipped (one per line)
-- Food/Supply lines are skipped (DRINK only)
+- Food lines are ingested (revenue-only); Supply/ingredient lines skipped
 - Missing bar / product references skip without crashing
 - Idempotency replays count correctly
 - payment_type maps Slesh\'s vocabulary correctly (incl. tap-to-pay rename)
@@ -94,13 +94,21 @@ class FakeIngestSaleResult:
 
 
 class FakeService:
-    """Records every ingest_sale call so tests can assert on it."""
+    """Records every ingest_sale / ingest_food_sale call for assertions."""
     def __init__(self, *, replay: bool = False) -> None:
-        self.calls: list[Any] = []
+        self.calls: list[Any] = []        # every request, any path
+        self.drink_calls: list[Any] = []  # routed through ingest_sale
+        self.food_calls: list[Any] = []   # routed through ingest_food_sale
         self.replay = replay
 
     async def ingest_sale(self, *, tenant_id: UUID, data) -> FakeIngestSaleResult:
         self.calls.append(data)
+        self.drink_calls.append(data)
+        return FakeIngestSaleResult(idempotency_replay=self.replay)
+
+    async def ingest_food_sale(self, *, tenant_id: UUID, data) -> FakeIngestSaleResult:
+        self.calls.append(data)
+        self.food_calls.append(data)
         return FakeIngestSaleResult(idempotency_replay=self.replay)
 
 
@@ -146,6 +154,15 @@ def _make_food_product(ext_id: str) -> FakeProduct:
         id               = uuid4(),
         name             = "Burger",
         product_type     = ProductType.FOOD,
+        external_pos_id  = ext_id,
+    )
+
+
+def _make_supply_product(ext_id: str) -> FakeProduct:
+    return FakeProduct(
+        id               = uuid4(),
+        name             = "Cups",
+        product_type     = ProductType.SUPPLY,
         external_pos_id  = ext_id,
     )
 
@@ -301,10 +318,72 @@ async def test_ingest_order_refunded_line_skips(patched_lookups):
 
 
 @pytest.mark.asyncio
-async def test_ingest_order_food_line_skips(patched_lookups):
+async def test_ingest_order_food_line_ingested(patched_lookups):
+    """Food lines now reach the dashboard via ingest_food_sale (revenue-only)."""
     bars, products = patched_lookups
     bars["shop_1"]      = _make_bar("shop_1")
     products["prod_1"]  = _make_food_product("prod_1")
+
+    order = FakeOrder(
+        id    = "ord_1",
+        shop  = FakeShopRef(id="shop_1"),
+        cart  = [FakeCartLine(id="line_1", product="prod_1", gross_amount=1500)],
+        payment = FakePayment(type="card"),
+    )
+    service = FakeService()
+
+    result = await ingest_order(
+        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        service=service,
+    )
+
+    assert result.lines_ingested == 1
+    assert result.lines_skipped  == 0
+    assert result.lines_errors   == 0
+    # routed to the FOOD path, not the drink/recipe path
+    assert len(service.food_calls)  == 1
+    assert len(service.drink_calls) == 0
+    sent = service.food_calls[0]
+    assert sent.event_id     == EVENT_ID
+    assert sent.bar_id       == bars["shop_1"].id
+    assert sent.product_id   == products["prod_1"].id
+    assert sent.qty          == Decimal("1")
+    assert sent.price_cents  == 1500
+    assert sent.payment_type == PaymentType.CARD
+    assert sent.source_idempotency_key == "slesh:ord_1:line_1"
+
+
+@pytest.mark.asyncio
+async def test_ingest_order_food_line_replay_counted(patched_lookups):
+    """A replayed food line counts as a replay, not a fresh ingest."""
+    bars, products = patched_lookups
+    bars["shop_1"]      = _make_bar("shop_1")
+    products["prod_1"]  = _make_food_product("prod_1")
+
+    order = FakeOrder(
+        id    = "ord_1",
+        shop  = FakeShopRef(id="shop_1"),
+        cart  = [FakeCartLine(id="line_1", product="prod_1")],
+        payment = FakePayment(type="card"),
+    )
+    service = FakeService(replay=True)
+
+    result = await ingest_order(
+        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        service=service,
+    )
+
+    assert result.lines_replayed == 1
+    assert result.lines_ingested == 0
+    assert len(service.food_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_ingest_order_supply_line_skips(patched_lookups):
+    """Non drink/food lines (supply/ingredient) are still skipped."""
+    bars, products = patched_lookups
+    bars["shop_1"]      = _make_bar("shop_1")
+    products["prod_1"]  = _make_supply_product("prod_1")
 
     order = FakeOrder(
         id    = "ord_1",
@@ -318,9 +397,10 @@ async def test_ingest_order_food_line_skips(patched_lookups):
         service=service,
     )
 
-    assert result.lines_skipped == 1
+    assert result.lines_skipped  == 1
     assert result.lines_ingested == 0
-    assert any("only DRINK" in r for r in result.skip_reasons)
+    assert any("not drink/food" in r for r in result.skip_reasons)
+    assert service.calls == []
 
 
 @pytest.mark.asyncio

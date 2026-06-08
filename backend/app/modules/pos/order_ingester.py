@@ -277,28 +277,33 @@ async def _ingest_line(
         )
         return
 
-    # ingest_sale validates DRINK only — short-circuit other types here
-    # so we don't pollute the service's error logs.
-    if product.product_type != ProductType.DRINK:
+    # Route by product type:
+    #   DRINK -> ingest_sale (full recipe cascade)
+    #   FOOD  -> ingest_food_sale (revenue-only, no cascade)
+    #   other (supply/ingredient) -> skip
+    if product.product_type not in (ProductType.DRINK, ProductType.FOOD):
         result.lines_skipped += 1
         result.skip_reasons.append(
-            f"line {line.id}: product_type={product.product_type.value} (only DRINK ingested)"
+            f"line {line.id}: product_type={product.product_type.value} (not drink/food)"
         )
         return
 
-    # Build the ingest request
+    # Build the ingest request (same shape for drink + food)
     request = SaleIngestRequest(
         event_id     = event_id,
         bar_id       = bar.id,
         product_id   = product.id,
-        qty          = Decimal("1"),               # one cart line = one drink
+        qty          = Decimal("1"),               # one cart line = one item
         price_cents  = int(line.gross_amount),     # already cents (int) per schema
         source       = TransactionSource.SLESH_POS,
         source_idempotency_key = f"slesh:{order.id}:{line.id}",
         payment_type = payment_type,
     )
 
-    sale_result = await service.ingest_sale(tenant_id=tenant_id, data=request)
+    if product.product_type == ProductType.DRINK:
+        sale_result = await service.ingest_sale(tenant_id=tenant_id, data=request)
+    else:
+        sale_result = await service.ingest_food_sale(tenant_id=tenant_id, data=request)
 
     if sale_result.idempotency_replay:
         result.lines_replayed += 1
