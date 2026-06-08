@@ -34,6 +34,8 @@ from app.modules.events.category_totals_service import (
 )
 from app.modules.events.event_kpi_schemas import EventKpiSummary
 from app.modules.events.event_kpi_service import EventKpiSummaryService
+from app.modules.events.menu_performance_schemas import EventMenuPerformance
+from app.modules.events.menu_performance_service import MenuPerformanceService
 from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.service import (
     EventNotFoundError,
@@ -491,6 +493,35 @@ async def get_event_kpi_summary(
     no revenue rows yet returns a zeroed summary (200).
     """
     service = EventKpiSummaryService(db)
+    result = await service.get_for_event(tenant_id=tenant_id, event_id=event_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+    return result
+
+
+@router.get(
+    "/{event_id}/menu-performance",
+    response_model=EventMenuPerformance,
+)
+async def get_event_menu_performance(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> EventMenuPerformance:
+    """Full-menu performance for the dashboard breakdown panel.
+
+    Every drink and food menu item with units sold (zero-sold included):
+      - drinks grouped by family (cocktails/beer/wine/soft/other),
+        totalled per product across all bars
+      - food grouped by truck (bar), each truck listing its items
+
+    Deposits/supply/ingredient lines excluded. 404 if the event is not
+    found for this tenant.
+    """
+    service = MenuPerformanceService(db)
     result = await service.get_for_event(tenant_id=tenant_id, event_id=event_id)
     if result is None:
         raise HTTPException(

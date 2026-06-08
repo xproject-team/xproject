@@ -263,9 +263,11 @@ async def make_sale_with_children(
 async def delete_tenant_cascade(session: AsyncSession, tenant_id: uuid.UUID) -> None:
     """Delete all rows created under a test tenant, in safe FK order."""
     from app.modules.alerts.models import Alert
+    from app.modules.event_products.models import EventProduct
     for model in [
         Alert,
         StockTransaction,
+        EventProduct,
         RecipeItem,
         Recipe,
         BarStock,
