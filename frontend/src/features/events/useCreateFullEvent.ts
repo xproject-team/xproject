@@ -26,6 +26,7 @@ export interface FullEventProductInput {
   name: string
   product_type: 'drink' | 'food' | 'ingredient' | 'supply'
   category?: string | null
+  food_type?: string | null
   tier_rank?: number | null
   unit: string
   default_price_cents?: number | null
@@ -56,6 +57,7 @@ export interface FullEventCreatePayload {
     expected_guest_count?: number | null
     stripe_ragione_sociale?: string | null
     staff_arrival_time?: string | null
+    food_revenue_share_pct?: number | null
     wristband_qty_per_type?: Record<string, number> | null
     topup_denominations_user?: number[] | null
     topup_denominations_staff?: number[] | null

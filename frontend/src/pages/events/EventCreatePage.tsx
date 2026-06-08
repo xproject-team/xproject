@@ -4,9 +4,9 @@
  * Six tabs covering what XProject acts on:
  *   1 Overview   2 Bars   3 Device Count   4 Listini   5 Inventory   6 Lineup (stub)
  *
- * Slesh-only config (wristbands, top-ups, refund policy, Stripe) lives in
- * Slesh, not here, so the wizard no longer collects it. The dormant DB
- * columns remain; they are simply not populated from this form.
+ * Per-product category (drinks) / food type (food) and the event-level food
+ * revenue share % feed the event-scoped dashboard KPIs. Slesh-only config
+ * (wristbands, top-ups, refunds, Stripe) is not collected here.
  *
  * Create mode (no :id): POST /events/full.
  * Edit mode (/events/:id/edit, DRAFT only): hydrates from the event's
@@ -44,6 +44,7 @@ interface ListiniRow {
   name: string
   product_type: 'drink' | 'food'
   category: string
+  food_type: string
   unit: string
   price: string
   iva: string
@@ -51,6 +52,28 @@ interface ListiniRow {
 }
 
 const TABS = ['1 · Overview', '2 · Bars', '3 · Device Count', '4 · Listini', '5 · Inventory', '6 · Lineup']
+
+// Drink categories = backend ProductCategory enum. Food types = FoodType enum.
+// Picked per product so the dashboard can break sales down by category / type.
+const DRINK_CATEGORIES: Array<[string, string]> = [
+  ['beer_draft', 'Beer (draft)'],
+  ['beer_bottle', 'Beer (bottle)'],
+  ['basic_cocktail', 'Cocktail (basic)'],
+  ['premium_cocktail', 'Cocktail (premium)'],
+  ['wine_red', 'Wine (red)'],
+  ['wine_white', 'Wine (white)'],
+  ['wine_sparkling', 'Wine (sparkling)'],
+  ['soft_drink', 'Soft drink'],
+]
+const FOOD_TYPES: Array<[string, string]> = [
+  ['burgers', 'Burgers'],
+  ['sandwiches', 'Sandwiches'],
+  ['fried', 'Fried'],
+  ['skewers', 'Skewers'],
+  ['pizza', 'Pizza / Focaccia'],
+  ['gelato', 'Gelato'],
+  ['other', 'Other'],
+]
 
 const inputCls =
   'w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]'
@@ -66,7 +89,6 @@ const eurosToCents = (s: string): number | null => {
 }
 const productKey = (name: string, type: string) => `${type}::${name.trim().toLowerCase()}`
 // datetime-local <-> UTC ISO. datetime-local is naive LOCAL time; we store UTC.
-// Converting both directions keeps round-trips stable (no per-edit drift).
 const toUtcIso = (local: string): string => (local ? new Date(local).toISOString() : '')
 const toLocalInput = (iso: string): string => {
   if (!iso) return ''
@@ -86,7 +108,6 @@ export default function EventCreatePage() {
   const createFull = useCreateFullEvent()
   const updateFull = useUpdateFullEvent()
 
-  // Edit-mode data sources (disabled in create mode)
   const eventQ = useEvent(id)
   const barsQ = useBarsForEvent(id ?? null)
   const stockQ = useBarStockForEvent(id ?? null)
@@ -107,6 +128,7 @@ export default function EventCreatePage() {
   const [endAt, setEndAt] = useState('')
   const [guests, setGuests] = useState('1600')
   const [staffArrival, setStaffArrival] = useState('11:00')
+  const [foodShare, setFoodShare] = useState('')
 
   const [bars, setBars] = useState<BarRow[]>([])
   const [nextBarId, setNextBarId] = useState(1)
@@ -116,13 +138,12 @@ export default function EventCreatePage() {
 
   const [listini, setListini] = useState<ListiniRow[]>([])
   const [nextListiniId, setNextListiniId] = useState(1)
-  const addListini = () => { setListini((p) => [...p, { id: nextListiniId, bar_id: bars[0]?.id ?? null, name: '', product_type: 'drink', category: '', unit: 'bottle', price: '', iva: '10', cauzione: '' }]); setNextListiniId((n) => n + 1) }
+  const addListini = () => { setListini((p) => [...p, { id: nextListiniId, bar_id: bars[0]?.id ?? null, name: '', product_type: 'drink', category: '', food_type: '', unit: 'bottle', price: '', iva: '10', cauzione: '' }]); setNextListiniId((n) => n + 1) }
   const updateListini = <K extends keyof ListiniRow>(rid: number, key: K, val: ListiniRow[K]) => setListini((p) => p.map((r) => (r.id === rid ? { ...r, [key]: val } : r)))
   const removeListini = (rid: number) => setListini((p) => p.filter((r) => r.id !== rid))
 
   const [alloc, setAlloc] = useState<Record<string, number>>({})
 
-  // ── Edit-mode hydration (runs once when all sources are loaded) ──
   const hydrated = useRef(false)
   useEffect(() => {
     if (!editMode || hydrated.current) return
@@ -133,7 +154,6 @@ export default function EventCreatePage() {
     const menuData = menuQ.data
     if (!ev || !barsData || !productsData || !stockData || !menuData) return
 
-    // Event scalar fields
     setName(String(ev.name ?? ''))
     const venue = ev.venue as { id?: string } | undefined
     setVenueId(venue?.id ?? '')
@@ -141,8 +161,8 @@ export default function EventCreatePage() {
     setEndAt(toLocalInput(String(ev.scheduled_end_at ?? '')))
     setGuests(String(ev.expected_guest_count ?? ''))
     if (ev.staff_arrival_time) setStaffArrival(String(ev.staff_arrival_time).slice(0, 5))
+    if (ev.food_revenue_share_pct != null) setFoodShare(String(ev.food_revenue_share_pct))
 
-    // Bars → local rows + backend-id → local-id map
     const barIdMap = new Map<string, number>()
     const localBars: BarRow[] = barsData.map((b, i) => {
       barIdMap.set(String(b.id), i + 1)
@@ -158,11 +178,9 @@ export default function EventCreatePage() {
     setBars(localBars)
     setNextBarId(localBars.length + 1)
 
-    // Product catalog lookup
     const catalog = new Map<string, Record<string, unknown>>()
     for (const p of productsData) catalog.set(String(p.id), p)
 
-    // Listini rows from menu (event_products)
     const rows: ListiniRow[] = []
     menuData.forEach((m, i) => {
       const p = catalog.get(String(m.product_id))
@@ -174,6 +192,7 @@ export default function EventCreatePage() {
         name: p ? String(p.name) : '',
         product_type: ptype,
         category: p && p.category ? String(p.category) : '',
+        food_type: p && p.food_type ? String(p.food_type) : '',
         unit: p && p.unit ? String(p.unit) : 'bottle',
         price: (Number(m.price_cents) / 100).toString(),
         iva: p && p.iva_pct != null ? String((p.iva_pct as number) * 100) : '',
@@ -183,7 +202,6 @@ export default function EventCreatePage() {
     setListini(rows)
     setNextListiniId(rows.length + 1)
 
-    // Allocations grid
     const a: Record<string, number> = {}
     for (const bs of stockData) {
       const p = catalog.get(String(bs.product_id))
@@ -215,6 +233,7 @@ export default function EventCreatePage() {
     if (startAt === '') preErrors.push('Overview: start time is required')
     if (endAt === '') preErrors.push('Overview: end time is required')
     if (startAt && endAt && new Date(endAt) <= new Date(startAt)) preErrors.push('Overview: end must be after start')
+    if (foodShare.trim() !== '' && (Number.isNaN(Number(foodShare)) || Number(foodShare) < 0 || Number(foodShare) > 100)) preErrors.push('Overview: food share must be 0–100')
     if (payloadBars.length === 0) preErrors.push('Bars: add at least one bar with a name')
     const named = listini.filter((r) => r.name.trim() !== '')
     if (named.length === 0) preErrors.push('Listini: add at least one product')
@@ -229,6 +248,7 @@ export default function EventCreatePage() {
       if (r.bar_id === null || !barIndexById.has(r.bar_id)) { preErrors.push(`Listini: "${r.name}" has no valid bar selected`); continue }
       const priceCents = eurosToCents(r.price)
       if (priceCents === null) { preErrors.push(`Listini: "${r.name}" has an invalid price`); continue }
+      if (r.product_type === 'drink' && r.category.trim() === '') { preErrors.push(`Listini: "${r.name}" needs a drink category`); continue }
       const bIndex = barIndexById.get(r.bar_id) as number
       const pk = productKey(r.name, r.product_type)
       let pIndex = productIndexByKey.get(pk)
@@ -236,7 +256,16 @@ export default function EventCreatePage() {
         pIndex = products.length
         productIndexByKey.set(pk, pIndex)
         const ivaPct = r.iva.trim() === '' ? null : Number(r.iva) / 100
-        products.push({ name: r.name.trim(), product_type: r.product_type, category: r.product_type === 'drink' ? (r.category.trim() || 'basic_cocktail') : null, unit: r.unit || 'bottle', default_price_cents: priceCents, iva_pct: ivaPct, cauzione_cents: eurosToCents(r.cauzione) })
+        products.push({
+          name: r.name.trim(),
+          product_type: r.product_type,
+          category: r.product_type === 'drink' ? r.category : null,
+          food_type: r.product_type === 'food' ? (r.food_type || null) : null,
+          unit: r.unit || 'bottle',
+          default_price_cents: priceCents,
+          iva_pct: ivaPct,
+          cauzione_cents: eurosToCents(r.cauzione),
+        })
       }
       const pairKey = `${bIndex}|${pIndex}`
       if (menuPairs.has(pairKey)) { preErrors.push(`Listini: "${r.name}" listed twice at the same bar`); continue }
@@ -261,6 +290,7 @@ export default function EventCreatePage() {
         name: name.trim(), venue_id: venueId, scheduled_at: toUtcIso(startAt), scheduled_end_at: toUtcIso(endAt),
         expected_guest_count: Number(guests) || null,
         staff_arrival_time: staffArrival.trim() || null,
+        food_revenue_share_pct: foodShare.trim() === '' ? null : Math.round(Number(foodShare)),
       },
       bars: payloadBars.map((b) => ({ name: b.name.trim(), slesh_negozio_id: b.slesh_negozio_id.trim() || null, bar_type: b.bar_type, device_count: b.device_count, slesh_category: b.slesh_category.trim() || null, is_active: true })),
       products, menu, allocations,
@@ -326,6 +356,7 @@ export default function EventCreatePage() {
           <div><Label>End</Label><input type="datetime-local" className={inputCls} value={endAt} onChange={(e) => setEndAt(e.target.value)} /></div>
           <div><Label>Expected Guests</Label><input type="number" className={inputCls} value={guests} onChange={(e) => setGuests(e.target.value)} /></div>
           <div><Label>Staff Arrival Time</Label><input type="time" className={inputCls} value={staffArrival} onChange={(e) => setStaffArrival(e.target.value)} /></div>
+          <div className="sm:col-span-2"><Label>Food revenue share — Omar's % (blank = 100%)</Label><input type="number" min={0} max={100} className={inputCls} value={foodShare} onChange={(e) => setFoodShare(e.target.value)} placeholder="e.g. 30" /></div>
         </div>
       )}
 
@@ -359,12 +390,15 @@ export default function EventCreatePage() {
               <select className={`${inputCls} w-40 bg-white`} value={r.bar_id ?? ''} onChange={(e) => updateListini(r.id, 'bar_id', e.target.value ? Number(e.target.value) : null)}><option value="">Negozio…</option>{payloadBars.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
               <input className={`${inputCls} flex-1 min-w-[140px]`} placeholder="Nome" value={r.name} onChange={(e) => updateListini(r.id, 'name', e.target.value)} />
               <select className={`${inputCls} w-24 bg-white`} value={r.product_type} onChange={(e) => updateListini(r.id, 'product_type', e.target.value as 'drink' | 'food')}><option value="drink">drink</option><option value="food">food</option></select>
+              {r.product_type === 'drink'
+                ? <select className={`${inputCls} w-36 bg-white`} value={r.category} onChange={(e) => updateListini(r.id, 'category', e.target.value)}><option value="">Category…</option>{DRINK_CATEGORIES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>
+                : <select className={`${inputCls} w-36 bg-white`} value={r.food_type} onChange={(e) => updateListini(r.id, 'food_type', e.target.value)}><option value="">Food type…</option>{FOOD_TYPES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select>}
               <input className={`${inputCls} w-20`} placeholder="€" value={r.price} onChange={(e) => updateListini(r.id, 'price', e.target.value)} />
               <input className={`${inputCls} w-16`} placeholder="IVA%" value={r.iva} onChange={(e) => updateListini(r.id, 'iva', e.target.value)} />
               <input className={`${inputCls} w-24`} placeholder="Cauzione €" value={r.cauzione} onChange={(e) => updateListini(r.id, 'cauzione', e.target.value)} />
               <button onClick={() => removeListini(r.id)} className="text-[#E53E3E] text-sm px-2">✕</button>
             </div>))}
-            {listini.length === 0 && <p className="text-sm text-[#718096]">No products yet — one row per Listini line (Negozio + Nome + Prezzo).</p>}
+            {listini.length === 0 && <p className="text-sm text-[#718096]">No products yet — one row per Listini line (Negozio + Nome + Tipo + Prezzo).</p>}
           </div>
         </div>
       )}
