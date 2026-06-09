@@ -112,9 +112,14 @@ export function BarCard({
       onClick={() => onClick(bar.id)}
       className={[
         'rounded-xl p-5 shadow-sm hover:shadow-md transition-all text-left w-full border',
-        bar.status === 'critical' ? 'bg-red-50 border-red-200' :
-        bar.status === 'warning'  ? 'bg-yellow-50 border-yellow-200' :
-                                    'bg-green-50/60 border-green-200',
+        // Auto-created stubs (ingester-minted for unmapped Slesh shops) get
+        // a distinct dashed amber treatment so they pop out of the grid as
+        // "needs reconciliation". Overrides the status-based bg/border.
+        bar.auto_created
+          ? 'border-2 border-dashed border-amber-400 bg-amber-50'
+          : bar.status === 'critical' ? 'bg-red-50 border-red-200' :
+            bar.status === 'warning'  ? 'bg-yellow-50 border-yellow-200' :
+                                        'bg-green-50/60 border-green-200',
       ].join(' ')}
     >
       {/* 1+3 — Bar name + status dot + revenue */}
@@ -131,6 +136,17 @@ export function BarCard({
               {criticalAlertCount}
             </span>
           )}
+          {bar.auto_created && (
+            <span
+              className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded-full shrink-0"
+              title="Auto-created from an unmapped Slesh shop_id — open this card to merge it into a properly named bar"
+            >
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+              </svg>
+              NEEDS REVIEW
+            </span>
+          )}
         </div>
         <div className="text-right shrink-0 ml-3">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Revenue</p>
@@ -140,6 +156,17 @@ export function BarCard({
 
       {/* 2 — Status label */}
       <p className={`text-xs font-semibold mb-3 ${cfg.labelColor}`}>{cfg.label}</p>
+      {/* Shop_id suffix on mapped cards — gives alert cross-reference.
+          Stubs already show the truncated shop_id as their name, so this
+          line is suppressed for them. */}
+      {bar.slesh_negozio_id && !bar.auto_created && (
+        <p
+          className="text-[10px] font-mono text-[#A0AEC0] -mt-2 mb-3 truncate"
+          title={`Slesh shop_id: ${bar.slesh_negozio_id}`}
+        >
+          shop · {bar.slesh_negozio_id.slice(0, 8)}…{bar.slesh_negozio_id.slice(-4)}
+        </p>
+      )}
 
       {/* 4 — Revenue by category over time (5 lines: 4 categories + total)
             Replaces the old tier B/S/P/U chips. Locked May 27 2026: bars

@@ -706,6 +706,35 @@ export interface BarRow {
   bar_type: BarType
   slesh_negozio_id: string | null
   is_active: boolean
+  // Backend BarResponse always sends these; left optional so legacy
+  // mock fixtures elsewhere in this file keep compiling.
+  device_count?: number
+  slesh_category?: string | null
+  auto_created?: boolean
+}
+
+// ─── /api/v1/bars/mapping-state response (Phase 1 — dashboard 3-region) ──────
+// A live auto-created stub bar enriched with sales_count + suggested
+// target name for the inline name-picker dropdown.
+export interface StubBarKpiResponse {
+  id: string
+  event_id: string
+  name: string
+  slesh_negozio_id: string
+  bar_type: BarType
+  device_count: number
+  slesh_category: string | null
+  is_active: boolean
+  auto_created: true
+  sales_count: number
+  suggested_target_bar_id: string | null
+}
+
+// Three-region partitioning of an event's bars used by the dashboard.
+export interface BarMappingStateResponse {
+  empty_bars:  BarRow[]
+  stubs:       StubBarKpiResponse[]
+  mapped_bars: BarRow[]
 }
 
 // ─── /api/v1/products (subset we care about for the dashboard) ────────────────
@@ -751,6 +780,8 @@ export interface BarKpi {
   stock_pct:      number              // 0..100, rounded
   bar_type:       BarType             // 'drinks' | 'food' — drives the card variant
   food_items:     FoodItemCount[]     // per-item counts for food bars; [] for drink bars
+  auto_created:   boolean             // true if the ingester minted this bar for an unmapped Slesh shop_id — surfaces the NEEDS REVIEW pill + dashed amber treatment
+  slesh_negozio_id: string | null     // the bound Slesh shop_id (null = not yet mapped); shown as suffix under name on mapped cards for alert cross-reference
 
   // ── Placeholder fields (v1.1) ──
   burn_rate:     number | null                 // btl/hr — needs time-windowed tx analysis

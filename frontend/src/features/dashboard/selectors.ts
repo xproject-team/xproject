@@ -168,6 +168,8 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       stock_pct,
       bar_type:         bar.bar_type,
       food_items,
+      auto_created:     bar.auto_created ?? false,
+      slesh_negozio_id: bar.slesh_negozio_id ?? null,
       // Placeholder fields (v1.1)
       burn_rate:            bar_burn_rate,
       burn_trend:           null,

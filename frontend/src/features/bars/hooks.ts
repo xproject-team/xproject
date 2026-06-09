@@ -17,7 +17,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/lib/api'
-import type { BarRow, BarType } from '@/lib/mockData'
+import type { BarMappingStateResponse, BarRow, BarType } from '@/lib/mockData'
 
 // ─── Request payloads ─────────────────────────────────────────────────────────
 
@@ -123,5 +123,31 @@ export function useDeleteBar() {
       queryClient.invalidateQueries({ queryKey: barKeys.all })
       queryClient.removeQueries({ queryKey: barKeys.detail(id) })
     },
+  })
+}
+
+
+// ─── Mapping-state (Phase 1 — dashboard 3-region view) ────────────────────
+
+/**
+ * GET /bars/mapping-state?event_id=X — three-region partitioning the
+ * dashboard uses to render empty / stub / mapped bar cards, plus the
+ * per-stub suggested target for the inline name-picker dropdown.
+ *
+ * Polls every 10s so a newly auto-created stub (ingester just minted it
+ * from an unmapped Slesh shop_id) shows up without a manual refresh.
+ */
+export function useBarMappingState(eventId: string | undefined) {
+  return useQuery({
+    queryKey: [...barKeys.all, 'mapping-state', eventId ?? 'none'] as const,
+    queryFn:  async (): Promise<BarMappingStateResponse> => {
+      const res = await api.get<BarMappingStateResponse>(
+        `/bars/mapping-state?event_id=${eventId}`,
+      )
+      return res.data
+    },
+    enabled:         Boolean(eventId),
+    staleTime:       5 * 1000,
+    refetchInterval: 10 * 1000,
   })
 }
