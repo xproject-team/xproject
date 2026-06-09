@@ -22,6 +22,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
+import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
@@ -41,6 +42,7 @@ import {
   useMenuPerformance,
   type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
+import { useBarMappingState } from '@/features/bars/hooks'
 import {
   selectBarKpis,
 } from '@/features/dashboard/selectors'
@@ -419,6 +421,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   // ── Data hooks (all gated on eventId via `enabled` internally) ──
   const barsQuery          = useBarsForEvent(eventId)
+  const mappingStateQuery  = useBarMappingState(eventId)
   const barStockQuery      = useBarStockForEvent(eventId)
   const transactionsQuery  = useTransactionsForEvent(eventId)
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
@@ -542,6 +545,16 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
 
+  // Partition by mapping state. Live = mapped + stubs (rendered as BarCards
+  // in the main grid). Empty = wizard-defined bars with no shop_id yet
+  // (rendered as muted EmptyBarCards below the grid). If mapping-state
+  // hasn't loaded yet, all bars render as live (pre-Phase-1 behavior).
+  const emptyBars          = mappingStateQuery.data?.empty_bars ?? []
+  const emptyBarIdSet      = new Set(emptyBars.map((b) => b.id))
+  const liveKpis: BarKpi[] = mappingStateQuery.data
+    ? barKpis.filter((k) => !emptyBarIdSet.has(k.id))
+    : barKpis
+
   const unacknowledgedCount = alerts.filter(
     (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
   ).length
@@ -616,12 +629,12 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {barKpis.map((kpi) => (
+                {liveKpis.map((kpi) => (
                   <BarCard
                     key={kpi.id}
                     bar={kpi}
                     criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
-                    onClick={(id) => setSelectedBar(barKpis.find((b) => b.id === id) ?? null)}
+                    onClick={(id) => setSelectedBar(liveKpis.find((b) => b.id === id) ?? null)}
                     transactions={transactionsQuery.data ?? []}
                     products={productsQuery.data ?? []}
                     eventStartMs={eventStartMs}
@@ -629,6 +642,18 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   />
                 ))}
               </div>
+              {emptyBars.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide mb-3">
+                    Awaiting activity · {emptyBars.length}
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {emptyBars.map((bar) => (
+                      <EmptyBarCard key={bar.id} bar={bar} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </main>
