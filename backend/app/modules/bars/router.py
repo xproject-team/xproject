@@ -14,6 +14,8 @@ from app.modules.auth.router import get_current_user
 from app.modules.auth.permissions import get_active_role
 from app.modules.bars.schemas import BarCreate, BarResponse, BarUpdate
 from app.modules.bars.service import (
+    BarMergeConflictError,
+    BarMergeInvalidError,
     BarNotFoundError,
     BarService,
     EventNotFoundForBarError,
@@ -162,3 +164,61 @@ async def backfill_channels(
     service = BarService(db)
     summary = await service.backfill_bar_channels(current_user.tenant_id)
     return summary
+
+
+@router.post(
+    "/{src_id}/merge-into/{dst_id}",
+    response_model=BarResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def merge_bars_endpoint(
+    src_id: UUID,
+    dst_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> BarResponse:
+    """Owner-only: fold src bar into dst.
+
+    Reconciles an auto-created stub bar (which the ingester mints for
+    unmapped Slesh shop_ids) into a properly-named bar that already
+    exists. Transfers all stock_transactions, alerts, and user
+    assignments, and routes future Slesh orders for the same shop_id
+    to dst. The src bar is deleted.
+
+    Errors:
+      400 if src == dst, or bars belong to different events.
+      404 if either bar doesn't exist in tenant.
+      409 if dst is itself an auto-created stub, slesh_negozio_id
+          values conflict, or src has stock allocations / menu rows /
+          chat channels (none of these auto-merge cleanly).
+      403 if caller is not the Owner.
+    """
+    if get_active_role(current_user) != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error":   "owner_only",
+                "message": "Only the tenant Owner can merge bars.",
+            },
+        )
+
+    service = BarService(db)
+    try:
+        dst = await service.merge_bars(current_user.tenant_id, src_id, dst_id)
+    except BarNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "bar_not_found", "message": str(e)},
+        )
+    except BarMergeInvalidError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "bar_merge_invalid", "message": str(e)},
+        )
+    except BarMergeConflictError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "bar_merge_conflict", "message": str(e)},
+        )
+
+    return dst

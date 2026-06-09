@@ -32,6 +32,7 @@ class BarResponse(BaseModel):
     device_count: int = 0
     slesh_category: str | None = None
     is_active: bool
+    auto_created: bool = False
 
 
 class BarCreate(BaseModel):
