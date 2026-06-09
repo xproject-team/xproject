@@ -61,3 +61,14 @@ class Bar(TenantScopedModel):
     slesh_category: Mapped[str | None] = mapped_column(
         String(40), nullable=True,
     )
+
+    # ─── Auto-create flag (Phase 2a, June 2026) ──────────────────────
+    # True when this bar was created by the order ingester from an
+    # unmapped Slesh shop_id (no human-named bar matched and no
+    # accepted proposal existed yet). The bar lands on the dashboard
+    # with the truncated shop_id as its name so revenue never silently
+    # drops; the owner reconciles via the Map Bars UI (rename, or merge
+    # into a named bar, transferring slesh_negozio_id + transactions).
+    auto_created: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False,
+    )
