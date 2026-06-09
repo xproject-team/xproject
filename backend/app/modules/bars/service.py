@@ -330,6 +330,15 @@ class BarService:
             dst.slesh_negozio_id = transferred
             await self.db.flush()
 
+        # Activate dst so the merged bar becomes live in the dashboard.
+        # Owner picking dst from the stub's dropdown IS confirmation
+        # that this bar is operational for this event. Without this,
+        # a previously-inactive wizard bar (e.g. Wine Station placed
+        # in the wizard but never activated) stays hidden behind the
+        # is_active=False filter after merge, and the incoming Slesh
+        # revenue is silently dropped from the UI.
+        dst.is_active = True
+
         # Drop src. Remaining FKs cascade (proposals/warehouse_scans
         # SET NULL; users already moved above so SET NULL is a no-op).
         await self.db.delete(src)

@@ -78,10 +78,10 @@ async def _setup(session, *, external_pos_id: str = "prod_A"):
     return tenant, ev, prod
 
 
-async def _make_named_bar(session, tenant_id, event_id, *, name="Cocktail Bar", slesh_id=None):
+async def _make_named_bar(session, tenant_id, event_id, *, name="Cocktail Bar", slesh_id=None, is_active=True):
     bar = Bar(
         tenant_id=tenant_id, event_id=event_id, name=name,
-        slesh_negozio_id=slesh_id, bar_type="drinks", is_active=True,
+        slesh_negozio_id=slesh_id, bar_type="drinks", is_active=is_active,
         auto_created=False,
     )
     session.add(bar)
@@ -151,6 +151,7 @@ async def test_merge_stub_into_named_bar_happy_path():
             assert survivor.name == "Cocktail Bar"
             assert survivor.slesh_negozio_id == SHOP_X
             assert survivor.auto_created is False  # named bar flag preserved
+            assert survivor.is_active is True  # merge always activates dst
 
             tx_on_named = await session.scalar(
                 select(func.count()).select_from(StockTransaction).where(
@@ -264,6 +265,45 @@ async def test_merge_refuses_when_src_not_found():
             svc = BarService(session)
             with pytest.raises(BarNotFoundError):
                 await svc.merge_bars(tenant.id, uuid4(), named.id)
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+            await session.commit()
+
+
+async def test_merge_activates_inactive_dst():
+    """Wine Station scenario: a wizard bar placed but never activated
+    (is_active=False) gets a Slesh shop_id merged in. The merge MUST
+    flip is_active to True so the dashboard surfaces the bar with its
+    incoming revenue. Without this, the merged bar stays hidden behind
+    the is_active=False filter and Slesh sales are silently dropped
+    from the UI.
+    """
+    SHOP_X = "shopXinactivedst1234abcd"
+    async with TestSessionLocal() as session:
+        tenant, ev, _ = await _setup(session, external_pos_id="prod_A")
+        try:
+            await _ingest_one_sale(
+                session, tenant.id, ev.id,
+                shop_id=SHOP_X, product_ext="prod_A",
+                order_id="ord1", line_id="line1",
+            )
+            stub = (await session.execute(
+                select(Bar).where(Bar.slesh_negozio_id == SHOP_X)
+            )).scalar_one()
+            # Inactive wizard bar (e.g. Wine Station unused this event)
+            wine = await _make_named_bar(
+                session, tenant.id, ev.id,
+                name="Wine Station", is_active=False,
+            )
+            assert wine.is_active is False
+            svc = BarService(session)
+            survivor = await svc.merge_bars(tenant.id, stub.id, wine.id)
+            assert survivor.id == wine.id
+            assert survivor.is_active is True, (
+                "merge must activate dst — otherwise the merged bar "
+                "stays hidden and Slesh revenue is silently dropped"
+            )
+            assert survivor.slesh_negozio_id == SHOP_X
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()
