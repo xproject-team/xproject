@@ -58,3 +58,50 @@ class BarUpdate(BaseModel):
     device_count: int | None = Field(default=None, ge=0)
     slesh_category: str | None = Field(default=None, max_length=64)
     is_active: bool | None = None
+
+
+class StubBarKpi(BaseModel):
+    """A live auto-created stub bar with the signals needed to render the
+    dashboard name-picker dropdown.
+
+    A stub is a Bar row the ingester minted for an unmapped Slesh shop_id;
+    its identity (slesh_negozio_id, id) is locked from the first sale and
+    survives the entire event, but its name is a placeholder until the
+    owner picks one from the wizard-defined empty bars.
+
+    `sales_count` is the total parent stock_transactions attributed to
+    this bar — used to rank stubs against empty wizard bars (highest
+    sales × highest device_count) for the (suggested) tag.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    event_id: UUID
+    name: str
+    slesh_negozio_id: str
+    bar_type: str
+    device_count: int = 0
+    slesh_category: str | None = None
+    is_active: bool
+    auto_created: bool = True
+    sales_count: int
+    suggested_target_bar_id: UUID | None = None
+
+
+class BarMappingState(BaseModel):
+    """Three-region view of an event's bars for the dashboard.
+
+    - `empty_bars`:  wizard-defined bars with no Slesh shop_id yet (awaiting
+                     first transaction). Sorted by device_count desc, so
+                     the "biggest" empty appears first.
+    - `stubs`:       auto-created bars bound to a Slesh shop_id but not yet
+                     named by the owner. Sorted by sales_count desc.
+                     Each carries a `suggested_target_bar_id` — the highest-
+                     device-count empty wizard bar of the same bar_type
+                     paired by rank.
+    - `mapped_bars`: fully resolved bars (shop_id bound + name set). Normal
+                     dashboard cards. Sorted alphabetically.
+    """
+    empty_bars:  list[BarResponse]
+    stubs:       list[StubBarKpi]
+    mapped_bars: list[BarResponse]

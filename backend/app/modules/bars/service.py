@@ -336,3 +336,112 @@ class BarService:
         await self.db.commit()
 
         return dst
+
+    async def get_mapping_state(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> dict:
+        """Returns the three-region view of bars for an event.
+
+        Used by the dashboard to render empty / stub / mapped regions and
+        the inline name-picker dropdown on stub cards. The suggested-name
+        ranking pairs highest-sales-count stub with highest-device-count
+        empty bar within each bar_type.
+
+        Returns a dict shaped like BarMappingState; the router wraps it
+        as the Pydantic response model.
+        """
+        from collections import defaultdict
+        from sqlalchemy import func, select
+        from app.modules.stock_transactions.models import StockTransaction
+
+        event = await self.events.get_by_id(tenant_id, event_id)
+        if event is None:
+            raise EventNotFoundForBarError(f"Event {event_id} not found")
+
+        all_bars = await self.repo.list_for_event(
+            tenant_id, event_id, only_active=False,
+        )
+
+        # Partition into three buckets by (slesh_negozio_id, auto_created).
+        empty_bars   = [b for b in all_bars if b.slesh_negozio_id is None]
+        stubs        = [b for b in all_bars if b.slesh_negozio_id is not None and b.auto_created]
+        mapped_bars  = [b for b in all_bars if b.slesh_negozio_id is not None and not b.auto_created]
+
+        # Sales count per stub — total parent stock_transactions attributed
+        # to that bar. One query covers all stubs at once.
+        sales_count_by_bar: dict = {}
+        if stubs:
+            stub_ids = [b.id for b in stubs]
+            sc_stmt = (
+                select(StockTransaction.bar_id, func.count())
+                .where(
+                    StockTransaction.tenant_id == tenant_id,
+                    StockTransaction.event_id == event_id,
+                    StockTransaction.bar_id.in_(stub_ids),
+                    StockTransaction.parent_transaction_id.is_(None),
+                )
+                .group_by(StockTransaction.bar_id)
+            )
+            for bar_id, cnt in (await self.db.execute(sc_stmt)).all():
+                sales_count_by_bar[bar_id] = cnt
+
+        # Suggestion ranking: within each bar_type, sort stubs by sales_count
+        # desc and empties by device_count desc; zip them by rank. Stubs
+        # whose type has no remaining empties get None.
+        empties_by_type: dict = defaultdict(list)
+        for b in empty_bars:
+            empties_by_type[b.bar_type].append(b)
+        for type_key in empties_by_type:
+            empties_by_type[type_key].sort(
+                key=lambda b: (-(b.device_count or 0), b.name),
+            )
+
+        stubs_by_type: dict = defaultdict(list)
+        for b in stubs:
+            stubs_by_type[b.bar_type].append(b)
+        for type_key in stubs_by_type:
+            stubs_by_type[type_key].sort(
+                key=lambda b: (-sales_count_by_bar.get(b.id, 0), b.name),
+            )
+
+        suggestion_for_stub: dict = {}
+        for type_key, ranked_stubs in stubs_by_type.items():
+            ranked_empties = empties_by_type.get(type_key, [])
+            for stub, empty in zip(ranked_stubs, ranked_empties):
+                suggestion_for_stub[stub.id] = empty.id
+
+        # Build response dict. Sort each bucket for stable UI ordering.
+        empty_bars_sorted = sorted(
+            empty_bars,
+            key=lambda b: (-(b.device_count or 0), b.name),
+        )
+        stubs_sorted = sorted(
+            stubs,
+            key=lambda b: (-sales_count_by_bar.get(b.id, 0), b.name),
+        )
+        mapped_bars_sorted = sorted(mapped_bars, key=lambda b: b.name)
+
+        # Each stub gets enriched with sales_count + suggestion.
+        stubs_payload = []
+        for b in stubs_sorted:
+            stubs_payload.append({
+                "id":                       b.id,
+                "event_id":                 b.event_id,
+                "name":                     b.name,
+                "slesh_negozio_id":         b.slesh_negozio_id,
+                "bar_type":                 b.bar_type,
+                "device_count":             b.device_count,
+                "slesh_category":           b.slesh_category,
+                "is_active":                b.is_active,
+                "auto_created":             b.auto_created,
+                "sales_count":              sales_count_by_bar.get(b.id, 0),
+                "suggested_target_bar_id":  suggestion_for_stub.get(b.id),
+            })
+
+        return {
+            "empty_bars":  empty_bars_sorted,
+            "stubs":       stubs_payload,
+            "mapped_bars": mapped_bars_sorted,
+        }

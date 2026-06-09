@@ -12,7 +12,12 @@ from app.core.database import get_db
 from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
 from app.modules.auth.permissions import get_active_role
-from app.modules.bars.schemas import BarCreate, BarResponse, BarUpdate
+from app.modules.bars.schemas import (
+    BarCreate,
+    BarMappingState,
+    BarResponse,
+    BarUpdate,
+)
 from app.modules.bars.service import (
     BarMergeConflictError,
     BarMergeInvalidError,
@@ -222,3 +227,40 @@ async def merge_bars_endpoint(
         )
 
     return dst
+
+
+@router.get(
+    "/mapping-state",
+    response_model=BarMappingState,
+)
+async def get_bar_mapping_state(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> BarMappingState:
+    """Three-region view of the event's bars for the dashboard.
+
+    Returns:
+      - empty_bars:  wizard-defined, no shop_id yet (awaiting activity)
+      - stubs:       auto-created from unmapped Slesh shop_ids, with
+                     sales_count + suggested_target_bar_id (the highest-
+                     device-count empty wizard bar of the same bar_type
+                     paired by rank)
+      - mapped_bars: fully resolved (shop_id bound + name set)
+
+    Used by the dashboard to render the three regions and by the inline
+    name-picker dropdown on stub cards to pre-select the suggested name.
+
+    404 if event doesn't exist in tenant.
+    """
+    service = BarService(db)
+    try:
+        state = await service.get_mapping_state(
+            current_user.tenant_id, event_id,
+        )
+    except EventNotFoundForBarError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    return state
