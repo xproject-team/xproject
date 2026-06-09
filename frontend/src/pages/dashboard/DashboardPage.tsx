@@ -422,6 +422,12 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // ── Data hooks (all gated on eventId via `enabled` internally) ──
   const barsQuery          = useBarsForEvent(eventId)
   const mappingStateQuery  = useBarMappingState(eventId)
+  // useMergeBars MUST live with the other top-level data hooks — never
+  // below a conditional/early-return path. react-query's useMutation
+  // calls useContext internally; if this hook is skipped on one render
+  // and called on the next, React tears down the component tree with a
+  // hooks-order violation. (Phase 1 bugfix, June 9 2026.)
+  const mergeBars          = useMergeBars()
   const barStockQuery      = useBarStockForEvent(eventId)
   const transactionsQuery  = useTransactionsForEvent(eventId)
   const burnRatesQuery     = useBurnRatesForEvent(eventId)
@@ -562,14 +568,6 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
     (mappingStateQuery.data?.stubs ?? []).map((s) => [s.id, s] as const),
   )
 
-  // Merge mutation fired by the stub-card dropdown when owner picks a
-  // target bar name. On success the query invalidation inside useMergeBars
-  // triggers a mapping-state refetch and the stub card vanishes within a
-  // tick (replaced by the now-mapped wizard card).
-  const mergeBars = useMergeBars()
-  const handleMerge = useCallback((srcId: string, dstId: string) => {
-    mergeBars.mutate({ src_id: srcId, dst_id: dstId })
-  }, [mergeBars])
 
   const unacknowledgedCount = alerts.filter(
     (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
@@ -651,7 +649,8 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                     ? {
                         available: emptyBars.filter((b) => b.bar_type === kpi.bar_type),
                         suggested: stub.suggested_target_bar_id,
-                        onMerge:   handleMerge,
+                        onMerge:   (srcId: string, dstId: string) =>
+                          mergeBars.mutate({ src_id: srcId, dst_id: dstId }),
                       }
                     : undefined
                   return (
