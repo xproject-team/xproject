@@ -200,17 +200,8 @@ async def ingest_order(
     if shop_ref.id in cache.bars:
         bar = cache.bars[shop_ref.id]
     else:
-        bar = await _find_bar_by_slesh_id(db, tenant_id, shop_ref.id)
+        bar = await _resolve_bar(db, tenant_id, event_id, shop_ref.id)
         cache.bars[shop_ref.id] = bar
-    if bar is None:
-        result.lines_skipped += result.lines_total
-        result.skip_reasons.append(f"no bar matched shop {shop_ref.id}")
-        logger.warning(
-            "ingest_order %s: skipped — no bar matched shop %s (%s). "
-            "Run reference sync to refresh shop linkages.",
-            order.id, shop_ref.id, shop_ref.name or "?",
-        )
-        return result
 
     # Resolve payment type once per order — same value applies to all cart lines.
     payment_type = (
@@ -325,6 +316,44 @@ async def _find_bar_by_slesh_id(
     )
     res = await db.execute(stmt)
     return res.scalar_one_or_none()
+
+
+async def _resolve_bar(
+    db: AsyncSession, tenant_id: UUID, event_id: UUID, slesh_id: str,
+) -> Bar:
+    """Find a bar by Slesh shop_id, or auto-create a stub if none matches.
+
+    The no-data-loss invariant: every Slesh sale must land on some bar
+    so revenue is never silently dropped. If no XProject bar is mapped
+    to this shop_id yet, we create one immediately with the truncated
+    shop_id as its display name and auto_created=True. The owner
+    reconciles via the Map Bars UI by renaming the stub or merging it
+    into a properly-named bar (which transfers slesh_negozio_id and
+    all StockTransaction rows to the target).
+    """
+    bar = await _find_bar_by_slesh_id(db, tenant_id, slesh_id)
+    if bar is not None:
+        return bar
+    display = (
+        f"{slesh_id[:8]}…{slesh_id[-4:]}"
+        if len(slesh_id) > 12 else slesh_id
+    )
+    bar = Bar(
+        tenant_id=tenant_id,
+        event_id=event_id,
+        name=display,
+        slesh_negozio_id=slesh_id,
+        bar_type="drinks",
+        is_active=True,
+        auto_created=True,
+    )
+    db.add(bar)
+    await db.flush()
+    logger.info(
+        "ingester: auto-created bar %s (name=%s) for unmapped slesh_id=%s",
+        bar.id, display, slesh_id,
+    )
+    return bar
 
 
 async def _find_product_by_external_id(

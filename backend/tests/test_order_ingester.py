@@ -43,6 +43,7 @@ class FakeBar:
     name:        str
     event_id:    UUID
     slesh_negozio_id: str
+    auto_created: bool = False
 
 
 @dataclass
@@ -117,20 +118,39 @@ class FakeService:
 def patched_lookups(monkeypatch):
     """Returns (registered_bars_dict, registered_products_dict).
 
-    Monkeypatches _find_bar_by_slesh_id and _find_product_by_external_id
-    in the order_ingester module so they read from the dicts we control.
+    Monkeypatches _resolve_bar and _find_product_by_external_id in the
+    order_ingester module. The _resolve_bar fake mirrors the real
+    auto-create behaviour: unknown slesh_ids cause a fresh FakeBar with
+    auto_created=True to be added to the bars dict and returned, so
+    tests can both pre-register bars AND assert on the auto-create
+    branch via the same dict.
     """
     bars: dict[str, FakeBar] = {}
     products: dict[str, FakeProduct] = {}
 
-    async def _fake_find_bar(db, tenant_id, slesh_id):
-        return bars.get(slesh_id)
+    async def _fake_resolve_bar(db, tenant_id, event_id, slesh_id):
+        existing = bars.get(slesh_id)
+        if existing is not None:
+            return existing
+        display = (
+            f"{slesh_id[:8]}…{slesh_id[-4:]}"
+            if len(slesh_id) > 12 else slesh_id
+        )
+        new_bar = FakeBar(
+            id=uuid4(),
+            name=display,
+            event_id=event_id,
+            slesh_negozio_id=slesh_id,
+            auto_created=True,
+        )
+        bars[slesh_id] = new_bar
+        return new_bar
 
     async def _fake_find_product(db, tenant_id, external_id):
         return products.get(external_id)
 
     import app.modules.pos.order_ingester as oi
-    monkeypatch.setattr(oi, "_find_bar_by_slesh_id", _fake_find_bar)
+    monkeypatch.setattr(oi, "_resolve_bar", _fake_resolve_bar)
     monkeypatch.setattr(oi, "_find_product_by_external_id", _fake_find_product)
 
     return bars, products
@@ -273,14 +293,19 @@ async def test_ingest_order_no_shop_skips_whole_order(patched_lookups):
 
 
 @pytest.mark.asyncio
-async def test_ingest_order_unmatched_bar_skips(patched_lookups):
+async def test_ingest_order_unmatched_bar_auto_creates(patched_lookups):
+    """Unknown shop_id -> ingester auto-creates a stub bar; sale still
+    lands. The no-data-loss invariant: every Slesh sale attributes to
+    some bar so revenue is never silently dropped."""
     bars, products = patched_lookups
     products["prod_1"] = _make_drink_product("prod_1")
-    # No bar registered with slesh_id "shop_1"
+    # No bar pre-registered with slesh_id "shop_1"
+
     order = FakeOrder(
-        id    = "ord_1",
-        shop  = FakeShopRef(id="shop_1"),
-        cart  = [FakeCartLine(id="line_1", product="prod_1")],
+        id      = "ord_1",
+        shop    = FakeShopRef(id="shop_1"),
+        cart    = [FakeCartLine(id="line_1", product="prod_1")],
+        payment = FakePayment(type="card"),
     )
     service = FakeService()
 
@@ -289,8 +314,15 @@ async def test_ingest_order_unmatched_bar_skips(patched_lookups):
         service=service,
     )
 
-    assert result.lines_skipped == 1
-    assert any("no bar matched" in r for r in result.skip_reasons)
+    assert result.lines_skipped  == 0
+    assert result.lines_ingested == 1
+    assert result.lines_errors   == 0
+    assert "shop_1" in bars
+    new_bar = bars["shop_1"]
+    assert new_bar.slesh_negozio_id == "shop_1"
+    assert new_bar.auto_created is True
+    assert len(service.calls) == 1
+    assert service.calls[0].bar_id == new_bar.id
 
 
 @pytest.mark.asyncio
