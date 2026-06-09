@@ -42,7 +42,7 @@ import {
   useMenuPerformance,
   type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
-import { useBarMappingState } from '@/features/bars/hooks'
+import { useBarMappingState, useMergeBars } from '@/features/bars/hooks'
 import {
   selectBarKpis,
 } from '@/features/dashboard/selectors'
@@ -555,6 +555,22 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
     ? barKpis.filter((k) => !emptyBarIdSet.has(k.id))
     : barKpis
 
+  // Stub lookup (sales_count + suggested_target_bar_id) by bar id — used
+  // by the inline name-picker dropdown in BarCard to pre-select the
+  // device-count-ranked suggestion.
+  const stubById = new Map(
+    (mappingStateQuery.data?.stubs ?? []).map((s) => [s.id, s] as const),
+  )
+
+  // Merge mutation fired by the stub-card dropdown when owner picks a
+  // target bar name. On success the query invalidation inside useMergeBars
+  // triggers a mapping-state refetch and the stub card vanishes within a
+  // tick (replaced by the now-mapped wizard card).
+  const mergeBars = useMergeBars()
+  const handleMerge = useCallback((srcId: string, dstId: string) => {
+    mergeBars.mutate({ src_id: srcId, dst_id: dstId })
+  }, [mergeBars])
+
   const unacknowledgedCount = alerts.filter(
     (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
   ).length
@@ -629,18 +645,29 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {liveKpis.map((kpi) => (
-                  <BarCard
-                    key={kpi.id}
-                    bar={kpi}
-                    criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
-                    onClick={(id) => setSelectedBar(liveKpis.find((b) => b.id === id) ?? null)}
-                    transactions={transactionsQuery.data ?? []}
-                    products={productsQuery.data ?? []}
-                    eventStartMs={eventStartMs}
-                    nowMs={nowMs}
-                  />
-                ))}
+                {liveKpis.map((kpi) => {
+                  const stub = stubById.get(kpi.id)
+                  const mergeOptions = stub
+                    ? {
+                        available: emptyBars.filter((b) => b.bar_type === kpi.bar_type),
+                        suggested: stub.suggested_target_bar_id,
+                        onMerge:   handleMerge,
+                      }
+                    : undefined
+                  return (
+                    <BarCard
+                      key={kpi.id}
+                      bar={kpi}
+                      criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
+                      onClick={(id) => setSelectedBar(liveKpis.find((b) => b.id === id) ?? null)}
+                      transactions={transactionsQuery.data ?? []}
+                      products={productsQuery.data ?? []}
+                      eventStartMs={eventStartMs}
+                      nowMs={nowMs}
+                      mergeOptions={mergeOptions}
+                    />
+                  )
+                })}
               </div>
               {emptyBars.length > 0 && (
                 <div className="mt-6">

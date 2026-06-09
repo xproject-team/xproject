@@ -10,7 +10,9 @@
  *   They'll become real once burn-rate computation, staff shifts, and
  *   alerts backends ship.
  */
-import type { BarKpi, BarStatus, FoodItemCount, StockTransactionRow } from '@/lib/mockData'
+import { useState } from 'react'
+
+import type { BarKpi, BarRow, BarStatus, FoodItemCount, StockTransactionRow } from '@/lib/mockData'
 
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
 import type { ProductLike } from '@/features/dashboard/category-resolver' 
@@ -29,6 +31,15 @@ interface BarCardProps {
   eventStartMs: number
   /** "Now" reference in ms — same value passed to all bar cards on this render */
   nowMs: number
+  /** Inline name-picker (passed only for auto-created stub cards).
+   *  When present, renders "Map this shop to" select listing empty
+   *  wizard bars of matching bar_type. On select, calls onMerge which
+   *  fires POST /bars/{src}/merge-into/{dst} via useMergeBars. */
+  mergeOptions?: {
+    available: BarRow[]
+    suggested: string | null
+    onMerge: (srcId: string, dstId: string) => void
+  }
 }
 
 const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
@@ -101,9 +112,14 @@ export function BarCard({
   products,
   eventStartMs,
   nowMs,
+  mergeOptions,
 }: BarCardProps) {
   const cfg      = STATUS_CFG[bar.status]
   const stockPct = bar.stock_pct
+  // Track the picked destination once the dropdown fires merge — locks
+  // the select so a fast double-tap can't issue a second mutation in
+  // the ~1s window before mapping-state refetches and the stub unmounts.
+  const [pickedDstId, setPickedDstId] = useState<string>('')
 
   const revenueEuros = Math.round(bar.revenue_cents / 100)
 
@@ -166,6 +182,45 @@ export function BarCard({
         >
           shop · {bar.slesh_negozio_id.slice(0, 8)}…{bar.slesh_negozio_id.slice(-4)}
         </p>
+      )}
+
+      {/* Inline name-picker (Phase 1) — shows only on stub cards where
+          mergeOptions was passed by the DashboardPage. Picking one of the
+          empty wizard bars fires POST /bars/{src}/merge-into/{dst} which
+          transfers the stub's transactions + shop_id onto the wizard bar
+          and deletes the stub. Wrapped in stopPropagation so the dropdown
+          doesn't trigger the card-level BarDetailOverlay underneath. */}
+      {bar.auto_created && mergeOptions && mergeOptions.available.length > 0 && (
+        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+          <label className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide block mb-1">
+            Map this shop to
+          </label>
+          <select
+            className="w-full text-sm border border-amber-300 rounded-lg px-2 py-1.5 bg-white text-[#1A202C] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            value={pickedDstId}
+            onChange={(e) => {
+              const dstId = e.target.value
+              if (dstId && !pickedDstId) {
+                setPickedDstId(dstId)
+                mergeOptions.onMerge(bar.id, dstId)
+              }
+            }}
+            disabled={Boolean(pickedDstId)}
+          >
+            <option value="" disabled>
+              {mergeOptions.suggested
+                ? `Suggested: ${mergeOptions.available.find((b) => b.id === mergeOptions.suggested)?.name ?? '—'}`
+                : '— pick a bar —'}
+            </option>
+            {mergeOptions.available.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+                {b.id === mergeOptions.suggested ? ' (suggested)' : ''}
+                {b.device_count ? ` · ${b.device_count} devices` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       )}
 
       {/* 4 — Revenue by category over time (5 lines: 4 categories + total)

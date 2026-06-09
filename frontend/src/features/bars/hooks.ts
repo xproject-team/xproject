@@ -151,3 +151,33 @@ export function useBarMappingState(eventId: string | undefined) {
     refetchInterval: 10 * 1000,
   })
 }
+
+
+// ─── Merge bars (Phase 1 — inline name-picker on stub cards) ──────────────
+
+export interface MergeBarsPayload {
+  src_id: string
+  dst_id: string
+}
+
+/**
+ * POST /bars/{src_id}/merge-into/{dst_id} — folds an auto-created stub
+ * into a wizard-defined empty bar. Transfers stock_transactions +
+ * alerts + user assignments onto the wizard bar, moves the Slesh
+ * shop_id onto the wizard bar, deletes the stub. Invalidates
+ * barKeys.all on success so mapping-state refetches.
+ */
+export function useMergeBars() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: MergeBarsPayload): Promise<BarRow> => {
+      const res = await api.post<BarRow>(
+        `/bars/${payload.src_id}/merge-into/${payload.dst_id}`,
+      )
+      return res.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: barKeys.all })
+    },
+  })
+}
