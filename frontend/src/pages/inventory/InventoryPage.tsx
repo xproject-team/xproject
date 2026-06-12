@@ -1,467 +1,369 @@
-import { useState, useCallback, useMemo } from 'react'
+/**
+ * InventoryPage — per-bar dispatch UI (rewritten for Phase 2.5).
+ *
+ * The owner uses this page to move bottles/kegs from the declared
+ * event storage pool (event_stock_items) out to specific bars. Each
+ * dispatch creates a row in event_stock_bar_allocations; the
+ * Warehouse page's activity feed and KPIs update automatically via
+ * TanStack Query invalidation on mutation success.
+ *
+ * Layout:
+ *   Header: event picker (default LIVE event)
+ *   Body:   one card per bar in the event
+ *           - top: list of items already dispatched to this bar with
+ *                  cumulative qtys (sums history-preserving rows)
+ *           - bottom: '+ Dispatch more' form
+ *                     item dropdown (only items with qty_available>0)
+ *                     qty input (capped at qty_available)
+ *                     Dispatch button -> POST /allocations
+ *
+ * Old Slesh-product allocation view (bar_stock-based) preserved at
+ * InventoryPage.tsx.barstock-bak. The /inventory/allocate route still
+ * works for the existing Slesh-product bulk allocation flow.
+ */
+import { useMemo, useState } from 'react'
+
+import { useBarsForEvent } from '@/features/dashboard/hooks'
+import { useEvents } from '@/features/events/hooks'
 import {
-  useLiveEvent,
-  useBarsForEvent,
-  useBarStockForEvent,
-  useAllProducts,
-} from '@/features/dashboard/hooks'
-import {
-  selectInventoryBars,
-  selectInventoryProducts,
-  type ProductCategory,
-  type ProductStatus,
-} from '@/features/inventory/selectors'
-import { usePermissions } from '@/features/auth/usePermissions'
+  useBarAllocations,
+  useCreateDispatch,
+  useStorageSummary,
+} from '@/features/event_storage/hooks'
+import type {
+  BarAllocationSummary,
+  StorageSummaryRow,
+} from '@/features/event_storage/types'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function stockPct(current: number, initial: number): number {
-  if (initial === 0) return 0
-  return Math.round((current / initial) * 100)
+type EventRow = {
+  id: string
+  name: string
+  status: string
 }
 
-function stockBarColor(pct: number): string {
-  if (pct > 60) return 'bg-[#38A169]'
-  if (pct > 30) return 'bg-[#D69E2E]'
-  return 'bg-[#E53E3E]'
+type Bar = {
+  id: string
+  name: string
+  is_active?: boolean
+  bar_type?: string
 }
 
-function formatDepletion(mins: number): string {
-  if (mins <= 0) return 'Depleted'
-  if (mins >= 999) return '—'
-  if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`
-  return `${mins}m`
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function fmtQty(value: string): string {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return value
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
-// ─── Style maps ───────────────────────────────────────────────────────────────
-
-const STATUS_CFG: Record<ProductStatus, { label: string; cls: string }> = {
-  healthy:  { label: 'Healthy',  cls: 'bg-green-100 text-[#38A169] border border-green-200' },
-  warning:  { label: 'Warning',  cls: 'bg-yellow-100 text-[#D69E2E] border border-yellow-200' },
-  critical: { label: 'Critical', cls: 'bg-red-100 text-[#E53E3E] border border-red-200' },
-  depleted: { label: 'Depleted', cls: 'bg-gray-100 text-[#718096] border border-gray-200' },
-}
-
-const CATEGORY_CFG: Record<ProductCategory, string> = {
-  Spirits: 'bg-purple-100 text-purple-700 border border-purple-200',
-  Beer:    'bg-yellow-100 text-yellow-700 border border-yellow-200',
-  Wine:    'bg-pink-100 text-pink-700 border border-pink-200',
-  Mixers:  'bg-blue-100 text-blue-700 border border-blue-200',
-  Other:   'bg-gray-100 text-[#4A5568] border border-gray-200',
-}
-
-const BAR_STATUS_CFG = {
-  healthy:  { dot: 'bg-[#38A169]',              label: 'Healthy',   text: 'text-[#38A169]' },
-  warning:  { dot: 'bg-[#D69E2E]',              label: 'Low Stock', text: 'text-[#D69E2E]' },
-  critical: { dot: 'bg-[#E53E3E] animate-pulse', label: 'Critical',  text: 'text-[#E53E3E]' },
-}
-
-const CATEGORIES: ProductCategory[] = ['Spirits', 'Beer', 'Wine', 'Mixers', 'Other']
-
-// ─── Bar lookup map ───────────────────────────────────────────────────────────
-
-// BAR_BY_ID built dynamically from real data inside the component
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function StockBar({ current, initial }: { current: number; initial: number }) {
-  const pct = initial > 0 ? Math.max(0, Math.round((current / initial) * 100)) : 0
-  return (
-    <div className="flex items-center gap-2 min-w-[100px]">
-      <div className="flex-1 h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${stockBarColor(pct)}`}
-          style={{ width: `${Math.min(pct, 100)}%` }}
-        />
-      </div>
-      <span className="text-xs text-[#4A5568] tabular-nums w-8 text-right">{pct}%</span>
-    </div>
-  )
-}
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
-
-function Toast({ visible }: { visible: boolean }) {
-  return (
-    <div
-      className={[
-        'fixed bottom-6 right-6 z-50 bg-[#1A202C] text-white text-sm font-medium',
-        'px-4 py-3 rounded-xl shadow-lg transition-all duration-300',
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2 pointer-events-none',
-      ].join(' ')}
-    >
-      Export feature coming soon
-    </div>
-  )
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const [selectedBarId, setSelectedBarId]   = useState<string | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState<ProductCategory | 'all'>('all')
-  const [toastVisible, setToastVisible]     = useState(false)
-
-  const handleExport = useCallback(() => {
-    setToastVisible(true)
-    setTimeout(() => setToastVisible(false), 3000)
-  }, [])
-
-  // ── Real data via the dashboard hooks ───────────────────────────────────────
-  // Same hooks Dashboard uses → single source of truth, consistent polling,
-  // shared cache. Inventory only adds a per-product aggregation.
-  const liveEvent = useLiveEvent()
-  const eventId   = liveEvent.data?.id ?? null
-  const eventName = liveEvent.data?.name ?? '—'
-  const barsQ     = useBarsForEvent(eventId)
-  const stockQ    = useBarStockForEvent(eventId)
-  const productsQ = useAllProducts()
-
-  // ── Role-aware scoping ──────────────────────────────────────────────────────
-  // Managers and Bartenders have an assignedBarId — they should only see THEIR
-  // bar's stock, not the whole event's. Owner + Warehouse have null and see all.
-  // The single switch below collapses the entire page from event-wide to single-bar.
-  const { assignedBarId } = usePermissions()
-  const isSingleBarView = assignedBarId !== null
-
-  const isLoading = liveEvent.isLoading || barsQ.isLoading || stockQ.isLoading || productsQ.isLoading
-  const isError   = liveEvent.isError   || barsQ.isError   || stockQ.isError   || productsQ.isError
-  const hasData   = !!barsQ.data && !!stockQ.data && !!productsQ.data
-
-  // ── Selectors: turn raw backend rows into the view model ────────────────────
-  const bars = useMemo(() => {
-    if (!hasData) return []
-    const all = selectInventoryBars({
-      bars:     barsQ.data!,
-      barStock: stockQ.data!,
-      products: productsQ.data!,
-    })
-    return assignedBarId === null ? all : all.filter((b) => b.id === assignedBarId)
-  }, [hasData, barsQ.data, stockQ.data, productsQ.data, assignedBarId])
-
-  const products = useMemo(() => {
-    if (!hasData) return []
-    const all = selectInventoryProducts({
-      bars:     barsQ.data!,
-      barStock: stockQ.data!,
-      products: productsQ.data!,
-    })
-    return assignedBarId === null ? all : all.filter((p) => p.bar_id === assignedBarId)
-  }, [hasData, barsQ.data, stockQ.data, productsQ.data, assignedBarId])
-  const BAR_BY_ID = useMemo(
-    () => Object.fromEntries(bars.map((b) => [b.id, b])),
-    [bars],
+  const eventsQ = useEvents()
+  const events = ((eventsQ.data ?? []) as EventRow[]).filter(
+    (e) => e.status !== 'COMPLETED' && e.status !== 'completed',
   )
-
-  // ── Filtered + sorted product list ──────────────────────────────────────────
-  const filtered = products
-    .filter((p) => selectedBarId === null || p.bar_id === selectedBarId)
-    .filter((p) => selectedCategory === 'all' || p.category === selectedCategory)
-    .slice()
-    .sort((a, z) => a.estimated_depletion_minutes - z.estimated_depletion_minutes)
-
-  // ── Footer stats ────────────────────────────────────────────────────────────
-  const atRiskCount = filtered.filter(
-    (p) => p.status === 'warning' || p.status === 'critical' || p.status === 'depleted',
-  ).length
-
-  // ── Three-state UX: loading / error / empty ─────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <div className="mt-8 text-center text-sm text-[#718096]">Loading inventory…</div>
-      </div>
+  const defaultEventId = useMemo(() => {
+    if (events.length === 0) return undefined
+    const live = events.find(
+      (e) => e.status === 'LIVE' || e.status === 'live',
     )
+    return (live ?? events[0]).id
+  }, [events])
+
+  const [eventId, setEventId] = useState<string | undefined>(undefined)
+  const effectiveEventId = eventId ?? defaultEventId
+
+  const barsQ = useBarsForEvent(effectiveEventId)
+  const summaryQ = useStorageSummary(effectiveEventId)
+  const allocationsQ = useBarAllocations(effectiveEventId)
+
+  const bars = (barsQ.data ?? []) as Bar[]
+  const summary = summaryQ.data
+  const allocations = (allocationsQ.data ?? []) as BarAllocationSummary[]
+
+  // Lookup map: bar_id -> per-bar allocation summary
+  const allocByBar = useMemo(() => {
+    const m: Record<string, BarAllocationSummary> = {}
+    allocations.forEach((a) => {
+      m[a.bar_id] = a
+    })
+    return m
+  }, [allocations])
+
+  // ─── Loading / empty ───────────────────────────────────────────────
+  if (eventsQ.isLoading) {
+    return <PageShell><p className="text-slate-500">Loading events…</p></PageShell>
   }
-  if (isError) {
+  if (events.length === 0) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <div className="mt-8 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          Couldn't load inventory data. Refresh the page or try again later.
+      <PageShell>
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <h2 className="text-lg font-semibold text-slate-800">No events</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Create an event via the wizard to dispatch inventory.
+          </p>
         </div>
-      </div>
-    )
-  }
-  if (!eventId) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <div className="mt-8 bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-8 text-center text-sm text-[#4A5568]">
-          No live event right now. Inventory tracks the active event in real time.
-        </div>
-      </div>
-    )
-  }
-  if (bars.length === 0) {
-    return (
-      <div className="p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <p className="text-sm text-[#4A5568] mt-1">{eventName}</p>
-        <div className="mt-8 bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-8 text-center text-sm text-[#4A5568]">
-          No bars configured for this event yet. Add bars from the event detail page.
-        </div>
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-
-      {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-[#1A202C]">Inventory Overview</h1>
-        <p className="text-sm text-[#4A5568] mt-1">
-          {eventName} · Live · {products.length} {products.length === 1 ? 'product' : 'products'}
-          {isSingleBarView
-            ? ` at ${bars[0]?.name ?? 'your bar'}`
-            : ` across ${bars.length} ${bars.length === 1 ? 'bar' : 'bars'}`}
-        </p>
-      </div>
-
-      {/* ── Filters ───────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 flex-wrap mb-5">
-
-        {/* Bar filter pills — hidden in single-bar view */}
-        {!isSingleBarView && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setSelectedBarId(null)}
-            className={[
-              'text-xs font-semibold px-3.5 py-1.5 rounded-full border transition-colors',
-              selectedBarId === null
-                ? 'bg-[#1E5A8D] text-white border-[#1E5A8D]'
-                : 'bg-white text-[#4A5568] border-[#E2E8F0] hover:bg-[#F7FAFC]',
-            ].join(' ')}
-          >
-            All Bars
-          </button>
-          {bars.map((bar) => (
-            <button
-              key={bar.id}
-              onClick={() => setSelectedBarId(bar.id)}
-              className={[
-                'text-xs font-semibold px-3.5 py-1.5 rounded-full border transition-colors',
-                selectedBarId === bar.id
-                  ? 'bg-[#1E5A8D] text-white border-[#1E5A8D]'
-                  : 'bg-white text-[#4A5568] border-[#E2E8F0] hover:bg-[#F7FAFC]',
-              ].join(' ')}
-            >
-              {bar.name}
-            </button>
-          ))}
+    <PageShell>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Inventory</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Dispatch bottles &amp; kegs from the warehouse pool to each bar
+          </p>
         </div>
-        )}
-
-        {/* Category dropdown */}
         <select
-          value={selectedCategory}
-          onChange={(e) => setSelectedCategory(e.target.value as ProductCategory | 'all')}
-          className="text-sm border border-[#E2E8F0] rounded-lg px-3 py-1.5 bg-white text-[#4A5568] focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/20 focus:border-[#1E5A8D] transition"
+          value={effectiveEventId ?? ''}
+          onChange={(e) => setEventId(e.target.value)}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
-          <option value="all">All Categories</option>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
+          {events.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name} — {e.status}
+            </option>
           ))}
         </select>
       </div>
 
-      {/* ── Bar Summary Cards — hidden in single-bar view ─────────────── */}
-      {!isSingleBarView && (
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {bars.map((bar) => {
-          const pct = stockPct(bar.current_stock, bar.initial_stock)
-          const cfg = BAR_STATUS_CFG[bar.status]
-          const isSelected = selectedBarId === bar.id
-          return (
-            <button
-              key={bar.id}
-              onClick={() => setSelectedBarId(isSelected ? null : bar.id)}
-              className={[
-                'bg-white rounded-xl border p-4 text-left transition-all shadow-sm hover:shadow-md',
-                isSelected
-                  ? 'border-[#1E5A8D] ring-2 ring-[#1E5A8D]/20'
-                  : 'border-[#E2E8F0]',
-              ].join(' ')}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-                <span className="text-xs font-bold text-[#1A202C] truncate">{bar.name}</span>
-              </div>
-              <p className="text-sm font-bold text-[#1A202C] mb-1.5">
-                {bar.current_stock}
-                <span className="text-xs font-normal text-[#4A5568]">/{bar.initial_stock} bottles</span>
-              </p>
-              <div className="h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden mb-1.5">
-                <div
-                  className={`h-full rounded-full ${stockBarColor(pct)}`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <p className={`text-[10px] font-semibold ${cfg.text}`}>{cfg.label}</p>
-            </button>
-          )
-        })}
+      {/* Pool strip */}
+      <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
+          Storage pool
+        </p>
+        <p className="mt-1 text-sm text-blue-900">
+          {summary ? (
+            <>
+              <span className="font-semibold">
+                {summary.total_items} items
+              </span>{' '}
+              · {fmtQty(summary.total_qty_received)} units declared ·{' '}
+              {fmtQty(summary.total_qty_allocated)} already dispatched
+            </>
+          ) : (
+            'Loading…'
+          )}
+        </p>
       </div>
+
+      {/* Bar cards */}
+      {summaryQ.isLoading ? (
+        <p className="mt-6 text-center text-sm text-slate-500">
+          Loading inventory…
+        </p>
+      ) : !summary || summary.rows.length === 0 ? (
+        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-6 text-center">
+          <p className="text-sm font-medium text-amber-900">
+            No storage declared for this event yet.
+          </p>
+          <p className="mt-1 text-xs text-amber-700">
+            Open the event in the wizard → Storage tab to declare items.
+          </p>
+        </div>
+      ) : bars.length === 0 ? (
+        <div className="mt-6 rounded-lg border border-slate-200 bg-white px-5 py-6 text-center">
+          <p className="text-sm text-slate-500">
+            This event has no bars yet. Add bars via the wizard.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {bars
+            .filter((b) => b.is_active !== false)
+            .map((bar) => (
+              <BarCard
+                key={bar.id}
+                bar={bar}
+                eventId={effectiveEventId!}
+                summaryRows={summary.rows}
+                existing={allocByBar[bar.id]}
+              />
+            ))}
+        </div>
+      )}
+    </PageShell>
+  )
+}
+
+// ─── Bar card ────────────────────────────────────────────────────────
+
+function BarCard({
+  bar,
+  eventId,
+  summaryRows,
+  existing,
+}: {
+  bar: Bar
+  eventId: string
+  summaryRows: StorageSummaryRow[]
+  existing: BarAllocationSummary | undefined
+}) {
+  const [open, setOpen] = useState(false)
+  const [selectedSupplierProductId, setSelectedSupplierProductId] =
+    useState<string>('')
+  const [qty, setQty] = useState<string>('')
+  const [error, setError] = useState<string | null>(null)
+
+  const dispatchMut = useCreateDispatch(eventId)
+
+  // Items still available for dispatch (qty_available > 0)
+  const availableItems = useMemo(
+    () => summaryRows.filter((r) => Number(r.qty_available) > 0),
+    [summaryRows],
+  )
+
+  const selected = availableItems.find(
+    (r) => r.supplier_product_id === selectedSupplierProductId,
+  )
+  const maxQty = selected ? Number(selected.qty_available) : 0
+
+  const reset = () => {
+    setOpen(false)
+    setSelectedSupplierProductId('')
+    setQty('')
+    setError(null)
+  }
+
+  const onSubmit = async () => {
+    setError(null)
+    const n = Number(qty)
+    if (!selectedSupplierProductId) {
+      setError('Pick an item.')
+      return
+    }
+    if (!Number.isFinite(n) || n <= 0) {
+      setError('Qty must be > 0.')
+      return
+    }
+    if (n > maxQty) {
+      setError(`Only ${maxQty} available in warehouse.`)
+      return
+    }
+    try {
+      await dispatchMut.mutateAsync({
+        supplier_product_id: selectedSupplierProductId,
+        bar_id: bar.id,
+        qty_allocated: String(n),
+      })
+      reset()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Dispatch failed.')
+    }
+  }
+
+  const items = existing?.items ?? []
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white">
+      {/* Card header */}
+      <div className="border-b border-slate-200 px-5 py-3">
+        <h3 className="text-base font-semibold text-slate-800">{bar.name}</h3>
+        <p className="text-xs text-slate-500">
+          {items.length === 0
+            ? 'Nothing dispatched yet'
+            : `${items.length} item${items.length === 1 ? '' : 's'} dispatched`}
+        </p>
+      </div>
+
+      {/* Current allocations */}
+      {items.length > 0 && (
+        <ul className="divide-y divide-slate-100">
+          {items.map((it) => (
+            <li
+              key={it.supplier_product_id}
+              className="flex items-center justify-between px-5 py-2 text-sm"
+            >
+              <span className="text-slate-700">{it.item_name}</span>
+              <span className="font-mono font-semibold text-slate-800">
+                {fmtQty(it.qty_total_allocated)} {it.unit}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {/* ── Product Table ─────────────────────────────────────────────────── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#F7FAFC] border-b border-[#E2E8F0]">
-                {[
-                  { label: 'Product Name',     align: 'text-left'  },
-                  { label: 'Bar',              align: 'text-left'  },
-                  { label: 'Category',         align: 'text-left'  },
-                  { label: 'Current',          align: 'text-right' },
-                  { label: 'Initial',          align: 'text-right' },
-                  { label: 'Stock Level',      align: 'text-left'  },
-                  { label: 'Status',           align: 'text-left'  },
-                  { label: 'Burn Rate',        align: 'text-right' },
-                  { label: 'Time to Depletion',align: 'text-right' },
-                  { label: 'Unit Price',       align: 'text-right' },
-                ].filter(({ label }) => {
-                  // In single-bar view (Manager / Bartender), 'Bar' is redundant
-                  // (every row is the same bar) and 'Unit Price' is a manager-
-                  // ish concern the bartender doesn't need to pour drinks.
-                  if (!isSingleBarView) return true
-                  return label !== 'Bar' && label !== 'Unit Price'
-                }).map(({ label, align }) => (
-                  <th
-                    key={label}
-                    className={`px-4 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide whitespace-nowrap ${align}`}
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-[#4A5568]">
-                    No products match the selected filters.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((p) => {
-                  const statusCfg   = STATUS_CFG[p.status]
-                  const bar         = BAR_BY_ID[p.bar_id]
-                  const urgent      = p.estimated_depletion_minutes > 0 && p.estimated_depletion_minutes < 45
-                  const rowDanger   = p.status === 'critical' || p.status === 'depleted'
-
-                  return (
-                    <tr
-                      key={p.id}
-                      className={[
-                        'border-b border-[#E2E8F0] last:border-0 transition-colors',
-                        rowDanger ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-[#F7FAFC]',
-                      ].join(' ')}
-                    >
-                      {/* Product Name */}
-                      <td className="px-4 py-3 font-semibold text-[#1A202C] whitespace-nowrap">
-                        {p.product_name}
-                      </td>
-
-                      {/* Bar — hidden in single-bar view */}
-                      {!isSingleBarView && (
-                        <td className="px-4 py-3 text-[#4A5568] whitespace-nowrap">
-                          {bar?.name ?? '—'}
-                        </td>
-                      )}
-
-                      {/* Category */}
-                      <td className="px-4 py-3">
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${CATEGORY_CFG[p.category]}`}>
-                          {p.category}
-                        </span>
-                      </td>
-
-                      {/* Current Stock */}
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-[#1A202C]">
-                        {p.current_stock}
-                      </td>
-
-                      {/* Initial Stock */}
-                      <td className="px-4 py-3 text-right font-mono text-[#4A5568]">
-                        {p.initial_stock}
-                      </td>
-
-                      {/* Stock Bar */}
-                      <td className="px-4 py-3">
-                        <StockBar current={p.current_stock} initial={p.initial_stock} />
-                      </td>
-
-                      {/* Status Badge */}
-                      <td className="px-4 py-3">
-                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${statusCfg.cls}`}>
-                          {statusCfg.label}
-                        </span>
-                      </td>
-
-                      {/* Burn Rate */}
-                      <td className="px-4 py-3 text-right text-[#4A5568] tabular-nums whitespace-nowrap">
-                        {p.consumption_rate > 0 ? `${p.consumption_rate} btl/hr` : '—'}
-                      </td>
-
-                      {/* Time to Depletion */}
-                      <td className={[
-                        'px-4 py-3 text-right tabular-nums whitespace-nowrap',
-                        urgent ? 'font-bold text-[#E53E3E]' : 'text-[#1A202C]',
-                        p.status === 'depleted' ? 'text-[#718096]' : '',
-                      ].join(' ')}>
-                        {formatDepletion(p.estimated_depletion_minutes)}
-                      </td>
-
-                      {/* Unit Price — hidden in single-bar view */}
-                      {!isSingleBarView && (
-                        <td className="px-4 py-3 text-right text-[#4A5568] tabular-nums">
-                          €{p.unit_price.toFixed(2)}
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* ── Table Footer ──────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-5 py-3 bg-[#F7FAFC] border-t border-[#E2E8F0] flex-wrap gap-3">
-          <div className="flex items-center gap-5">
-            <span className="text-xs text-[#4A5568]">
-              <span className="font-semibold text-[#1A202C]">{filtered.length}</span> products
-            </span>
-            <span className={`text-xs ${atRiskCount > 0 ? 'text-[#E53E3E] font-semibold' : 'text-[#4A5568]'}`}>
-              {atRiskCount > 0 ? (
-                <>
-                  <span className="font-bold">{atRiskCount}</span> at risk
-                </>
-              ) : (
-                'No products at risk'
-              )}
-            </span>
-          </div>
-
-          {!isSingleBarView && (
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-1.5 text-xs font-semibold text-[#4A5568] border border-[#E2E8F0] bg-white hover:bg-[#F7FAFC] px-3 py-1.5 rounded-lg transition-colors"
+      {/* Dispatch form / button */}
+      <div className="border-t border-slate-100 p-4">
+        {!open ? (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            disabled={availableItems.length === 0}
+            className="w-full rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {availableItems.length === 0
+              ? 'No items left in warehouse'
+              : '+ Dispatch more'}
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <select
+              value={selectedSupplierProductId}
+              onChange={(e) => {
+                setSelectedSupplierProductId(e.target.value)
+                setQty('')
+                setError(null)
+              }}
+              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Export CSV
-            </button>
-          )}
-        </div>
+              <option value="">— pick item —</option>
+              {availableItems.map((r) => (
+                <option key={r.supplier_product_id} value={r.supplier_product_id}>
+                  {r.item_name} ({fmtQty(r.qty_available)} {r.unit} avail)
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={0}
+              max={maxQty || undefined}
+              step={1}
+              value={qty}
+              onChange={(e) => {
+                setQty(e.target.value)
+                setError(null)
+              }}
+              placeholder={selected ? `qty (max ${maxQty})` : 'qty'}
+              disabled={!selected}
+              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50"
+            />
+            {error && (
+              <p className="text-xs text-red-600">{error}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onSubmit}
+                disabled={
+                  dispatchMut.isPending || !selectedSupplierProductId || !qty
+                }
+                className="flex-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {dispatchMut.isPending ? 'Dispatching…' : 'Dispatch'}
+              </button>
+              <button
+                type="button"
+                onClick={reset}
+                disabled={dispatchMut.isPending}
+                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
-
-      <Toast visible={toastVisible} />
     </div>
   )
+}
+
+// ─── Shell ───────────────────────────────────────────────────────────
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return <div className="p-8">{children}</div>
 }
