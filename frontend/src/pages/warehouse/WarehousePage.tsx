@@ -1,33 +1,29 @@
 /**
- * WarehousePage — Owner's event storage view (post-Phase-2 rewrite).
+ * WarehousePage — event storage view, LIVE event only.
  *
- * Replaces the scan-based invoice reconciliation flow with the new
- * event_storage data model:
- *   - Pool of bottles/kegs comes from event_stock_items (declared via
- *     Event Create wizard tab 7 "Storage").
- *   - Per-bar dispatches come from event_stock_bar_allocations.
- *   - Activity feed is the dispatch log ordered newest-first.
+ * Locks onto the tenant's single LIVE event (no picker). The whole
+ * point of the warehouse view during operations is to monitor THE
+ * event that's happening now; historical browsing is out of scope
+ * for Sundance 1.
  *
- * Event-scoped: defaults to the LIVE event if one exists, otherwise
- * the most recently updated non-COMPLETED event. Event picker lets
- * the owner switch context.
+ * Reads:
+ *   useLiveEvent          single source of truth for which event
+ *   useStorageSummary     KPIs + per-item inventory table
+ *   useActivityFeed       dispatch history (right sidebar)
  *
- * What's gone vs the old scan flow:
- *   - "+ New Delivery" button (deliveries are declared in the wizard now)
- *   - AT RISK KPI (Gap 1: delete for Sundance 1)
- *   - PENDING REVIEWS KPI (no scan flow -> no unexpected scans)
- *   - All useInventoryGrid / useInventoryKpis / usePendingDeliveries /
- *     useActivityFeed (scan) hooks
+ * KPIs: TOTAL ITEMS / TOTAL QUANTITY / ACTIVE ALLOCATIONS / TOTAL VALUE
+ * Removed forever from this page: '+ New Delivery', AT RISK,
+ * PENDING REVIEWS — none of those exist in the post-Phase-2 model.
  *
- * The old scan/invoice/pending-review pages (/warehouse/scan,
- * /warehouse/pending-review) remain routable by direct URL but are
- * not linked from this page. They will be demolished post-Sundance.
+ * The legacy scan / invoice / pending-review pages at /warehouse/scan
+ * and /warehouse/pending-review remain reachable by URL but no UI
+ * leads there. Demolition deferred post-Sundance.
  *
- * Old file preserved as WarehousePage.tsx.scan-bak.
+ * Old scan-based source preserved as WarehousePage.tsx.scan-bak.
  */
 import { useMemo, useState } from 'react'
 
-import { useEvents } from '@/features/events/hooks'
+import { useLiveEvent } from '@/features/dashboard/hooks'
 import {
   useActivityFeed,
   useStorageSummary,
@@ -37,19 +33,8 @@ import type {
   StorageSummaryRow,
 } from '@/features/event_storage/types'
 
-type EventRow = {
-  id: string
-  name: string
-  status: string
-  updated_at?: string
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-
 const EUR = new Intl.NumberFormat('it-IT', {
-  style: 'currency',
-  currency: 'EUR',
-  maximumFractionDigits: 0,
+  style: 'currency', currency: 'EUR', maximumFractionDigits: 0,
 })
 
 function fmtEur(value: string | null | undefined): string {
@@ -60,7 +45,6 @@ function fmtEur(value: string | null | undefined): string {
 }
 
 function fmtQty(value: string): string {
-  // Display Decimals as integers when whole, else with 2 dp
   const n = Number(value)
   if (!Number.isFinite(n)) return value
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
@@ -79,34 +63,16 @@ function fmtTimeAgo(iso: string): string {
   return `${days}d ago`
 }
 
-// ─── Page ────────────────────────────────────────────────────────────
-
 export default function WarehousePage() {
-  const eventsQ = useEvents()
-  const events = ((eventsQ.data ?? []) as EventRow[]).filter(
-    (e) => e.status !== 'COMPLETED' && e.status !== 'completed',
-  )
+  const liveEventQ = useLiveEvent()
+  const eventId = liveEventQ.data?.id
 
-  // Default to LIVE event > first event in the list
-  const defaultEventId = useMemo(() => {
-    if (events.length === 0) return undefined
-    const live = events.find(
-      (e) => e.status === 'LIVE' || e.status === 'live',
-    )
-    if (live) return live.id
-    return events[0].id
-  }, [events])
-
-  const [eventId, setEventId] = useState<string | undefined>(undefined)
-  const effectiveEventId = eventId ?? defaultEventId
-
-  const summaryQ = useStorageSummary(effectiveEventId)
-  const activityQ = useActivityFeed(effectiveEventId, 30)
+  const summaryQ = useStorageSummary(eventId)
+  const activityQ = useActivityFeed(eventId, 30)
 
   const summary = summaryQ.data
   const activity = activityQ.data ?? []
 
-  // ─── Filter rows by search ─────────────────────────────────────────
   const [search, setSearch] = useState('')
   const filteredRows: StorageSummaryRow[] = useMemo(() => {
     const rows = summary?.rows ?? []
@@ -119,49 +85,33 @@ export default function WarehousePage() {
     )
   }, [summary, search])
 
-  // ─── Loading / empty states ────────────────────────────────────────
-  if (eventsQ.isLoading) {
-    return <PageShell><p className="text-slate-500">Loading events…</p></PageShell>
+  if (liveEventQ.isLoading) {
+    return <Shell><p className="text-slate-500">Loading…</p></Shell>
   }
-
-  if (events.length === 0) {
+  if (!liveEventQ.data) {
     return (
-      <PageShell>
+      <Shell>
         <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <h2 className="text-lg font-semibold text-slate-800">No events</h2>
+          <h2 className="text-lg font-semibold text-slate-800">No live event</h2>
           <p className="mt-2 text-sm text-slate-500">
-            Create an event with storage entries via the event wizard to
-            populate the warehouse view.
+            The warehouse view follows the LIVE event. Activate the event
+            from the Events page to see its declared storage here.
           </p>
         </div>
-      </PageShell>
+      </Shell>
     )
   }
 
   return (
-    <PageShell>
+    <Shell>
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">
-            Warehouse Management
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Declared pool, per-bar dispatch, and activity feed
-          </p>
-        </div>
-        {/* Event picker */}
-        <select
-          value={effectiveEventId ?? ''}
-          onChange={(e) => setEventId(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          {events.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name} — {e.status}
-            </option>
-          ))}
-        </select>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-800">
+          Warehouse Management
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {liveEventQ.data.name} · declared pool, per-bar dispatch, activity feed
+        </p>
       </div>
 
       {/* KPI strip */}
@@ -190,12 +140,9 @@ export default function WarehousePage() {
 
       {/* Main: inventory table + activity sidebar */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-        {/* Inventory table */}
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-base font-semibold text-slate-800">
-              Inventory
-            </h2>
+            <h2 className="text-base font-semibold text-slate-800">Inventory</h2>
             <input
               type="text"
               value={search}
@@ -204,7 +151,6 @@ export default function WarehousePage() {
               className="w-72 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-
           {summaryQ.isLoading ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">
               Loading inventory…
@@ -235,9 +181,7 @@ export default function WarehousePage() {
                     <td className="px-5 py-3 font-medium text-slate-800">
                       {r.item_name}
                     </td>
-                    <td className="px-5 py-3 text-slate-500">
-                      {r.category}
-                    </td>
+                    <td className="px-5 py-3 text-slate-500">{r.category}</td>
                     <td className="px-5 py-3 text-right font-mono text-slate-700">
                       {fmtQty(r.qty_received)} {r.unit}
                     </td>
@@ -254,18 +198,13 @@ export default function WarehousePage() {
           )}
         </div>
 
-        {/* Activity sidebar */}
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-base font-semibold text-slate-800">
-              Activity
-            </h2>
+            <h2 className="text-base font-semibold text-slate-800">Activity</h2>
             <p className="text-xs text-slate-500">Recent dispatches</p>
           </div>
           {activityQ.isLoading ? (
-            <p className="px-5 py-8 text-center text-sm text-slate-500">
-              Loading…
-            </p>
+            <p className="px-5 py-8 text-center text-sm text-slate-500">Loading…</p>
           ) : activity.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">
               No dispatches yet.
@@ -299,25 +238,17 @@ export default function WarehousePage() {
           )}
         </div>
       </div>
-    </PageShell>
+    </Shell>
   )
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────
-
-function PageShell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: { children: React.ReactNode }) {
   return <div className="p-8">{children}</div>
 }
 
 function KpiTile({
-  label,
-  value,
-  sub,
-}: {
-  label: string
-  value: string | number
-  sub: string
-}) {
+  label, value, sub,
+}: { label: string; value: string | number; sub: string }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">

@@ -1,30 +1,27 @@
 /**
- * InventoryPage — per-bar dispatch UI (rewritten for Phase 2.5).
+ * InventoryPage — bar tile grid + dispatch modal, LIVE event only.
  *
- * The owner uses this page to move bottles/kegs from the declared
- * event storage pool (event_stock_items) out to specific bars. Each
- * dispatch creates a row in event_stock_bar_allocations; the
- * Warehouse page's activity feed and KPIs update automatically via
- * TanStack Query invalidation on mutation success.
+ * The page locks onto the tenant's single LIVE event. No picker —
+ * there's only ever one event being executed at a time. If no event
+ * is LIVE the page shows a wait state.
  *
  * Layout:
- *   Header: event picker (default LIVE event)
- *   Body:   one card per bar in the event
- *           - top: list of items already dispatched to this bar with
- *                  cumulative qtys (sums history-preserving rows)
- *           - bottom: '+ Dispatch more' form
- *                     item dropdown (only items with qty_available>0)
- *                     qty input (capped at qty_available)
- *                     Dispatch button -> POST /allocations
+ *   Header: title (event name shown for context, not selectable)
+ *   Pool strip: total items / declared units / already dispatched
+ *   Bar tiles: compact grid; click a tile to open the modal
+ *   Modal:    items currently in the bar + "charge this bar" form
  *
- * Old Slesh-product allocation view (bar_stock-based) preserved at
- * InventoryPage.tsx.barstock-bak. The /inventory/allocate route still
- * works for the existing Slesh-product bulk allocation flow.
+ * Modal close: × button, backdrop click, ESC key. After a successful
+ * dispatch the modal stays open with the refreshed item list so the
+ * owner can charge several items in a row.
+ *
+ * Cross-page sync via TanStack Query invalidation: Warehouse KPIs +
+ * activity feed update automatically; Dashboard bar cards update via
+ * the storage line added in commit 7.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { useBarsForEvent } from '@/features/dashboard/hooks'
-import { useEvents } from '@/features/events/hooks'
+import { useBarsForEvent, useLiveEvent } from '@/features/dashboard/hooks'
 import {
   useBarAllocations,
   useCreateDispatch,
@@ -35,20 +32,7 @@ import type {
   StorageSummaryRow,
 } from '@/features/event_storage/types'
 
-type EventRow = {
-  id: string
-  name: string
-  status: string
-}
-
-type Bar = {
-  id: string
-  name: string
-  is_active?: boolean
-  bar_type?: string
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────
+type Bar = { id: string; name: string; is_active?: boolean; bar_type?: string }
 
 function fmtQty(value: string): string {
   const n = Number(value)
@@ -59,76 +43,48 @@ function fmtQty(value: string): string {
 // ─── Page ────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const eventsQ = useEvents()
-  const events = ((eventsQ.data ?? []) as EventRow[]).filter(
-    (e) => e.status !== 'COMPLETED' && e.status !== 'completed',
-  )
-  const defaultEventId = useMemo(() => {
-    if (events.length === 0) return undefined
-    const live = events.find(
-      (e) => e.status === 'LIVE' || e.status === 'live',
-    )
-    return (live ?? events[0]).id
-  }, [events])
+  const liveEventQ = useLiveEvent()
+  const eventId = liveEventQ.data?.id
 
-  const [eventId, setEventId] = useState<string | undefined>(undefined)
-  const effectiveEventId = eventId ?? defaultEventId
-
-  const barsQ = useBarsForEvent(effectiveEventId)
-  const summaryQ = useStorageSummary(effectiveEventId)
-  const allocationsQ = useBarAllocations(effectiveEventId)
+  const barsQ = useBarsForEvent(eventId)
+  const summaryQ = useStorageSummary(eventId)
+  const allocationsQ = useBarAllocations(eventId)
 
   const bars = (barsQ.data ?? []) as Bar[]
   const summary = summaryQ.data
   const allocations = (allocationsQ.data ?? []) as BarAllocationSummary[]
 
-  // Lookup map: bar_id -> per-bar allocation summary
   const allocByBar = useMemo(() => {
     const m: Record<string, BarAllocationSummary> = {}
-    allocations.forEach((a) => {
-      m[a.bar_id] = a
-    })
+    allocations.forEach((a) => { m[a.bar_id] = a })
     return m
   }, [allocations])
 
-  // ─── Loading / empty ───────────────────────────────────────────────
-  if (eventsQ.isLoading) {
-    return <PageShell><p className="text-slate-500">Loading events…</p></PageShell>
+  const [openBarId, setOpenBarId] = useState<string | null>(null)
+  const openBar = bars.find((b) => b.id === openBarId) ?? null
+
+  if (liveEventQ.isLoading) {
+    return <Shell><p className="text-slate-500">Loading…</p></Shell>
   }
-  if (events.length === 0) {
+  if (!liveEventQ.data) {
     return (
-      <PageShell>
-        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-          <h2 className="text-lg font-semibold text-slate-800">No events</h2>
-          <p className="mt-2 text-sm text-slate-500">
-            Create an event via the wizard to dispatch inventory.
-          </p>
-        </div>
-      </PageShell>
+      <Shell>
+        <Empty
+          title="No live event"
+          body="Inventory is only available while an event is LIVE. Activate the event from the Events page when you're ready."
+        />
+      </Shell>
     )
   }
 
   return (
-    <PageShell>
+    <Shell>
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800">Inventory</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Dispatch bottles &amp; kegs from the warehouse pool to each bar
-          </p>
-        </div>
-        <select
-          value={effectiveEventId ?? ''}
-          onChange={(e) => setEventId(e.target.value)}
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          {events.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name} — {e.status}
-            </option>
-          ))}
-        </select>
+      <div>
+        <h1 className="text-3xl font-bold text-slate-800">Inventory</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          {liveEventQ.data.name} · tap a bar to see what's in it and charge it
+        </p>
       </div>
 
       {/* Pool strip */}
@@ -139,23 +95,17 @@ export default function InventoryPage() {
         <p className="mt-1 text-sm text-blue-900">
           {summary ? (
             <>
-              <span className="font-semibold">
-                {summary.total_items} items
-              </span>{' '}
-              · {fmtQty(summary.total_qty_received)} units declared ·{' '}
-              {fmtQty(summary.total_qty_allocated)} already dispatched
+              <span className="font-semibold">{summary.total_items} items</span>
+              {' · '}{fmtQty(summary.total_qty_received)} units declared
+              {' · '}{fmtQty(summary.total_qty_allocated)} already dispatched
             </>
-          ) : (
-            'Loading…'
-          )}
+          ) : 'Loading…'}
         </p>
       </div>
 
-      {/* Bar cards */}
+      {/* Bar tiles */}
       {summaryQ.isLoading ? (
-        <p className="mt-6 text-center text-sm text-slate-500">
-          Loading inventory…
-        </p>
+        <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
       ) : !summary || summary.rows.length === 0 ? (
         <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-6 text-center">
           <p className="text-sm font-medium text-amber-900">
@@ -166,204 +116,256 @@ export default function InventoryPage() {
           </p>
         </div>
       ) : bars.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-white px-5 py-6 text-center">
-          <p className="text-sm text-slate-500">
-            This event has no bars yet. Add bars via the wizard.
-          </p>
-        </div>
+        <Empty title="No bars in this event" body="Add bars via the wizard." />
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {bars
             .filter((b) => b.is_active !== false)
             .map((bar) => (
-              <BarCard
+              <BarTile
                 key={bar.id}
                 bar={bar}
-                eventId={effectiveEventId!}
-                summaryRows={summary.rows}
                 existing={allocByBar[bar.id]}
+                onClick={() => setOpenBarId(bar.id)}
               />
             ))}
         </div>
       )}
-    </PageShell>
+
+      {/* Modal */}
+      {openBar && summary && eventId && (
+        <DispatchModal
+          bar={openBar}
+          eventId={eventId}
+          summaryRows={summary.rows}
+          existing={allocByBar[openBar.id]}
+          onClose={() => setOpenBarId(null)}
+        />
+      )}
+    </Shell>
   )
 }
 
-// ─── Bar card ────────────────────────────────────────────────────────
+// ─── Bar tile ────────────────────────────────────────────────────────
 
-function BarCard({
-  bar,
-  eventId,
-  summaryRows,
-  existing,
+function BarTile({
+  bar, existing, onClick,
+}: {
+  bar: Bar
+  existing: BarAllocationSummary | undefined
+  onClick: () => void
+}) {
+  const items = existing?.items ?? []
+  const totalUnits = items.reduce(
+    (sum, i) => sum + Number(i.qty_total_allocated), 0,
+  )
+  const empty = items.length === 0
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group relative flex flex-col items-start rounded-lg border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+        empty
+          ? 'border-slate-200 hover:border-slate-300'
+          : 'border-blue-200 hover:border-blue-400'
+      }`}
+    >
+      <p className="text-sm font-semibold text-slate-800 line-clamp-2">
+        {bar.name}
+      </p>
+      <div className="mt-3 flex w-full items-baseline justify-between">
+        <span className={`text-2xl font-bold ${
+          empty ? 'text-slate-300' : 'text-blue-600'
+        }`}>
+          {empty ? '—' : items.length}
+        </span>
+        <span className="text-xs text-slate-500">
+          {empty ? 'empty' : items.length === 1 ? 'item' : 'items'}
+        </span>
+      </div>
+      {!empty && (
+        <p className="mt-1 text-xs text-slate-500">
+          {fmtQty(String(totalUnits))} units total
+        </p>
+      )}
+    </button>
+  )
+}
+
+// ─── Dispatch modal ──────────────────────────────────────────────────
+
+function DispatchModal({
+  bar, eventId, summaryRows, existing, onClose,
 }: {
   bar: Bar
   eventId: string
   summaryRows: StorageSummaryRow[]
   existing: BarAllocationSummary | undefined
+  onClose: () => void
 }) {
-  const [open, setOpen] = useState(false)
-  const [selectedSupplierProductId, setSelectedSupplierProductId] =
-    useState<string>('')
+  const [selectedSpId, setSelectedSpId] = useState<string>('')
   const [qty, setQty] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [flash, setFlash] = useState<string | null>(null)
 
   const dispatchMut = useCreateDispatch(eventId)
 
-  // Items still available for dispatch (qty_available > 0)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const items = existing?.items ?? []
   const availableItems = useMemo(
     () => summaryRows.filter((r) => Number(r.qty_available) > 0),
     [summaryRows],
   )
-
-  const selected = availableItems.find(
-    (r) => r.supplier_product_id === selectedSupplierProductId,
-  )
+  const selected = availableItems.find((r) => r.supplier_product_id === selectedSpId)
   const maxQty = selected ? Number(selected.qty_available) : 0
 
-  const reset = () => {
-    setOpen(false)
-    setSelectedSupplierProductId('')
-    setQty('')
-    setError(null)
-  }
-
   const onSubmit = async () => {
-    setError(null)
+    setError(null); setFlash(null)
     const n = Number(qty)
-    if (!selectedSupplierProductId) {
-      setError('Pick an item.')
-      return
-    }
-    if (!Number.isFinite(n) || n <= 0) {
-      setError('Qty must be > 0.')
-      return
-    }
-    if (n > maxQty) {
-      setError(`Only ${maxQty} available in warehouse.`)
-      return
-    }
+    if (!selectedSpId) { setError('Pick an item.'); return }
+    if (!Number.isFinite(n) || n <= 0) { setError('Qty must be > 0.'); return }
+    if (n > maxQty) { setError(`Only ${maxQty} available.`); return }
     try {
       await dispatchMut.mutateAsync({
-        supplier_product_id: selectedSupplierProductId,
+        supplier_product_id: selectedSpId,
         bar_id: bar.id,
         qty_allocated: String(n),
       })
-      reset()
+      setFlash(`Dispatched ${n} ${selected?.unit} of ${selected?.item_name}.`)
+      setSelectedSpId(''); setQty('')
+      setTimeout(() => setFlash(null), 2500)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Dispatch failed.')
     }
   }
 
-  const items = existing?.items ?? []
-
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
-      {/* Card header */}
-      <div className="border-b border-slate-200 px-5 py-3">
-        <h3 className="text-base font-semibold text-slate-800">{bar.name}</h3>
-        <p className="text-xs text-slate-500">
-          {items.length === 0
-            ? 'Nothing dispatched yet'
-            : `${items.length} item${items.length === 1 ? '' : 's'} dispatched`}
-        </p>
-      </div>
-
-      {/* Current allocations */}
-      {items.length > 0 && (
-        <ul className="divide-y divide-slate-100">
-          {items.map((it) => (
-            <li
-              key={it.supplier_product_id}
-              className="flex items-center justify-between px-5 py-2 text-sm"
-            >
-              <span className="text-slate-700">{it.item_name}</span>
-              <span className="font-mono font-semibold text-slate-800">
-                {fmtQty(it.qty_total_allocated)} {it.unit}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Dispatch form / button */}
-      <div className="border-t border-slate-100 p-4">
-        {!open ? (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">{bar.name}</h2>
+            <p className="text-xs text-slate-500">Per-bar inventory</p>
+          </div>
           <button
             type="button"
-            onClick={() => setOpen(true)}
-            disabled={availableItems.length === 0}
-            className="w-full rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={onClose}
+            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Close"
           >
-            {availableItems.length === 0
-              ? 'No items left in warehouse'
-              : '+ Dispatch more'}
+            ✕
           </button>
-        ) : (
-          <div className="space-y-2">
-            <select
-              value={selectedSupplierProductId}
-              onChange={(e) => {
-                setSelectedSupplierProductId(e.target.value)
-                setQty('')
-                setError(null)
-              }}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">— pick item —</option>
-              {availableItems.map((r) => (
-                <option key={r.supplier_product_id} value={r.supplier_product_id}>
-                  {r.item_name} ({fmtQty(r.qty_available)} {r.unit} avail)
-                </option>
+        </div>
+
+        {/* Currently dispatched */}
+        <div className="px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Currently in this bar
+          </p>
+          {items.length === 0 ? (
+            <p className="mt-2 rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-400">
+              Nothing dispatched yet.
+            </p>
+          ) : (
+            <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+              {items.map((it) => (
+                <li
+                  key={it.supplier_product_id}
+                  className="flex items-center justify-between px-3 py-2 text-sm"
+                >
+                  <span className="text-slate-700">{it.item_name}</span>
+                  <span className="font-mono font-semibold text-slate-800">
+                    {fmtQty(it.qty_total_allocated)} {it.unit}
+                  </span>
+                </li>
               ))}
-            </select>
-            <input
-              type="number"
-              min={0}
-              max={maxQty || undefined}
-              step={1}
-              value={qty}
-              onChange={(e) => {
-                setQty(e.target.value)
-                setError(null)
-              }}
-              placeholder={selected ? `qty (max ${maxQty})` : 'qty'}
-              disabled={!selected}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50"
-            />
-            {error && (
-              <p className="text-xs text-red-600">{error}</p>
-            )}
-            <div className="flex gap-2">
+            </ul>
+          )}
+        </div>
+
+        {/* Charge form */}
+        <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Charge this bar
+          </p>
+          {availableItems.length === 0 ? (
+            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No items left in the warehouse pool.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              <select
+                value={selectedSpId}
+                onChange={(e) => {
+                  setSelectedSpId(e.target.value); setQty(''); setError(null)
+                }}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">— pick item —</option>
+                {availableItems.map((r) => (
+                  <option key={r.supplier_product_id} value={r.supplier_product_id}>
+                    {r.item_name} ({fmtQty(r.qty_available)} {r.unit} avail)
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                max={maxQty || undefined}
+                step={1}
+                value={qty}
+                onChange={(e) => { setQty(e.target.value); setError(null) }}
+                placeholder={selected ? `qty (max ${maxQty})` : 'qty'}
+                disabled={!selected}
+                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+              />
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              {flash && (
+                <p className="rounded-md bg-green-50 px-2 py-1.5 text-xs text-green-800">
+                  {flash}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={onSubmit}
-                disabled={
-                  dispatchMut.isPending || !selectedSupplierProductId || !qty
-                }
-                className="flex-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={dispatchMut.isPending || !selectedSpId || !qty}
+                className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {dispatchMut.isPending ? 'Dispatching…' : 'Dispatch'}
               </button>
-              <button
-                type="button"
-                onClick={reset}
-                disabled={dispatchMut.isPending}
-                className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Shell ───────────────────────────────────────────────────────────
+// ─── Shell + Empty ───────────────────────────────────────────────────
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function Shell({ children }: { children: React.ReactNode }) {
   return <div className="p-8">{children}</div>
+}
+
+function Empty({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+      <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
+      <p className="mt-2 text-sm text-slate-500">{body}</p>
+    </div>
+  )
 }
