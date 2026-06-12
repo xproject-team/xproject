@@ -1,0 +1,292 @@
+# Partesa S.R.L. supplier master list — XProject Phase 2 seed
+#
+# Source: invoice 5812120214 dated 2026-06-09 (€18,431.02 total),
+# delivered to Sundance SRLS for the Sundance 2026 series.
+#
+# 31 items (excludes the "SPESE VARIE" admin charge from the invoice).
+#
+# Field definitions:
+#   supplier_sku        : Partesa's internal "cod. articolo". Stable
+#                         across invoices — the identity field.
+#   item_name           : Full descriptive name as on the invoice.
+#   category            : Coarse grouping for wizard accordion. Values:
+#                         gin | vodka | whiskey | rum | tequila | mezcal
+#                         aperitivo | premix | beer_keg | sparkling
+#                         mixer | soft_drink | juice
+#                         water_still | water_sparkling | equipment
+#   default_unit        : Invoice UM. BO=bottle, KAR=carton, FS=keg,
+#                         BM=canister.
+#   units_per_pack      : How many drinkable units in one default_unit.
+#                         1 for BO; 6/24/100 for KAR depending on inner
+#                         pack size (extracted from item description).
+#   volume_per_unit_ml  : Volume of ONE drinkable unit in ml. 1000 for
+#                         1L bottle, 750 for 75cl, 30000 for a 30L keg.
+#                         null for non-liquid items (CO2).
+#   last_unit_price_eur : LIST price per default_unit (pre-discount).
+#                         Discounts are line-specific and live on the
+#                         per-event event_stock_items rows, not here.
+
+supplier: Partesa
+
+items:
+  # ─ Vodka ───────────────────────────────────────────────────────────
+  - supplier_sku: "2034T"
+    item_name: "WYBOROWA 1LT VODKA"
+    category: vodka
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 19.10
+
+  - supplier_sku: "2132T"
+    item_name: "ABSOLUT 1LT VODKA"
+    category: vodka
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 31.50
+
+  # ─ Gin ─────────────────────────────────────────────────────────────
+  - supplier_sku: "2193T"
+    item_name: "BEEFEATER LONDON DRY 1LT GIN"
+    category: gin
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 26.20
+
+  - supplier_sku: "E9078"
+    item_name: "GAL41 LIQ.ID LONDON DRY GIN 70 CL"
+    category: gin
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 700
+    last_unit_price_eur: 29.60
+
+  # ─ Whiskey ─────────────────────────────────────────────────────────
+  - supplier_sku: "2081T"
+    item_name: "FOUR ROSES 1LT WHISKEY"
+    category: whiskey
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 32.60
+
+  # ─ Rum ─────────────────────────────────────────────────────────────
+  - supplier_sku: "P343"
+    item_name: "HAVANA CLUB ANEJO 7YO 1LT RUM"
+    category: rum
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 27.90
+
+  # ─ Tequila / Mezcal ────────────────────────────────────────────────
+  - supplier_sku: "2708T"
+    item_name: "OLMECA ALTOS PLATA 70CL TEQUILA"
+    category: tequila
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 700
+    last_unit_price_eur: 19.90
+
+  - supplier_sku: "E5954"
+    item_name: "DEL MAGUEY VIDA MEZCAL 70CL"
+    category: mezcal
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 700
+    last_unit_price_eur: 60.65
+
+  # ─ Aperitivi & Liquori ─────────────────────────────────────────────
+  - supplier_sku: "2014T"
+    item_name: "APEROL BARBIERI 1LT"
+    category: aperitivo
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 110.35
+
+  - supplier_sku: "2038T"
+    item_name: "CAMPARI BITTER 1LT"
+    category: aperitivo
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 142.85
+
+  - supplier_sku: "F1058"
+    item_name: "SARTI ROSA 70 CL"
+    category: aperitivo
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 700
+    last_unit_price_eur: 14.50
+
+  - supplier_sku: "E9080"
+    item_name: "LIQ.ID VERMOUTH DI TORINO 1 LT"
+    category: aperitivo
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 53.40
+
+  - supplier_sku: "E9521"
+    item_name: "VENTURO APERITIVO 70CL"
+    category: aperitivo
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 700
+    last_unit_price_eur: 29.65
+
+  - supplier_sku: "2386T"
+    item_name: "LIMONCELLO DI CAPRI 1LT"
+    category: aperitivo
+    default_unit: BO
+    units_per_pack: 1
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 14.50
+
+  - supplier_sku: "4027T"
+    item_name: "CAMPARI SODA 10 CL x100 VP"
+    category: premix
+    default_unit: KAR
+    units_per_pack: 100
+    volume_per_unit_ml: 100
+    last_unit_price_eur: 129.80
+
+  # ─ Beer (keg) ──────────────────────────────────────────────────────
+  - supplier_sku: "D3010"
+    item_name: "BIRRA ICHNUSA NON FILTRATA 20 LT FS"
+    category: beer_keg
+    default_unit: FS
+    units_per_pack: 1
+    volume_per_unit_ml: 20000
+    last_unit_price_eur: 107.85
+
+  - supplier_sku: "0104T"
+    item_name: "BIRRA HEINEKEN 30 LT FS"
+    category: beer_keg
+    default_unit: FS
+    units_per_pack: 1
+    volume_per_unit_ml: 30000
+    last_unit_price_eur: 135.55
+
+  # ─ Sparkling wine ──────────────────────────────────────────────────
+  - supplier_sku: "E8193"
+    item_name: "SERENA B-SIMPLE CUVEE' BRUT 75CL"
+    category: sparkling
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 750
+    last_unit_price_eur: 30.00
+
+  - supplier_sku: "E8196"
+    item_name: "SERENA B-SIMPLE PROSECCO DOCG 75CL"
+    category: sparkling
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 750
+    last_unit_price_eur: 66.60
+
+  # ─ Soft drinks ─────────────────────────────────────────────────────
+  - supplier_sku: "000000000000009022"
+    item_name: "BIB COCA COLA ZERO 1,5LT PET"
+    category: soft_drink
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1500
+    last_unit_price_eur: 24.30
+
+  - supplier_sku: "4151T"
+    item_name: "BIB COCA COLA 1,5LT PET"
+    category: soft_drink
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1500
+    last_unit_price_eur: 19.75
+
+  # ─ Mixers (Schweppes) ──────────────────────────────────────────────
+  - supplier_sku: "4262T"
+    item_name: "BIB SCHWEPPES TONICA 1 LT PET"
+    category: mixer
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 21.50
+
+  - supplier_sku: "4261T"
+    item_name: "BIB SCHWEPPES LIMONE 1LT PET"
+    category: mixer
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 19.40
+
+  - supplier_sku: "E5593"
+    item_name: "BIB SCHWEPPES POMPELMO ROSA 18CL X 24 VP"
+    category: mixer
+    default_unit: KAR
+    units_per_pack: 24
+    volume_per_unit_ml: 180
+    last_unit_price_eur: 24.10
+
+  # ─ Juice ───────────────────────────────────────────────────────────
+  - supplier_sku: "000000000000001355"
+    item_name: "SUC DERBY BLUE ARANCIA 100% 1 LT PET"
+    category: juice
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 26.70
+
+  - supplier_sku: "000000000000001382"
+    item_name: "SUC DERBY BLUE ANANAS 100% 1 LTx6 PET"
+    category: juice
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1000
+    last_unit_price_eur: 28.70
+
+  # ─ Water (sparkling) ───────────────────────────────────────────────
+  - supplier_sku: "E5878"
+    item_name: "ACQ LEVISSIMA RPET GAS 50CLX24 PET"
+    category: water_sparkling
+    default_unit: KAR
+    units_per_pack: 24
+    volume_per_unit_ml: 500
+    last_unit_price_eur: 14.30
+
+  - supplier_sku: "1464T"
+    item_name: "ACQ SBENED P.MAIELL.POPOLI GAS 1,5Lx6PET"
+    category: water_sparkling
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1500
+    last_unit_price_eur: 11.00
+
+  # ─ Water (still) ───────────────────────────────────────────────────
+  - supplier_sku: "E5879"
+    item_name: "ACQ LEVISSIMA RPET NAT 50CLX24 PET"
+    category: water_still
+    default_unit: KAR
+    units_per_pack: 24
+    volume_per_unit_ml: 500
+    last_unit_price_eur: 14.30
+
+  - supplier_sku: "1566T"
+    item_name: "ACQ SBENED P.MAIELL.POPOLI MGAS1,5Lx6PET"
+    category: water_still
+    default_unit: KAR
+    units_per_pack: 6
+    volume_per_unit_ml: 1500
+    last_unit_price_eur: 11.00
+
+  # ─ Equipment ───────────────────────────────────────────────────────
+  - supplier_sku: "E8989"
+    item_name: "BOMBOLE CO2 LT 6 KG 4"
+    category: equipment
+    default_unit: BM
+    units_per_pack: 1
+    volume_per_unit_ml: null
+    last_unit_price_eur: 52.00
