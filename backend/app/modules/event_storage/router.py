@@ -30,6 +30,11 @@ from app.modules.auth.permissions import get_active_role
 from app.modules.auth.router import get_current_user
 from app.modules.events.models import Event
 from app.modules.event_storage.schemas import (
+    ActivityFeedRow,
+    BarAllocationSummary,
+    DispatchBulkCreate,
+    DispatchCreate,
+    DispatchResponse,
     EventStockItemBulkUpsert,
     EventStockItemResponse,
     StorageSummaryResponse,
@@ -37,6 +42,7 @@ from app.modules.event_storage.schemas import (
     SupplierProductResponse,
 )
 from app.modules.event_storage.service import (
+    BarNotFoundError,
     EventStockItemNotFoundError,
     EventStorageService,
     SupplierProductNotFoundError,
@@ -233,3 +239,123 @@ async def get_storage_summary(
     await _get_event_or_404(db, current_user.tenant_id, event_id)
     service = EventStorageService(db)
     return await service.get_storage_summary(current_user.tenant_id, event_id)
+
+
+# ─── Dispatch (event_stock_bar_allocations) ───────────────────────────
+
+
+@router.post(
+    "/allocations",
+    response_model=DispatchResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dispatch(
+    event_id: Annotated[UUID, Query()],
+    payload: DispatchCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> DispatchResponse:
+    """Dispatch N of one supplier_product to one bar. Owner-only.
+
+    History-preserving — calling this twice with the same body creates
+    two separate rows so the activity feed has full provenance.
+    """
+    _require_owner(current_user)
+    await _get_event_or_404(db, current_user.tenant_id, event_id)
+
+    svc = EventStorageService(db)
+    try:
+        row = await svc.create_dispatch(
+            current_user.tenant_id, event_id, payload,
+            dispatched_by_user_id=current_user.id,
+        )
+    except SupplierProductNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unknown_supplier_product",
+                "supplier_product_id": str(e.supplier_product_id),
+            },
+        )
+    except BarNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unknown_bar",
+                "bar_id": str(e.bar_id),
+            },
+        )
+    await db.commit()
+    return DispatchResponse.model_validate(row)
+
+
+@router.post(
+    "/allocations/bulk",
+    response_model=list[DispatchResponse],
+    status_code=status.HTTP_201_CREATED,
+)
+async def bulk_create_dispatches(
+    event_id: Annotated[UUID, Query()],
+    payload: DispatchBulkCreate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[DispatchResponse]:
+    """Atomic bulk dispatch. Owner-only. Any invalid id rolls back the
+    entire batch."""
+    _require_owner(current_user)
+    await _get_event_or_404(db, current_user.tenant_id, event_id)
+
+    svc = EventStorageService(db)
+    try:
+        rows = await svc.bulk_create_dispatches(
+            current_user.tenant_id, event_id, payload.items,
+            dispatched_by_user_id=current_user.id,
+        )
+    except SupplierProductNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unknown_supplier_product",
+                "supplier_product_id": str(e.supplier_product_id),
+            },
+        )
+    except BarNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "unknown_bar",
+                "bar_id": str(e.bar_id),
+            },
+        )
+    await db.commit()
+    return [DispatchResponse.model_validate(r) for r in rows]
+
+
+@router.get("/activity", response_model=list[ActivityFeedRow])
+async def list_activity_feed(
+    event_id: Annotated[UUID, Query()],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[ActivityFeedRow]:
+    """Recent dispatches for the Warehouse-page sidebar. Readable by
+    any authenticated user in the tenant."""
+    await _get_event_or_404(db, current_user.tenant_id, event_id)
+    svc = EventStorageService(db)
+    return await svc.list_activity_feed(
+        current_user.tenant_id, event_id, limit=limit,
+    )
+
+
+@router.get("/by-bar", response_model=list[BarAllocationSummary])
+async def list_bar_allocations(
+    event_id: Annotated[UUID, Query()],
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[BarAllocationSummary]:
+    """Per-bar grouped totals for the Inventory page. Readable by any
+    authenticated user."""
+    await _get_event_or_404(db, current_user.tenant_id, event_id)
+    svc = EventStorageService(db)
+    return await svc.list_bar_allocations(current_user.tenant_id, event_id)
+

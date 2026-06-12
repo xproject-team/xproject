@@ -15,7 +15,13 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import delete, select
 
-from app.modules.event_storage.models import EventStockItem, SupplierProduct
+from app.modules.bars.models import Bar
+from app.modules.event_storage.models import (
+    EventStockBarAllocation,
+    EventStockItem,
+    SupplierProduct,
+)
+from app.modules.events.models import Event
 from app.modules.events.models import EventStatus
 from tests.fixtures.alerts.factories import (
     delete_tenant_cascade,
@@ -311,3 +317,306 @@ async def test_endpoints_require_auth(client: AsyncClient):
     """No Authorization header -> 401 across the board."""
     resp = await client.get(f"{API}/supplier-products")
     assert resp.status_code == 401
+
+
+# ─── Dispatch helpers ────────────────────────────────────────────────
+
+
+async def _create_test_bar(
+    tenant_id, event_id, *, name: str = "Test Bar",
+):
+    async with TestSessionLocal() as session:
+        bar = Bar(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            name=name,
+            bar_type="cocktail",
+            is_active=True,
+            device_count=1,
+            auto_created=False,
+        )
+        session.add(bar)
+        await session.commit()
+        await session.refresh(bar)
+        return bar.id
+
+
+async def _cleanup_event_cascade(event_id):
+    """Deleting the event cascades to bars + allocations + items."""
+    if event_id is None:
+        return
+    async with TestSessionLocal() as session:
+        await session.execute(delete(Event).where(Event.id == event_id))
+        await session.commit()
+
+
+# ─── Dispatch endpoint tests ─────────────────────────────────────────
+
+
+async def test_create_dispatch_201(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    sku = f"TDP-{uuid4().hex[:8]}"
+    event_id = None
+    try:
+        r_sp = await client.post(
+            f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku, "item_name": "Test Gin",
+                  "category": "gin", "default_unit": "BO"},
+        )
+        assert r_sp.status_code == 201, r_sp.text
+        sp_id = r_sp.json()["id"]
+        tenant_id = UUID(r_sp.json()["tenant_id"])
+
+        async with TestSessionLocal() as s:
+            ev = await make_event(s, tenant_id, status=EventStatus.DRAFT)
+            await s.commit()
+            event_id = ev.id
+
+        bar_id = await _create_test_bar(tenant_id, event_id)
+
+        resp = await client.post(
+            f"{API}/allocations?event_id={event_id}",
+            headers=owner_headers,
+            json={
+                "supplier_product_id": sp_id,
+                "bar_id": str(bar_id),
+                "qty_allocated": "12.5",
+                "notes": "first run",
+            },
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["supplier_product_id"] == sp_id
+        assert body["bar_id"] == str(bar_id)
+        assert Decimal(body["qty_allocated"]) == Decimal("12.5")
+        assert body["notes"] == "first run"
+        # dispatched_by_user_id must be set to the owner who called
+        assert body["dispatched_by_user_id"] is not None
+    finally:
+        await _cleanup_event_cascade(event_id)
+        await _cleanup_test_data([sku])
+
+
+async def test_bulk_dispatch_atomic_and_history_preserving(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    sku1 = f"TDP-{uuid4().hex[:8]}"
+    sku2 = f"TDP-{uuid4().hex[:8]}"
+    event_id = None
+    try:
+        r1 = await client.post(f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku1, "item_name": "Gin",
+                  "category": "gin", "default_unit": "BO"})
+        r2 = await client.post(f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku2, "item_name": "Vodka",
+                  "category": "vodka", "default_unit": "BO"})
+        sp1_id = r1.json()["id"]
+        sp2_id = r2.json()["id"]
+        tenant_id = UUID(r1.json()["tenant_id"])
+
+        async with TestSessionLocal() as s:
+            ev = await make_event(s, tenant_id, status=EventStatus.DRAFT)
+            await s.commit()
+            event_id = ev.id
+
+        bar_id = await _create_test_bar(tenant_id, event_id)
+
+        # First batch: 10 + 5
+        resp = await client.post(
+            f"{API}/allocations/bulk?event_id={event_id}",
+            headers=owner_headers,
+            json={"items": [
+                {"supplier_product_id": sp1_id, "bar_id": str(bar_id),
+                 "qty_allocated": "10"},
+                {"supplier_product_id": sp2_id, "bar_id": str(bar_id),
+                 "qty_allocated": "5"},
+            ]},
+        )
+        assert resp.status_code == 201, resp.text
+        assert len(resp.json()) == 2
+
+        # Second batch with same (sp1, bar) → must create a NEW row
+        # (history-preserving)
+        resp2 = await client.post(
+            f"{API}/allocations/bulk?event_id={event_id}",
+            headers=owner_headers,
+            json={"items": [
+                {"supplier_product_id": sp1_id, "bar_id": str(bar_id),
+                 "qty_allocated": "3"},
+            ]},
+        )
+        assert resp2.status_code == 201
+        assert len(resp2.json()) == 1
+
+        # Activity feed should now have 3 entries
+        feed_resp = await client.get(
+            f"{API}/activity?event_id={event_id}",
+            headers=owner_headers,
+        )
+        assert feed_resp.status_code == 200
+        feed = feed_resp.json()
+        assert len(feed) == 3
+        # Newest first → the 3-qty Gin dispatch
+        assert feed[0]["item_name"] == "Gin"
+        assert Decimal(feed[0]["qty_allocated"]) == Decimal("3")
+    finally:
+        await _cleanup_event_cascade(event_id)
+        await _cleanup_test_data([sku1, sku2])
+
+
+async def test_dispatch_400_on_unknown_bar(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    sku = f"TDP-{uuid4().hex[:8]}"
+    event_id = None
+    try:
+        r_sp = await client.post(
+            f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku, "item_name": "Test",
+                  "category": "gin", "default_unit": "BO"},
+        )
+        sp_id = r_sp.json()["id"]
+        tenant_id = UUID(r_sp.json()["tenant_id"])
+
+        async with TestSessionLocal() as s:
+            ev = await make_event(s, tenant_id, status=EventStatus.DRAFT)
+            await s.commit()
+            event_id = ev.id
+
+        resp = await client.post(
+            f"{API}/allocations?event_id={event_id}",
+            headers=owner_headers,
+            json={
+                "supplier_product_id": sp_id,
+                "bar_id": str(uuid4()),  # bogus
+                "qty_allocated": "5",
+            },
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["error"] == "unknown_bar"
+    finally:
+        await _cleanup_event_cascade(event_id)
+        await _cleanup_test_data([sku])
+
+
+async def test_dispatch_404_on_unknown_event(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    resp = await client.post(
+        f"{API}/allocations?event_id={uuid4()}",
+        headers=owner_headers,
+        json={
+            "supplier_product_id": str(uuid4()),
+            "bar_id": str(uuid4()),
+            "qty_allocated": "1",
+        },
+    )
+    assert resp.status_code == 404
+
+
+async def test_by_bar_groups_per_bar(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    sku = f"TDP-{uuid4().hex[:8]}"
+    event_id = None
+    try:
+        r_sp = await client.post(
+            f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku, "item_name": "Gin",
+                  "category": "gin", "default_unit": "BO"},
+        )
+        sp_id = r_sp.json()["id"]
+        tenant_id = UUID(r_sp.json()["tenant_id"])
+
+        async with TestSessionLocal() as s:
+            ev = await make_event(s, tenant_id, status=EventStatus.DRAFT)
+            await s.commit()
+            event_id = ev.id
+
+        bar_a = await _create_test_bar(tenant_id, event_id, name="A-Bar")
+        bar_b = await _create_test_bar(tenant_id, event_id, name="B-Bar")
+
+        await client.post(
+            f"{API}/allocations/bulk?event_id={event_id}",
+            headers=owner_headers,
+            json={"items": [
+                {"supplier_product_id": sp_id, "bar_id": str(bar_a),
+                 "qty_allocated": "10"},
+                {"supplier_product_id": sp_id, "bar_id": str(bar_a),
+                 "qty_allocated": "5"},
+                {"supplier_product_id": sp_id, "bar_id": str(bar_b),
+                 "qty_allocated": "3"},
+            ]},
+        )
+
+        resp = await client.get(
+            f"{API}/by-bar?event_id={event_id}",
+            headers=owner_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        groups = resp.json()
+        assert len(groups) == 2
+        by_name = {g["bar_name"]: g for g in groups}
+        a_items = {i["item_name"]: Decimal(i["qty_total_allocated"])
+                   for i in by_name["A-Bar"]["items"]}
+        b_items = {i["item_name"]: Decimal(i["qty_total_allocated"])
+                   for i in by_name["B-Bar"]["items"]}
+        assert a_items == {"Gin": Decimal("15")}
+        assert b_items == {"Gin": Decimal("3")}
+    finally:
+        await _cleanup_event_cascade(event_id)
+        await _cleanup_test_data([sku])
+
+
+async def test_summary_reflects_dispatches_via_http(
+    client: AsyncClient, owner_headers: dict[str, str],
+):
+    sku = f"TDP-{uuid4().hex[:8]}"
+    event_id = None
+    try:
+        r_sp = await client.post(
+            f"{API}/supplier-products", headers=owner_headers,
+            json={"supplier_sku": sku, "item_name": "Gin",
+                  "category": "gin", "default_unit": "BO"},
+        )
+        sp_id = r_sp.json()["id"]
+        tenant_id = UUID(r_sp.json()["tenant_id"])
+
+        async with TestSessionLocal() as s:
+            ev = await make_event(s, tenant_id, status=EventStatus.DRAFT)
+            await s.commit()
+            event_id = ev.id
+
+        bar_id = await _create_test_bar(tenant_id, event_id)
+
+        # Declare pool: 100 received
+        await client.post(
+            f"{API}/items/bulk?event_id={event_id}",
+            headers=owner_headers,
+            json={"items": [
+                {"supplier_product_id": sp_id, "qty_received": "100",
+                 "unit": "BO", "unit_price_eur": "26.20"},
+            ]},
+        )
+        # Dispatch 40
+        await client.post(
+            f"{API}/allocations?event_id={event_id}",
+            headers=owner_headers,
+            json={"supplier_product_id": sp_id, "bar_id": str(bar_id),
+                  "qty_allocated": "40"},
+        )
+
+        summary = (await client.get(
+            f"{API}/summary?event_id={event_id}", headers=owner_headers,
+        )).json()
+        assert Decimal(summary["total_qty_received"]) == Decimal("100")
+        assert Decimal(summary["total_qty_allocated"]) == Decimal("40")
+        row = summary["rows"][0]
+        assert Decimal(row["qty_received"]) == Decimal("100")
+        assert Decimal(row["qty_allocated"]) == Decimal("40")
+        assert Decimal(row["qty_available"]) == Decimal("60")
+    finally:
+        await _cleanup_event_cascade(event_id)
+        await _cleanup_test_data([sku])
+
