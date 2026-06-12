@@ -92,12 +92,14 @@ class WorkerSettings:
             minute={2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57},
             run_at_startup=False,  # No need to fire on boot — 48h cutoff is slow
         ),
-        # Slesh POS polling. Off-minute slot {3, 8, 13, ...} keeps it clear
-        # of the three other crons. One enqueue per live event; ingester
-        # work happens in worker slots in parallel.
+        # Slesh POS polling. Every 2 minutes during a live event so the
+        # dashboard reflects sales within ~2 min of them happening at
+        # the bar. Collisions with other crons at even minutes (0/5/10,
+        # 2/7/12, 4/9/14) are fine — arq enqueues independently and the
+        # 10 worker slots run them in parallel.
         cron(
             cron_poll_slesh_for_all_live_events,
-            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            minute=set(range(0, 60, 2)),
             run_at_startup=True,  # Fire on boot so a freshly-started worker catches up immediately
         ),
         # Bars sync from Slesh. Hourly cadence (minute=4, on the hour
