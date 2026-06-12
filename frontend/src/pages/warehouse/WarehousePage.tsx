@@ -1,495 +1,330 @@
 /**
- * WarehousePage — Owner's warehouse dashboard.
+ * WarehousePage — Owner's event storage view (post-Phase-2 rewrite).
  *
- * Replaces the 460-line mock scaffold with real backend-wired data. Covers
- * spec §3.4 layout:
- *   Top strip  — 4 KPI tiles (+ 1 bonus: total quantity)
- *   Pending deliveries strip — horizontal invoice list for EXPECTED/SCANNING/PAUSED
- *   Main area  — product inventory grid, searchable, sorted by at-risk first
- *   Side panel — activity feed (last N scans with role badges)
+ * Replaces the scan-based invoice reconciliation flow with the new
+ * event_storage data model:
+ *   - Pool of bottles/kegs comes from event_stock_items (declared via
+ *     Event Create wizard tab 7 "Storage").
+ *   - Per-bar dispatches come from event_stock_bar_allocations.
+ *   - Activity feed is the dispatch log ordered newest-first.
  *
- * Intentionally DROPPED from the old mockup:
- *   - Hardcoded "150 units" / "20 products tracked" fake numbers
- *   - "Stock Overview / Scan History" tabs that duplicated functionality
- *   - Event-scoped subtitle ("Sundance 2026 · 20 products tracked") —
- *     warehouse is tenant-scoped per spec §4.3; data persists independent
- *     of any event
+ * Event-scoped: defaults to the LIVE event if one exists, otherwise
+ * the most recently updated non-COMPLETED event. Event picker lets
+ * the owner switch context.
  *
- * Intentionally DEFERRED to Session 3:
- *   - Camera scanner UI (html5-qrcode integration)
- *   - Invoice creation form
- *   - Active scan session screen with progress bars
- *   - Discrepancy report render
- *   - Pending review approve/reject UI
+ * What's gone vs the old scan flow:
+ *   - "+ New Delivery" button (deliveries are declared in the wizard now)
+ *   - AT RISK KPI (Gap 1: delete for Sundance 1)
+ *   - PENDING REVIEWS KPI (no scan flow -> no unexpected scans)
+ *   - All useInventoryGrid / useInventoryKpis / usePendingDeliveries /
+ *     useActivityFeed (scan) hooks
  *
- * For now the "+ New Delivery" button links to /warehouse/scan (placeholder
- * until Session 3 ships the real form).
+ * The old scan/invoice/pending-review pages (/warehouse/scan,
+ * /warehouse/pending-review) remain routable by direct URL but are
+ * not linked from this page. They will be demolished post-Sundance.
  *
- * Spec: docs/warehouse-module-spec.md §3.4 + §8.
+ * Old file preserved as WarehousePage.tsx.scan-bak.
  */
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '@/features/auth/useAuth'
 
+import { useEvents } from '@/features/events/hooks'
 import {
   useActivityFeed,
-  useInventoryGrid,
-  useInventoryKpis,
-  usePendingDeliveries,
-  type ActivityFeedRow,
-  type InventoryRow,
-  type InvoiceStatus,
-  type InvoiceSummary,
-  type ScannerRole,
-  type ScanType,
-} from '@/features/warehouse/useWarehouse'
+  useStorageSummary,
+} from '@/features/event_storage/hooks'
+import type {
+  ActivityFeedRow,
+  StorageSummaryRow,
+} from '@/features/event_storage/types'
 
-// ─── Formatting helpers ──────────────────────────────────────────────────────
+type EventRow = {
+  id: string
+  name: string
+  status: string
+  updated_at?: string
+}
 
-function fmtInt(value: string | number | null | undefined): string {
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+const EUR = new Intl.NumberFormat('it-IT', {
+  style: 'currency',
+  currency: 'EUR',
+  maximumFractionDigits: 0,
+})
+
+function fmtEur(value: string | null | undefined): string {
   if (value === null || value === undefined) return '—'
-  const n = typeof value === 'string' ? Number(value) : value
-  if (Number.isNaN(n)) return '—'
-  return Math.round(n).toLocaleString('it-IT')
+  const n = Number(value)
+  if (!Number.isFinite(n)) return '—'
+  return EUR.format(n)
 }
 
-function fmtDecimal(value: string | number | null | undefined, digits = 1): string {
-  if (value === null || value === undefined) return '—'
-  const n = typeof value === 'string' ? Number(value) : value
-  if (Number.isNaN(n)) return '—'
-  return n.toLocaleString('it-IT', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  })
+function fmtQty(value: string): string {
+  // Display Decimals as integers when whole, else with 2 dp
+  const n = Number(value)
+  if (!Number.isFinite(n)) return value
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
-function fmtEur(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined) return '—'
-  return `€${(cents / 100).toLocaleString('it-IT', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
-}
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('it-IT', {
-    day: 'numeric',
-    month: 'short',
-  })
-}
-
-function fmtRelative(iso: string | null | undefined): string {
-  if (!iso) return '—'
+function fmtTimeAgo(iso: string): string {
   const then = new Date(iso).getTime()
   const now = Date.now()
-  const diffMin = Math.floor((now - then) / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}h ago`
-  const diffDay = Math.floor(diffHour / 24)
-  return `${diffDay}d ago`
+  const secs = Math.floor((now - then) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
 
-// ─── KPI tile ─────────────────────────────────────────────────────────────────
-
-interface KpiTileProps {
-  label: string
-  value: string
-  hint?: string
-  accent?: 'default' | 'warning' | 'danger'
-}
-
-function KpiTile({ label, value, hint, accent = 'default' }: KpiTileProps) {
-  const accentColor =
-    accent === 'danger' ? '#E53E3E' : accent === 'warning' ? '#DD6B20' : '#1E5A8D'
-
-  return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-4 shadow-sm">
-      <p className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-1">
-        {label}
-      </p>
-      <p className="text-2xl font-bold leading-tight" style={{ color: accentColor }}>
-        {value}
-      </p>
-      {hint && <p className="text-xs text-[#A0AEC0] mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-// ─── Pending deliveries strip ────────────────────────────────────────────────
-
-const INVOICE_STATUS_CONFIG: Record<
-  InvoiceStatus,
-  { bg: string; color: string; label: string }
-> = {
-  EXPECTED:    { bg: '#EBF8FF', color: '#2B6CB0', label: 'Expected'    },
-  SCANNING:    { bg: '#FEF3C7', color: '#B45309', label: 'Scanning'    },
-  PAUSED:      { bg: '#F3E8FF', color: '#6B21A8', label: 'Paused'      },
-  VERIFIED:    { bg: '#D1FAE5', color: '#065F46', label: 'Verified'    },
-  DISCREPANCY: { bg: '#FEE2E2', color: '#991B1B', label: 'Discrepancy' },
-  DISPUTED:    { bg: '#FECACA', color: '#7F1D1D', label: 'Disputed'    },
-  CLOSED:      { bg: '#F3F4F6', color: '#374151', label: 'Closed'      },
-}
-
-function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
-  const cfg = INVOICE_STATUS_CONFIG[status]
-  return (
-    <span
-      className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded-full"
-      style={{ backgroundColor: cfg.bg, color: cfg.color }}
-    >
-      {cfg.label}
-    </span>
-  )
-}
-
-function PendingDeliveryCard({ invoice }: { invoice: InvoiceSummary }) {
-  return (
-    <Link
-      to={`/warehouse/scan?invoice=${invoice.id}`}
-      className="block bg-white border border-[#E2E8F0] rounded-lg p-4 shadow-sm
-                 hover:shadow-md hover:border-[#1E5A8D] transition min-w-[240px] flex-shrink-0"
-    >
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-sm font-semibold text-[#1A202C] truncate">
-          {invoice.supplier_name}
-        </p>
-        <InvoiceStatusBadge status={invoice.status} />
-      </div>
-      <p className="text-xs text-[#718096]">
-        Expected: <span className="font-medium">{fmtDate(invoice.expected_arrival_date)}</span>
-      </p>
-      <div className="flex items-center justify-between mt-2">
-        <p className="text-xs text-[#4A5568]">
-          {invoice.items_count} item{invoice.items_count === 1 ? '' : 's'}
-        </p>
-        {invoice.total_expected_cents !== null && (
-          <p className="text-xs font-semibold text-[#1A202C]">
-            {fmtEur(invoice.total_expected_cents)}
-          </p>
-        )}
-      </div>
-    </Link>
-  )
-}
-
-// ─── Activity feed row ──────────────────────────────────────────────────────
-
-const SCAN_TYPE_LABELS: Record<ScanType, string> = {
-  INTAKE: 'Intake',
-  DISPATCH: 'Dispatch',
-  RETURN: 'Return',
-  ADJUSTMENT: 'Adjustment',
-  INSPECT: 'Inspect',
-  CONSUMED: 'Consumed',
-}
-
-const ROLE_BADGES: Record<ScannerRole, { label: string; color: string }> = {
-  owner: { label: 'Owner', color: '#1E5A8D' },
-  warehouse_keeper: { label: 'Warehouse', color: '#DD6B20' },
-  manager: { label: 'Manager', color: '#6B21A8' },
-  bartender: { label: 'Bartender', color: '#059669' },
-}
-
-function ActivityRow({ row }: { row: ActivityFeedRow }) {
-  const role = ROLE_BADGES[row.scanned_by_role]
-  return (
-    <div className="border-b border-[#EDF2F7] last:border-b-0 py-2.5">
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm text-[#1A202C]">
-            <span className="font-semibold">{fmtDecimal(row.qty, 0)}×</span>{' '}
-            <span>{row.product_name ?? 'Unknown'}</span>
-          </p>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-[#718096]">
-              {SCAN_TYPE_LABELS[row.scan_type]}
-            </span>
-            <span className="text-xs text-[#CBD5E0]">·</span>
-            <span className="text-xs text-[#718096]">
-              {row.scanned_by_user_name ?? 'System'}
-            </span>
-            <span
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide"
-              style={{ color: role.color, backgroundColor: `${role.color}15` }}
-            >
-              {role.label}
-            </span>
-          </div>
-        </div>
-        <p className="text-xs text-[#A0AEC0] whitespace-nowrap">
-          {fmtRelative(row.scanned_at)}
-        </p>
-      </div>
-      {row.is_unexpected && (
-        <p className="text-xs text-[#DD6B20] mt-1 font-medium">
-          ⚠ Unexpected · Needs review
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ─── Product inventory row ──────────────────────────────────────────────────
-
-function InventoryRowView({ row }: { row: InventoryRow }) {
-  return (
-    <tr
-      className={`border-b border-[#EDF2F7] last:border-b-0 ${
-        row.is_at_risk ? 'bg-[#FFF5F5]' : ''
-      }`}
-    >
-      <td className="px-4 py-3">
-        <p className="text-sm font-semibold text-[#1A202C]">{row.product_name}</p>
-        {row.brand && (
-          <p className="text-xs text-[#718096] mt-0.5">{row.brand}</p>
-        )}
-      </td>
-      <td className="px-4 py-3">
-        {row.category && (
-          <span className="text-xs font-medium text-[#4A5568] bg-[#EDF2F7] px-2 py-0.5 rounded">
-            {row.category}
-          </span>
-        )}
-      </td>
-      <td className="px-4 py-3 text-right">
-        <span
-          className={`font-semibold ${
-            row.is_at_risk ? 'text-[#E53E3E]' : 'text-[#1A202C]'
-          }`}
-        >
-          {fmtDecimal(row.current_qty, 0)}
-        </span>
-      </td>
-      <td className="px-4 py-3 text-right text-[#4A5568]">
-        {fmtDecimal(row.allocated_qty, 0)}
-      </td>
-      <td className="px-4 py-3 text-right font-medium text-[#1A202C]">
-        {fmtDecimal(row.available_qty, 0)}
-      </td>
-      <td className="px-4 py-3">
-        {row.is_at_risk && (
-          <span className="text-xs font-semibold text-[#E53E3E]">⚠ At risk</span>
-        )}
-      </td>
-    </tr>
-  )
-}
-
-// ─── Main page ───────────────────────────────────────────────────────────────
+// ─── Page ────────────────────────────────────────────────────────────
 
 export default function WarehousePage() {
-  const { user } = useAuth()
-  const isOwner = user?.role === 'owner'
+  const eventsQ = useEvents()
+  const events = ((eventsQ.data ?? []) as EventRow[]).filter(
+    (e) => e.status !== 'COMPLETED' && e.status !== 'completed',
+  )
 
-  const [search, setSearch] = useState('')
-
-  const kpisQuery = useInventoryKpis()
-  const inventoryQuery = useInventoryGrid()
-  const activityQuery = useActivityFeed(20)
-  const pendingQuery = usePendingDeliveries()
-
-  const filteredInventory = useMemo(() => {
-    if (!inventoryQuery.data) return []
-    if (!search.trim()) return inventoryQuery.data
-    const q = search.trim().toLowerCase()
-    return inventoryQuery.data.filter(
-      (r) =>
-        r.product_name.toLowerCase().includes(q) ||
-        (r.brand?.toLowerCase().includes(q) ?? false) ||
-        (r.category?.toLowerCase().includes(q) ?? false),
+  // Default to LIVE event > first event in the list
+  const defaultEventId = useMemo(() => {
+    if (events.length === 0) return undefined
+    const live = events.find(
+      (e) => e.status === 'LIVE' || e.status === 'live',
     )
-  }, [inventoryQuery.data, search])
+    if (live) return live.id
+    return events[0].id
+  }, [events])
 
-  // Sort at-risk first, then alphabetically
-  const sortedInventory = useMemo(() => {
-    return [...filteredInventory].sort((a, b) => {
-      if (a.is_at_risk !== b.is_at_risk) return a.is_at_risk ? -1 : 1
-      return a.product_name.localeCompare(b.product_name)
-    })
-  }, [filteredInventory])
+  const [eventId, setEventId] = useState<string | undefined>(undefined)
+  const effectiveEventId = eventId ?? defaultEventId
 
-  const kpis = kpisQuery.data
+  const summaryQ = useStorageSummary(effectiveEventId)
+  const activityQ = useActivityFeed(effectiveEventId, 30)
 
-  return (
-    <div className="max-w-7xl mx-auto p-6">
-      {/* Page header */}
-      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1A202C]">
-            Warehouse Management
-          </h1>
-          <p className="text-sm text-[#718096] mt-1">
-            Invoice reconciliation & inventory tracking
+  const summary = summaryQ.data
+  const activity = activityQ.data ?? []
+
+  // ─── Filter rows by search ─────────────────────────────────────────
+  const [search, setSearch] = useState('')
+  const filteredRows: StorageSummaryRow[] = useMemo(() => {
+    const rows = summary?.rows ?? []
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(
+      (r) =>
+        r.item_name.toLowerCase().includes(q) ||
+        r.category.toLowerCase().includes(q),
+    )
+  }, [summary, search])
+
+  // ─── Loading / empty states ────────────────────────────────────────
+  if (eventsQ.isLoading) {
+    return <PageShell><p className="text-slate-500">Loading events…</p></PageShell>
+  }
+
+  if (events.length === 0) {
+    return (
+      <PageShell>
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+          <h2 className="text-lg font-semibold text-slate-800">No events</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Create an event with storage entries via the event wizard to
+            populate the warehouse view.
           </p>
         </div>
-        <Link
-          to="/warehouse/scan"
-          className="inline-flex items-center gap-2 bg-[#1E5A8D] hover:bg-[#2C7AA6]
-                     text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-sm
-                     transition"
-        >
-          <span className="text-lg">+</span>
-          New Delivery
-        </Link>
-      </div>
+      </PageShell>
+    )
+  }
 
-      {/* KPI strip — 5 tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-        <KpiTile
-          label="Total Items"
-          value={kpis ? fmtInt(kpis.total_items) : '…'}
-          hint="distinct products"
-        />
-        <KpiTile
-          label="Total Quantity"
-          value={kpis ? fmtDecimal(kpis.total_quantity, 0) : '…'}
-          hint="units in warehouse"
-        />
-        <KpiTile
-          label="At Risk"
-          value={kpis ? fmtInt(kpis.products_at_risk) : '…'}
-          hint="below threshold"
-          accent={kpis && kpis.products_at_risk > 0 ? 'warning' : 'default'}
-        />
-        <KpiTile
-          label="Active Allocations"
-          value={kpis ? fmtDecimal(kpis.active_allocations, 0) : '…'}
-          hint="reserved for events"
-        />
-        {isOwner && (
-        <Link to="/warehouse/pending-review" className="block hover:shadow-md transition rounded-lg">
-          <KpiTile
-            label="Pending Reviews"
-            value={kpis ? fmtInt(kpis.pending_reviews) : '…'}
-            hint="click to review"
-            accent={kpis && kpis.pending_reviews > 0 ? 'danger' : 'default'}
-          />
-        </Link>
-        )}
-      </div>
-
-      {/* Pending deliveries strip (only if any) */}
-      {pendingQuery.data && pendingQuery.data.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-bold text-[#1A202C] mb-2">
-            Pending Deliveries
-          </h2>
-          <div className="flex gap-3 overflow-x-auto pb-2">
-            {pendingQuery.data.map((inv) => (
-              <PendingDeliveryCard key={inv.id} invoice={inv} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Main grid: inventory (left 2/3) + activity feed (right 1/3) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Inventory grid */}
-        <div className="lg:col-span-2">
-          <div className="bg-white border border-[#E2E8F0] rounded-lg shadow-sm">
-            <div className="px-4 py-3 border-b border-[#EDF2F7] flex items-center justify-between flex-wrap gap-3">
-              <h2 className="text-sm font-bold text-[#1A202C]">Inventory</h2>
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search product, brand, category…"
-                className="text-sm border border-[#E2E8F0] rounded-md px-3 py-1.5 w-64
-                           focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]"
-              />
-            </div>
-            {inventoryQuery.isLoading && (
-              <div className="p-6 text-sm text-[#718096]">Loading…</div>
-            )}
-            {inventoryQuery.isError && (
-              <div className="p-6 text-sm text-[#E53E3E]">Failed to load inventory.</div>
-            )}
-            {inventoryQuery.data && sortedInventory.length === 0 && (
-              <div className="p-10 text-center">
-                <p className="text-4xl mb-3">📦</p>
-                <p className="text-sm font-semibold text-[#1A202C]">
-                  {search ? 'No products match your search.' : 'No inventory yet.'}
-                </p>
-                {!search && (
-                  <p className="text-xs text-[#718096] mt-1">
-                    Create a delivery invoice and scan the first shipment to populate inventory.
-                  </p>
-                )}
-              </div>
-            )}
-            {sortedInventory.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-[#F7FAFC]">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-[#718096] uppercase tracking-widest">
-                        Product
-                      </th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-[#718096] uppercase tracking-widest">
-                        Category
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-[#718096] uppercase tracking-widest">
-                        In Stock
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-[#718096] uppercase tracking-widest">
-                        Allocated
-                      </th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-[#718096] uppercase tracking-widest">
-                        Available
-                      </th>
-                      <th className="px-4 py-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedInventory.map((row) => (
-                      <InventoryRowView key={row.product_id} row={row} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Activity feed */}
+  return (
+    <PageShell>
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <div className="bg-white border border-[#E2E8F0] rounded-lg shadow-sm">
-            <div className="px-4 py-3 border-b border-[#EDF2F7]">
-              <h2 className="text-sm font-bold text-[#1A202C]">Activity</h2>
-              <p className="text-xs text-[#718096] mt-0.5">Last 20 scans</p>
-            </div>
-            <div className="p-3 max-h-[600px] overflow-y-auto">
-              {activityQuery.isLoading && (
-                <p className="text-sm text-[#718096] p-2">Loading…</p>
-              )}
-              {activityQuery.isError && (
-                <p className="text-sm text-[#E53E3E] p-2">Failed to load.</p>
-              )}
-              {activityQuery.data && activityQuery.data.length === 0 && (
-                <div className="py-6 text-center">
-                  <p className="text-3xl mb-2">📊</p>
-                  <p className="text-sm font-semibold text-[#1A202C]">
-                    No activity yet
-                  </p>
-                  <p className="text-xs text-[#718096] mt-1">
-                    Scans will appear here.
-                  </p>
-                </div>
-              )}
-              {activityQuery.data && activityQuery.data.length > 0 && (
-                <div className="divide-y divide-[#EDF2F7]">
-                  {activityQuery.data.map((row) => (
-                    <ActivityRow key={row.id} row={row} />
-                  ))}
-                </div>
-              )}
-            </div>
+          <h1 className="text-3xl font-bold text-slate-800">
+            Warehouse Management
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Declared pool, per-bar dispatch, and activity feed
+          </p>
+        </div>
+        {/* Event picker */}
+        <select
+          value={effectiveEventId ?? ''}
+          onChange={(e) => setEventId(e.target.value)}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {events.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name} — {e.status}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* KPI strip */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          label="TOTAL ITEMS"
+          value={summary?.total_items ?? '—'}
+          sub="distinct products"
+        />
+        <KpiTile
+          label="TOTAL QUANTITY"
+          value={summary ? fmtQty(summary.total_qty_received) : '—'}
+          sub="units declared"
+        />
+        <KpiTile
+          label="ACTIVE ALLOCATIONS"
+          value={summary ? fmtQty(summary.total_qty_allocated) : '—'}
+          sub="dispatched to bars"
+        />
+        <KpiTile
+          label="TOTAL VALUE"
+          value={summary ? fmtEur(summary.total_line_value_eur) : '—'}
+          sub="invoiced cost"
+        />
+      </div>
+
+      {/* Main: inventory table + activity sidebar */}
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+        {/* Inventory table */}
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <h2 className="text-base font-semibold text-slate-800">
+              Inventory
+            </h2>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search product or category…"
+              className="w-72 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
           </div>
+
+          {summaryQ.isLoading ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              Loading inventory…
+            </p>
+          ) : filteredRows.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              {search
+                ? 'No items match your search.'
+                : 'No storage declared for this event yet. Open the event in the wizard → Storage tab.'}
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <th className="px-5 py-3 text-left">Product</th>
+                  <th className="px-5 py-3 text-left">Category</th>
+                  <th className="px-5 py-3 text-right">In Stock</th>
+                  <th className="px-5 py-3 text-right">Allocated</th>
+                  <th className="px-5 py-3 text-right">Available</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((r) => (
+                  <tr
+                    key={r.supplier_product_id}
+                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                  >
+                    <td className="px-5 py-3 font-medium text-slate-800">
+                      {r.item_name}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500">
+                      {r.category}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-slate-700">
+                      {fmtQty(r.qty_received)} {r.unit}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono text-slate-700">
+                      {fmtQty(r.qty_allocated)}
+                    </td>
+                    <td className="px-5 py-3 text-right font-mono font-semibold text-slate-800">
+                      {fmtQty(r.qty_available)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Activity sidebar */}
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <h2 className="text-base font-semibold text-slate-800">
+              Activity
+            </h2>
+            <p className="text-xs text-slate-500">Recent dispatches</p>
+          </div>
+          {activityQ.isLoading ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              Loading…
+            </p>
+          ) : activity.length === 0 ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">
+              No dispatches yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {activity.map((a: ActivityFeedRow) => (
+                <li key={a.id} className="px-5 py-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="font-medium text-slate-800">
+                      {fmtQty(a.qty_allocated)}× {a.item_name}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      {fmtTimeAgo(a.dispatched_at)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                    <span>Dispatch · {a.bar_name}</span>
+                    {a.user_name && (
+                      <span className="text-slate-400">· {a.user_name}</span>
+                    )}
+                    {a.user_role && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                        {a.user_role}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
+    </PageShell>
+  )
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────
+
+function PageShell({ children }: { children: React.ReactNode }) {
+  return <div className="p-8">{children}</div>
+}
+
+function KpiTile({
+  label,
+  value,
+  sub,
+}: {
+  label: string
+  value: string | number
+  sub: string
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {label}
+      </p>
+      <p className="mt-2 text-3xl font-bold text-blue-600">{value}</p>
+      <p className="mt-1 text-xs text-slate-400">{sub}</p>
     </div>
   )
 }
