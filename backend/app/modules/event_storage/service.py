@@ -18,6 +18,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.bars.models import Bar
+from app.modules.auth.models import User
 from app.modules.event_storage.models import (
     EventStockBarAllocation,
     EventStockItem,
@@ -31,11 +33,24 @@ from app.modules.event_storage.schemas import (
     EventStockItemCreate,
     StorageSummaryResponse,
     StorageSummaryRow,
+    DispatchCreate,
+    ActivityFeedRow,
+    BarAllocationSummary,
+    BarAllocationItem,
 )
 
 
 # ─── Domain exceptions ────────────────────────────────────────────────
 # Mapped to 4xx in the router (commit 3).
+
+class BarNotFoundError(Exception):
+    """Raised when a bar doesn't exist, belongs to another tenant,
+    or belongs to a different event than the one being dispatched to."""
+
+    def __init__(self, bar_id):
+        self.bar_id = bar_id
+        super().__init__(f"Bar {bar_id} not found or not in event")
+
 
 class SupplierProductNotFoundError(Exception):
     """Supplier product id doesn't exist in this tenant."""
@@ -304,3 +319,226 @@ class EventStorageService:
             by_category=by_category,
             rows=rows,
         )
+
+    # ─── Dispatch (event_stock_bar_allocations) ──────────────────────
+
+    async def _validate_bar(
+        self, tenant_id: UUID, event_id: UUID, bar_id: UUID,
+    ) -> Bar:
+        bar = (await self.db.execute(
+            select(Bar).where(
+                Bar.id == bar_id,
+                Bar.tenant_id == tenant_id,
+                Bar.event_id == event_id,
+            )
+        )).scalars().first()
+        if bar is None:
+            raise BarNotFoundError(bar_id)
+        return bar
+
+    async def _validate_supplier_product(
+        self, tenant_id: UUID, supplier_product_id: UUID,
+    ) -> SupplierProduct:
+        sp = (await self.db.execute(
+            select(SupplierProduct).where(
+                SupplierProduct.id == supplier_product_id,
+                SupplierProduct.tenant_id == tenant_id,
+            )
+        )).scalars().first()
+        if sp is None:
+            raise SupplierProductNotFoundError(supplier_product_id)
+        return sp
+
+    async def create_dispatch(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        payload: DispatchCreate,
+        dispatched_by_user_id: UUID | None = None,
+    ) -> EventStockBarAllocation:
+        """One dispatch = one row. History-preserving."""
+        await self._validate_supplier_product(
+            tenant_id, payload.supplier_product_id,
+        )
+        await self._validate_bar(tenant_id, event_id, payload.bar_id)
+
+        row = EventStockBarAllocation(
+            tenant_id=tenant_id,
+            event_id=event_id,
+            supplier_product_id=payload.supplier_product_id,
+            bar_id=payload.bar_id,
+            qty_allocated=payload.qty_allocated,
+            dispatched_by_user_id=dispatched_by_user_id,
+            notes=payload.notes,
+        )
+        self.db.add(row)
+        await self.db.flush()
+        await self.db.refresh(row)
+        return row
+
+    async def bulk_create_dispatches(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        items: list[DispatchCreate],
+        dispatched_by_user_id: UUID | None = None,
+    ) -> list[EventStockBarAllocation]:
+        """Atomic — pre-validate ALL bars and supplier_products
+        belong to (tenant, event). All-or-nothing insert."""
+        if not items:
+            return []
+
+        sp_ids = {item.supplier_product_id for item in items}
+        bar_ids = {item.bar_id for item in items}
+
+        # Validate all supplier_products in one query
+        valid_sp_ids = set((await self.db.execute(
+            select(SupplierProduct.id).where(
+                SupplierProduct.id.in_(sp_ids),
+                SupplierProduct.tenant_id == tenant_id,
+            )
+        )).scalars().all())
+        missing_sp = sp_ids - valid_sp_ids
+        if missing_sp:
+            raise SupplierProductNotFoundError(next(iter(missing_sp)))
+
+        # Validate all bars belong to (tenant, event) in one query
+        valid_bar_ids = set((await self.db.execute(
+            select(Bar.id).where(
+                Bar.id.in_(bar_ids),
+                Bar.tenant_id == tenant_id,
+                Bar.event_id == event_id,
+            )
+        )).scalars().all())
+        missing_bars = bar_ids - valid_bar_ids
+        if missing_bars:
+            raise BarNotFoundError(next(iter(missing_bars)))
+
+        rows = [
+            EventStockBarAllocation(
+                tenant_id=tenant_id,
+                event_id=event_id,
+                supplier_product_id=item.supplier_product_id,
+                bar_id=item.bar_id,
+                qty_allocated=item.qty_allocated,
+                dispatched_by_user_id=dispatched_by_user_id,
+                notes=item.notes,
+            )
+            for item in items
+        ]
+        self.db.add_all(rows)
+        await self.db.flush()
+        for row in rows:
+            await self.db.refresh(row)
+        return rows
+
+    async def list_activity_feed(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        limit: int = 50,
+    ) -> list[ActivityFeedRow]:
+        """Recent dispatches joined with item + bar + user names.
+        Powers the right-sidebar feed on the Warehouse page."""
+        stmt = (
+            select(
+                EventStockBarAllocation.id,
+                EventStockBarAllocation.qty_allocated,
+                EventStockBarAllocation.created_at,
+                SupplierProduct.item_name,
+                SupplierProduct.default_unit,
+                Bar.name.label("bar_name"),
+                User.full_name,
+                User.role,
+            )
+            .select_from(EventStockBarAllocation)
+            .join(
+                SupplierProduct,
+                SupplierProduct.id
+                == EventStockBarAllocation.supplier_product_id,
+            )
+            .join(Bar, Bar.id == EventStockBarAllocation.bar_id)
+            .outerjoin(
+                User, User.id == EventStockBarAllocation.dispatched_by_user_id,
+            )
+            .where(
+                EventStockBarAllocation.tenant_id == tenant_id,
+                EventStockBarAllocation.event_id == event_id,
+            )
+            .order_by(EventStockBarAllocation.created_at.desc())
+            .limit(limit)
+        )
+        result = (await self.db.execute(stmt)).all()
+        return [
+            ActivityFeedRow(
+                id=r.id,
+                qty_allocated=r.qty_allocated,
+                item_name=r.item_name,
+                item_unit=r.default_unit,
+                bar_name=r.bar_name,
+                user_name=r.full_name,
+                user_role=(
+                    r.role.value if hasattr(r.role, "value") else
+                    (str(r.role) if r.role is not None else None)
+                ),
+                dispatched_at=r.created_at,
+            )
+            for r in result
+        ]
+
+    async def list_bar_allocations(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> list[BarAllocationSummary]:
+        """Per-bar grouped totals — Inventory page summary."""
+        from sqlalchemy import func
+        stmt = (
+            select(
+                Bar.id.label("bar_id"),
+                Bar.name.label("bar_name"),
+                EventStockBarAllocation.supplier_product_id,
+                SupplierProduct.item_name,
+                SupplierProduct.default_unit,
+                func.coalesce(
+                    func.sum(EventStockBarAllocation.qty_allocated),
+                    Decimal("0"),
+                ).label("total_qty"),
+            )
+            .select_from(EventStockBarAllocation)
+            .join(Bar, Bar.id == EventStockBarAllocation.bar_id)
+            .join(
+                SupplierProduct,
+                SupplierProduct.id
+                == EventStockBarAllocation.supplier_product_id,
+            )
+            .where(
+                EventStockBarAllocation.tenant_id == tenant_id,
+                EventStockBarAllocation.event_id == event_id,
+            )
+            .group_by(
+                Bar.id,
+                Bar.name,
+                EventStockBarAllocation.supplier_product_id,
+                SupplierProduct.item_name,
+                SupplierProduct.default_unit,
+            )
+            .order_by(Bar.name, SupplierProduct.item_name)
+        )
+        result = (await self.db.execute(stmt)).all()
+
+        by_bar: dict[UUID, BarAllocationSummary] = {}
+        for r in result:
+            if r.bar_id not in by_bar:
+                by_bar[r.bar_id] = BarAllocationSummary(
+                    bar_id=r.bar_id,
+                    bar_name=r.bar_name,
+                    items=[],
+                )
+            by_bar[r.bar_id].items.append(BarAllocationItem(
+                supplier_product_id=r.supplier_product_id,
+                item_name=r.item_name,
+                unit=r.default_unit,
+                qty_total_allocated=r.total_qty,
+            ))
+        return list(by_bar.values())
