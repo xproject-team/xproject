@@ -437,9 +437,14 @@ class EventStorageService:
         tenant_id: UUID,
         event_id: UUID,
         limit: int = 50,
+        bar_id: UUID | None = None,
     ) -> list[ActivityFeedRow]:
         """Recent dispatches joined with item + bar + user names.
-        Powers the right-sidebar feed on the Warehouse page."""
+
+        Powers two surfaces:
+          - Warehouse-page right sidebar (no bar_id -> all bars)
+          - Inventory-modal 'Recent activity' section (bar_id set)
+        """
         stmt = (
             select(
                 EventStockBarAllocation.id,
@@ -468,6 +473,8 @@ class EventStorageService:
             .order_by(EventStockBarAllocation.created_at.desc())
             .limit(limit)
         )
+        if bar_id is not None:
+            stmt = stmt.where(EventStockBarAllocation.bar_id == bar_id)
         result = (await self.db.execute(stmt)).all()
         return [
             ActivityFeedRow(

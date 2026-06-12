@@ -337,13 +337,17 @@ async def list_activity_feed(
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    bar_id: Annotated[UUID | None, Query()] = None,
 ) -> list[ActivityFeedRow]:
-    """Recent dispatches for the Warehouse-page sidebar. Readable by
-    any authenticated user in the tenant."""
+    """Recent dispatches. Readable by any authenticated user.
+
+    Without bar_id: global feed for the Warehouse-page sidebar.
+    With bar_id:    per-bar feed for the Inventory-modal section.
+    """
     await _get_event_or_404(db, current_user.tenant_id, event_id)
     svc = EventStorageService(db)
     return await svc.list_activity_feed(
-        current_user.tenant_id, event_id, limit=limit,
+        current_user.tenant_id, event_id, limit=limit, bar_id=bar_id,
     )
 
 

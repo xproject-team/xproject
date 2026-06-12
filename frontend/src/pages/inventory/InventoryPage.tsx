@@ -23,11 +23,13 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useBarsForEvent, useLiveEvent } from '@/features/dashboard/hooks'
 import {
+  useActivityFeed,
   useBarAllocations,
   useCreateDispatch,
   useStorageSummary,
 } from '@/features/event_storage/hooks'
 import type {
+  ActivityFeedRow,
   BarAllocationSummary,
   StorageSummaryRow,
 } from '@/features/event_storage/types'
@@ -120,7 +122,11 @@ export default function InventoryPage() {
       ) : (
         <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {bars
-            .filter((b) => b.is_active !== false)
+            .filter(
+              (b) =>
+                b.is_active !== false &&
+                (b.bar_type === 'drinks' || b.bar_type === 'mixed'),
+            )
             .map((bar) => (
               <BarTile
                 key={bar.id}
@@ -297,6 +303,9 @@ function DispatchModal({
           )}
         </div>
 
+        {/* Recent activity (this bar only) */}
+        <BarActivitySection bar={bar} eventId={eventId} />
+
         {/* Charge form */}
         <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -353,6 +362,69 @@ function DispatchModal({
       </div>
     </div>
   )
+}
+
+// ─── Per-bar activity section ────────────────────────────────────────
+
+function BarActivitySection({
+  bar, eventId,
+}: { bar: Bar; eventId: string }) {
+  const activityQ = useActivityFeed(eventId, 15, bar.id)
+  const rows = (activityQ.data ?? []) as ActivityFeedRow[]
+
+  return (
+    <div className="border-t border-slate-100 px-6 py-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        Recent activity (this bar)
+      </p>
+      {activityQ.isLoading ? (
+        <p className="mt-2 text-xs text-slate-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="mt-2 rounded-md border border-dashed border-slate-200 px-3 py-3 text-center text-xs text-slate-400">
+          No activity yet.
+        </p>
+      ) : (
+        <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
+          {rows.map((a) => (
+            <li key={a.id} className="px-3 py-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm text-slate-800">
+                  <span className="font-semibold">
+                    {Number(a.qty_allocated)}× {a.item_unit}
+                  </span>{' '}
+                  {a.item_name}
+                </span>
+                <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                  {fmtTimeAgo(a.dispatched_at)}
+                </span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500">
+                <span>Dispatched</span>
+                {a.user_name && (
+                  <span className="text-slate-400">· {a.user_name}</span>
+                )}
+                {a.user_role && (
+                  <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
+                    {a.user_role}
+                  </span>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function fmtTimeAgo(iso: string): string {
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
 }
 
 // ─── Shell + Empty ───────────────────────────────────────────────────

@@ -18,8 +18,8 @@ export const eventStorageKeys = {
     ['event-storage', 'items', eventId] as const,
   summaryForEvent: (eventId: string) =>
     ['event-storage', 'summary', eventId] as const,
-  activityForEvent: (eventId: string, limit: number) =>
-    ['event-storage', 'activity', eventId, limit] as const,
+  activityForEvent: (eventId: string, limit: number, barId?: string) =>
+    ['event-storage', 'activity', eventId, limit, barId ?? 'all'] as const,
   byBarForEvent: (eventId: string) =>
     ['event-storage', 'by-bar', eventId] as const,
 } as const
@@ -101,14 +101,16 @@ export function useStorageSummary(eventId: string | undefined) {
 export function useActivityFeed(
   eventId: string | undefined,
   limit: number = 50,
+  barId?: string,
 ) {
   return useQuery({
     queryKey: eventId
-      ? eventStorageKeys.activityForEvent(eventId, limit)
+      ? eventStorageKeys.activityForEvent(eventId, limit, barId)
       : ['event-storage', 'activity', 'no-event'],
     queryFn: async () => {
+      const barParam = barId ? `&bar_id=${barId}` : ''
       const { data } = await api.get<ActivityFeedRow[]>(
-        `/event-storage/activity?event_id=${eventId}&limit=${limit}`,
+        `/event-storage/activity?event_id=${eventId}&limit=${limit}${barParam}`,
       )
       return data
     },

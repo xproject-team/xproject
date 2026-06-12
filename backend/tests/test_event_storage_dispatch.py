@@ -434,3 +434,36 @@ async def test_storage_summary_reflects_dispatches():
             assert row.qty_available == Decimal("60")
         finally:
             await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_list_activity_feed_filtered_by_bar_id():
+    """When bar_id is passed, only that bar's dispatches come back."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            event = await make_event(session, tenant.id, status="DRAFT")
+            svc = EventStorageService(session)
+            sp = await _make_supplier_product(session, tenant.id)
+            bar_a = await _make_bar(session, tenant.id, event.id, name="A")
+            bar_b = await _make_bar(session, tenant.id, event.id, name="B")
+            await session.flush()
+
+            await svc.create_dispatch(tenant.id, event.id,
+                DispatchCreate(supplier_product_id=sp.id, bar_id=bar_a.id,
+                               qty_allocated=Decimal("10")))
+            await svc.create_dispatch(tenant.id, event.id,
+                DispatchCreate(supplier_product_id=sp.id, bar_id=bar_b.id,
+                               qty_allocated=Decimal("5")))
+
+            global_feed = await svc.list_activity_feed(tenant.id, event.id)
+            assert len(global_feed) == 2
+
+            a_feed = await svc.list_activity_feed(
+                tenant.id, event.id, bar_id=bar_a.id,
+            )
+            assert len(a_feed) == 1
+            assert a_feed[0].bar_name == "A"
+            assert a_feed[0].qty_allocated == Decimal("10")
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
