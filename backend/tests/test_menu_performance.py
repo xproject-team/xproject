@@ -198,3 +198,58 @@ async def test_empty_menu_returns_empty_groups():
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()
+
+
+
+async def test_sales_only_drink_appears_when_menu_empty():
+    """A sold drink not on EventProduct still appears in the breakdown
+    (never silently drop revenue the strip is already counting)."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            ev = await make_event(session, tenant.id)
+            bar = await make_bar(session, tenant.id, ev.id)
+            gin = await _drink(session, tenant.id, ProductCategory.BASIC_COCKTAIL, "Gin Tonic")
+            # NO EventProduct rows -> menu empty
+            await _sale(session, tenant.id, ev.id, bar.id, gin.id, qty=3, price_cents=1000)
+
+            res = await MenuPerformanceService(session).get_for_event(tenant.id, ev.id)
+            assert res is not None
+            families = {g.family: g for g in res.drinks}
+            assert "cocktails" in families
+            items = families["cocktails"].items
+            assert len(items) == 1
+            assert items[0].product_name == "Gin Tonic"
+            assert items[0].units == 3
+            assert items[0].revenue_eur == Decimal("30.00")
+            assert res.food == []
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+            await session.commit()
+
+
+async def test_off_menu_sale_appears_alongside_menu_items():
+    """A product on the menu (zero-sold) AND a product off the menu (sold)
+    must both appear in the breakdown."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            ev = await make_event(session, tenant.id)
+            bar = await make_bar(session, tenant.id, ev.id)
+            beer = await _drink(session, tenant.id, ProductCategory.BEER_BOTTLE, "Heineken")
+            negroni = await _drink(session, tenant.id, ProductCategory.BASIC_COCKTAIL, "Negroni")
+            await _menu(session, tenant.id, ev.id, bar.id, beer.id)  # menu, zero-sold
+            await _sale(session, tenant.id, ev.id, bar.id, negroni.id, qty=2, price_cents=1200)
+
+            res = await MenuPerformanceService(session).get_for_event(tenant.id, ev.id)
+            assert res is not None
+            families = {g.family: g for g in res.drinks}
+            assert "beer" in families and "cocktails" in families
+            assert any(i.product_name == "Heineken" and i.units == 0 for i in families["beer"].items)
+            assert any(
+                i.product_name == "Negroni" and i.units == 2 and i.revenue_eur == Decimal("24.00")
+                for i in families["cocktails"].items
+            )
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+            await session.commit()

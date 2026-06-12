@@ -1,9 +1,14 @@
 """Full-menu performance aggregator for the dashboard breakdown panel.
 
-Reads the event's menu (EventProduct, one row per bar+product) and
-LEFT-joins sold units from StockTransaction so zero-sold items still
-appear. Drinks are totalled per product across all bars and grouped by
-family; food is grouped by truck (bar). Drink + food only.
+Builds (bar, product) pairs from the UNION of the event's menu
+(EventProduct) and the distinct sold pairs from StockTransaction, then
+LEFT-joins sold units onto each pair. Two consequences:
+  - zero-sold menu items still appear (the original feature), and
+  - sales for products not on the configured menu (or sales for an event
+    with no menu configured yet) still appear, so the breakdown can
+    never silently drop revenue that the strip is already counting.
+Drinks are totalled per product across all bars and grouped by family;
+food is grouped by truck (bar). Drink + food only.
 
 Reuses the revenue/family contract from event_kpi_service (same
 REVENUE_SOURCES, SUM(qty*price_cents)/100, drink-family resolver).
@@ -12,6 +17,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal
+from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -98,6 +104,43 @@ class MenuPerformanceService:
         seen: dict[tuple[UUID, UUID], object] = {}
         for r in menu_rows:
             seen.setdefault((r.bar_id, r.product_id), r)
+
+        # 3b. Sold-but-not-on-menu pairs: synthesize rows so the breakdown
+        #     never silently drops revenue the strip is already counting.
+        missing = set(sold.keys()) - set(seen.keys())
+        if missing:
+            extra_pids = {p for _, p in missing}
+            extra_bids = {b for b, _ in missing}
+            prod_rows = (await self.db.execute(
+                select(
+                    Product.id.label("product_id"),
+                    Product.name.label("product_name"),
+                    Product.product_type.label("product_type"),
+                    Product.category.label("category"),
+                ).where(
+                    Product.tenant_id == tenant_id,
+                    Product.id.in_(extra_pids),
+                    Product.product_type.in_([ProductType.DRINK, ProductType.FOOD]),
+                )
+            )).all()
+            prod_info = {r.product_id: r for r in prod_rows}
+            bar_rows = (await self.db.execute(
+                select(Bar.id.label("bar_id"), Bar.name.label("bar_name"))
+                .where(Bar.tenant_id == tenant_id, Bar.id.in_(extra_bids))
+            )).all()
+            bar_name_by_id = {r.bar_id: r.bar_name for r in bar_rows}
+            for bid, pid in missing:
+                pr = prod_info.get(pid)
+                if pr is None:
+                    continue   # not drink/food, or product missing -> drop
+                bn = bar_name_by_id.get(bid)
+                if bn is None:
+                    continue   # bar missing -> defensive
+                seen[(bid, pid)] = SimpleNamespace(
+                    bar_id=bid, bar_name=bn,
+                    product_id=pid, product_name=pr.product_name,
+                    product_type=pr.product_type, category=pr.category,
+                )
 
         drink_acc: dict[UUID, dict] = {}   # per product, totalled across bars
         food_acc: dict[UUID, dict] = {}    # per truck (bar) -> items
