@@ -31,6 +31,11 @@ interface BarCardProps {
   eventStartMs: number
   /** "Now" reference in ms — same value passed to all bar cards on this render */
   nowMs: number
+  /** Warehouse storage dispatched to THIS bar for the current event.
+   *  Reads from event_stock_bar_allocations via useBarAllocations on
+   *  the DashboardPage. Optional — undefined / zero-item bars render
+   *  nothing (no clutter on bars that haven't been charged yet). */
+  storage?: { itemCount: number; totalUnits: number }
   /** Inline name-picker (passed only for auto-created stub cards).
    *  When present, renders "Map this shop to" select listing empty
    *  wizard bars of matching bar_type. On select, calls onMerge which
@@ -113,6 +118,7 @@ export function BarCard({
   eventStartMs,
   nowMs,
   mergeOptions,
+  storage,
 }: BarCardProps) {
   const cfg      = STATUS_CFG[bar.status]
   const stockPct = bar.stock_pct
@@ -172,6 +178,24 @@ export function BarCard({
 
       {/* 2 — Status label */}
       <p className={`text-xs font-semibold mb-3 ${cfg.labelColor}`}>{cfg.label}</p>
+
+      {/* Warehouse storage line — shows what's been dispatched from the
+          event's storage pool to this bar. Only renders when at least
+          one item has been dispatched, to keep empty bars clean. */}
+      {storage && storage.itemCount > 0 && (
+        <div className="flex items-center gap-1.5 mb-3 text-[11px] text-[#4A5568]">
+          <svg className="w-3 h-3 text-[#3182CE] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          </svg>
+          <span>
+            <span className="font-semibold text-[#1A202C]">{storage.itemCount}</span>{' '}
+            {storage.itemCount === 1 ? 'item' : 'items'}
+            {' · '}
+            <span className="font-semibold text-[#1A202C]">{storage.totalUnits}</span>{' '}
+            units in warehouse
+          </span>
+        </div>
+      )}
       {/* Shop_id suffix on mapped cards — gives alert cross-reference.
           Stubs already show the truncated shop_id as their name, so this
           line is suppressed for them. */}

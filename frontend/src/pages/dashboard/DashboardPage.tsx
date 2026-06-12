@@ -23,6 +23,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
+import { useBarAllocations } from '@/features/event_storage/hooks'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
@@ -421,6 +422,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   // ── Data hooks (all gated on eventId via `enabled` internally) ──
   const barsQuery          = useBarsForEvent(eventId)
+  const barAllocationsQ    = useBarAllocations(eventId ?? undefined)
   const mappingStateQuery  = useBarMappingState(eventId)
   // useMergeBars MUST live with the other top-level data hooks — never
   // below a conditional/early-return path. react-query's useMutation
@@ -551,6 +553,20 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
 
+  // Build per-bar storage lookup — used by BarCard to render the
+  // 'N items / X units in warehouse' line. Sums history-preserving
+  // allocation rows per bar.
+  const storageByBarId = (() => {
+    const m = new Map<string, { itemCount: number; totalUnits: number }>()
+    const allocs = barAllocationsQ.data ?? []
+    for (const bar of allocs) {
+      let total = 0
+      for (const it of bar.items) total += Number(it.qty_total_allocated)
+      m.set(bar.bar_id, { itemCount: bar.items.length, totalUnits: total })
+    }
+    return m
+  })()
+
   // Partition by mapping state. Live = mapped + stubs (rendered as BarCards
   // in the main grid). Empty = wizard-defined bars with no shop_id yet
   // (rendered as muted EmptyBarCards below the grid). If mapping-state
@@ -664,6 +680,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                       eventStartMs={eventStartMs}
                       nowMs={nowMs}
                       mergeOptions={mergeOptions}
+                      storage={storageByBarId.get(kpi.id)}
                     />
                   )
                 })}
