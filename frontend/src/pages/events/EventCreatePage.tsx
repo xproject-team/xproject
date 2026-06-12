@@ -29,6 +29,7 @@ import {
   type FullEventCreatePayload,
   type FullEventItemError,
 } from '@/features/events/useCreateFullEvent'
+import StorageTab from '@/features/event_storage/StorageTab'
 
 interface BarRow {
   id: number
@@ -51,7 +52,7 @@ interface ListiniRow {
   cauzione: string
 }
 
-const TABS = ['1 · Overview', '2 · Bars', '3 · Device Count', '4 · Listini', '5 · Inventory', '6 · Lineup']
+const TABS = ['1 · Overview', '2 · Bars', '3 · Device Count', '4 · Listini', '5 · Inventory', '6 · Lineup', '7 · Storage']
 
 // Drink categories = backend ProductCategory enum. Food types = FoodType enum.
 // Picked per product so the dashboard can break sales down by category / type.
@@ -417,6 +418,7 @@ export default function EventCreatePage() {
       )}
 
       {tab === 5 && (<div className="text-sm text-[#718096] max-w-lg"><p className="mb-2">Lineup (3 stages × 5 slots) is captured closer to the event.</p><p>Stages/lineup tables are deferred (Phase B4).</p></div>)}
+      {tab === 6 && (<StorageTab eventId={id} />)}
     </div>
   )
 }
