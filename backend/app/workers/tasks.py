@@ -513,7 +513,14 @@ async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
             )
             return {"status": "error", "events_processed": 0}
 
-        async with SleshAdapter(token=settings.slesh_api_token) as adapter:
+        async with SleshAdapter(
+            token=settings.slesh_api_token,
+            brand_id=settings.slesh_brand_id,
+            base_url=settings.slesh_base_url,
+            request_timeout=settings.slesh_request_timeout,
+            rate_limit_rps=settings.slesh_rate_limit_rps,
+            max_retries=settings.slesh_max_retries,
+        ) as adapter:
             for event_id, tenant_id in rows:
                 try:
                     result = await sync_shops(
@@ -621,27 +628,37 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
             return {"status": "error", **counters}
 
         for event in due_events:
+            # Snapshot identifiers BEFORE any service call. After a
+            # session.rollback() the ORM expires loaded attributes; the
+            # subsequent log statement would trigger a lazy reload from
+            # outside an async context and explode with MissingGreenlet,
+            # masking the original (informative) exception.
+            event_id_str = str(event.id)
+            event_name = event.name
+            event_tenant_id = event.tenant_id
+            event_status_snapshot = event.status
+
             try:
                 # Build a service for this tenant. Reuse the same session
                 # so cron writes commit through one connection per tick.
                 service = EventService(db=session)
 
-                if event.status == EventStatus.DRAFT:
-                    await service.activate_event(event.tenant_id, event.id)
+                if event_status_snapshot == EventStatus.DRAFT:
+                    await service.activate_event(event_tenant_id, event.id)
                     counters["activated"] += 1
                     # Now ACTIVE — chain into start
-                    await service.start_event(event.tenant_id, event.id)
+                    await service.start_event(event_tenant_id, event.id)
                     counters["started"] += 1
                     logger.info(
                         "cron_auto_transition: DRAFT->LIVE event=%s (%s)",
-                        event.id, event.name,
+                        event_id_str, event_name,
                     )
-                elif event.status == EventStatus.ACTIVE:
-                    await service.start_event(event.tenant_id, event.id)
+                elif event_status_snapshot == EventStatus.ACTIVE:
+                    await service.start_event(event_tenant_id, event.id)
                     counters["started"] += 1
                     logger.info(
                         "cron_auto_transition: ACTIVE->LIVE event=%s (%s)",
-                        event.id, event.name,
+                        event_id_str, event_name,
                     )
             except Exception as e:  # noqa: BLE001
                 # Most likely cause: LiveEventConflictError (another live
@@ -650,8 +667,8 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
                 await session.rollback()
                 counters["errors"] += 1
                 logger.warning(
-                    "cron_auto_transition: promotion failed for event=%s: %s",
-                    event.id, e,
+                    "cron_auto_transition: promotion failed for event=%s (%s): %s",
+                    event_id_str, event_name, e,
                 )
 
         # ── Responsibility 3: end stale LIVE events ──────────────────
