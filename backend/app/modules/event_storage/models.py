@@ -140,3 +140,57 @@ class EventStockItem(TenantScopedModel):
             name="uq_event_stock_items_tenant_event_sp",
         ),
     )
+
+
+class EventStockBarAllocation(TenantScopedModel):
+    """One dispatch event: Omar sends N of a supplier_product to a bar.
+
+    History-preserving — every dispatch creates a NEW row (no unique
+    constraint). Aggregations sum across rows. Returns/corrections are
+    out of scope for Sundance 1; if needed later they can land as
+    negative-qty rows or via a separate event_stock_bar_returns table.
+
+    The activity feed on the Warehouse page IS this table sorted by
+    created_at DESC, joined with supplier_products (item name) and
+    bars (bar name) and users (who dispatched).
+    """
+
+    __tablename__ = "event_stock_bar_allocations"
+
+    event_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    supplier_product_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("supplier_products.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    bar_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("bars.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # How many of the supplier_product's default_unit were dispatched
+    # (e.g. 100 BO of Beefeater, 5 KAR of Schweppes Tonica).
+    qty_allocated: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False,
+    )
+
+    # Who did the dispatch. NULLable so user deletion doesn't wipe
+    # historical allocations from the activity feed.
+    dispatched_by_user_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+

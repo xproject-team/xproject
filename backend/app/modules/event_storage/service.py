@@ -18,7 +18,11 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.event_storage.models import EventStockItem, SupplierProduct
+from app.modules.event_storage.models import (
+    EventStockBarAllocation,
+    EventStockItem,
+    SupplierProduct,
+)
 from app.modules.event_storage.repository import (
     EventStockItemRepository,
     SupplierProductRepository,
@@ -213,13 +217,19 @@ class EventStorageService:
     async def get_storage_summary(
         self, tenant_id: UUID, event_id: UUID,
     ) -> StorageSummaryResponse:
-        """Aggregation for the warehouse + inventory pages. v1 returns
-        received qty only; allocated / remaining join with BarStock in
-        Phase 2.1 once the supplier_product -> product mapping is
-        established (today the link is implicit via recipes)."""
-        items = await self.list_event_stock_items(tenant_id, event_id)
+        """Aggregation for the warehouse + inventory pages.
 
+        qty_received  comes from event_stock_items.
+        qty_allocated is SUM(event_stock_bar_allocations.qty_allocated)
+                      across all bars for that (event, supplier_product).
+        qty_available = received - allocated (warehouse remaining).
+
+        Single round-trip: pull items, supplier_products, and an
+        aggregated allocations map in three queries, then compose.
+        """
+        items = await self.list_event_stock_items(tenant_id, event_id)
         sp_ids = {item.supplier_product_id for item in items}
+
         sp_map: dict[UUID, SupplierProduct] = {}
         if sp_ids:
             sp_rows = (await self.db.execute(
@@ -229,15 +239,44 @@ class EventStorageService:
             )).scalars().all()
             sp_map = {sp.id: sp for sp in sp_rows}
 
+        # Per-supplier_product total allocated across all bars for this event
+        from sqlalchemy import func
+        allocated_map: dict[UUID, Decimal] = {}
+        if sp_ids:
+            stmt = (
+                select(
+                    EventStockBarAllocation.supplier_product_id,
+                    func.coalesce(
+                        func.sum(EventStockBarAllocation.qty_allocated),
+                        Decimal("0"),
+                    ),
+                )
+                .where(
+                    EventStockBarAllocation.tenant_id == tenant_id,
+                    EventStockBarAllocation.event_id == event_id,
+                    EventStockBarAllocation.supplier_product_id.in_(sp_ids),
+                )
+                .group_by(EventStockBarAllocation.supplier_product_id)
+            )
+            for sp_id, total in (await self.db.execute(stmt)).all():
+                allocated_map[sp_id] = total
+
         rows: list[StorageSummaryRow] = []
         by_category: dict[str, int] = {}
         total_value = Decimal("0")
         has_any_value = False
+        total_received = Decimal("0")
+        total_allocated = Decimal("0")
 
         for item in items:
             sp = sp_map.get(item.supplier_product_id)
             if sp is None:
                 continue
+
+            qty_allocated = allocated_map.get(
+                item.supplier_product_id, Decimal("0"),
+            )
+            qty_available = item.qty_received - qty_allocated
 
             rows.append(StorageSummaryRow(
                 supplier_product_id=item.supplier_product_id,
@@ -245,9 +284,13 @@ class EventStorageService:
                 category=sp.category,
                 unit=item.unit,
                 qty_received=item.qty_received,
+                qty_allocated=qty_allocated,
+                qty_available=qty_available,
                 line_total_eur=item.line_total_eur,
             ))
             by_category[sp.category] = by_category.get(sp.category, 0) + 1
+            total_received += item.qty_received
+            total_allocated += qty_allocated
             if item.line_total_eur is not None:
                 total_value += item.line_total_eur
                 has_any_value = True
@@ -255,6 +298,8 @@ class EventStorageService:
         return StorageSummaryResponse(
             event_id=event_id,
             total_items=len(items),
+            total_qty_received=total_received,
+            total_qty_allocated=total_allocated,
             total_line_value_eur=total_value if has_any_value else None,
             by_category=by_category,
             rows=rows,

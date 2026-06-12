@@ -84,22 +84,99 @@ class EventStockItemResponse(EventStockItemBase):
 class StorageSummaryRow(BaseModel):
     """Per-product breakdown for the warehouse + inventory pages.
 
-    v1: received only. The allocated_to_bars / remaining_in_warehouse
-    fields require a supplier_product -> product mapping (recipes link
-    sold products to ingredient stock). That mapping lands in Phase 2.1.
+    qty_received  = total declared in event_stock_items
+    qty_allocated = SUM(event_stock_bar_allocations.qty_allocated)
+                    across all bars for this (event, supplier_product)
+    qty_available = qty_received - qty_allocated  (warehouse remaining)
+
+    These are DECLARATIVE totals only. Real-time consumption (sales
+    depleting bar_stock) is tracked separately via the existing
+    stock_transactions / burn-rate path and is NOT subtracted here.
     """
     supplier_product_id: UUID
     item_name: str
     category: str
     unit: str
     qty_received: Decimal
+    qty_allocated: Decimal
+    qty_available: Decimal
     line_total_eur: Decimal | None = None
 
 
 class StorageSummaryResponse(BaseModel):
-    """GET /events/{id}/storage/summary."""
+    """GET /event-storage/summary?event_id=X — aggregation for the
+    Warehouse + Inventory pages.
+    """
     event_id: UUID
-    total_items: int
+    total_items: int                     # COUNT(DISTINCT supplier_product)
+    total_qty_received: Decimal
+    total_qty_allocated: Decimal
     total_line_value_eur: Decimal | None
     by_category: dict[str, int]          # category -> item count
     rows: list[StorageSummaryRow]
+
+
+# ─── Dispatch (event_stock_bar_allocations) ───────────────────────────
+
+class DispatchCreate(BaseModel):
+    """Payload for POST /event-storage/allocations?event_id=X.
+
+    One row = one dispatch event. To send 100 of A and 50 of B to the
+    same bar, post two separate DispatchCreate items (or one bulk array;
+    see DispatchBulkCreate below). History-preserving — re-posting the
+    same payload creates a NEW row, not an upsert.
+    """
+    supplier_product_id: UUID
+    bar_id: UUID
+    qty_allocated: Decimal = Field(..., gt=0)
+    notes: str | None = None
+
+
+class DispatchBulkCreate(BaseModel):
+    """Bulk payload — Omar dispatches multiple items in one click."""
+    items: list[DispatchCreate]
+
+
+class DispatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: UUID
+    event_id: UUID
+    supplier_product_id: UUID
+    bar_id: UUID
+    qty_allocated: Decimal
+    dispatched_by_user_id: UUID | None
+    notes: str | None
+    created_at: datetime         # serves as dispatched_at
+    updated_at: datetime
+
+
+class ActivityFeedRow(BaseModel):
+    """One row in the Warehouse-page activity feed sidebar. Denormalises
+    item + bar + user names so the frontend can render in one pass.
+    """
+    id: UUID
+    qty_allocated: Decimal
+    item_name: str
+    item_unit: str               # supplier_product.default_unit
+    bar_name: str
+    user_name: str | None
+    user_role: str | None
+    dispatched_at: datetime
+
+
+class BarAllocationSummary(BaseModel):
+    """Per-bar totals — used by the Inventory page to show what each
+    bar has been dispatched so far before Omar adds more."""
+    bar_id: UUID
+    bar_name: str
+    items: list["BarAllocationItem"]
+
+
+class BarAllocationItem(BaseModel):
+    supplier_product_id: UUID
+    item_name: str
+    unit: str
+    qty_total_allocated: Decimal
+
