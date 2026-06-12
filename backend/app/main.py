@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     from app.modules.anomaly.router import router as anomaly_router
     from app.modules.reports.router import router as reports_router
     from app.modules.chat.router import router as chat_router
+    from app.modules.event_storage.router import router as event_storage_router
     from app.realtime.websocket import router as ws_router
 
     prefix = "/api/v1"
@@ -91,6 +92,7 @@ def create_app() -> FastAPI:
     app.include_router(anomaly_router, prefix=f"{prefix}/anomaly", tags=["anomaly"])
     app.include_router(reports_router, prefix=f"{prefix}/reports", tags=["reports"])
     app.include_router(chat_router, prefix=f"{prefix}/chat", tags=["chat"])
+    app.include_router(event_storage_router, prefix=f"{prefix}/event-storage", tags=["event-storage"])
     app.include_router(ws_router, prefix=f"{prefix}/ws", tags=["websocket"])
 
     @app.get("/api/v1/health", tags=["health"])

@@ -27,6 +27,7 @@ from app.modules.stock_transactions.models import StockTransaction  # noqa: F401
 # from app.modules.warehouse.models import ScanEvent  # noqa: F401
 # from app.modules.reports.models import Report  # noqa: F401
 from app.modules.chat.models import ChatAttachment, Channel, ChannelMember, ChatMention, ChatMessage  # noqa: F401
+from app.modules.event_storage.models import SupplierProduct, EventStockItem  # noqa: F401
 
 config = context.config
 
