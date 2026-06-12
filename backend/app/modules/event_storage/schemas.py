@@ -82,14 +82,18 @@ class EventStockItemResponse(EventStockItemBase):
 # ─── Aggregations ────────────────────────────────────────────────────
 
 class StorageSummaryRow(BaseModel):
-    """Per-product breakdown for the warehouse + inventory pages."""
+    """Per-product breakdown for the warehouse + inventory pages.
+
+    v1: received only. The allocated_to_bars / remaining_in_warehouse
+    fields require a supplier_product -> product mapping (recipes link
+    sold products to ingredient stock). That mapping lands in Phase 2.1.
+    """
     supplier_product_id: UUID
     item_name: str
     category: str
     unit: str
     qty_received: Decimal
-    qty_allocated_to_bars: Decimal      # SUM(BarStock.stocked_qty) — wired up in commit 2
-    qty_remaining_in_warehouse: Decimal  # received - allocated
+    line_total_eur: Decimal | None = None
 
 
 class StorageSummaryResponse(BaseModel):
