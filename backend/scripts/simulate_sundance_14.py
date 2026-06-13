@@ -53,7 +53,7 @@ from app.modules.venues.models import Venue  # noqa: F401
 from app.modules.events.models import Event, EventStatus  # noqa: F401
 from app.modules.bars.models import Bar  # noqa: F401
 from app.modules.products.models import (  # noqa: F401
-    Product, ProductCategory, ProductType, ProductUnit,
+    FoodType, Product, ProductCategory, ProductType, ProductUnit,
 )
 from app.modules.event_products.models import EventProduct  # noqa: F401
 from app.modules.bar_stock.models import BarStock  # noqa: F401
@@ -167,20 +167,20 @@ DRINK_MENU = [
 
 FOOD_MENU = {
     "MALANDRINO":  [
-        ("Hamburger",     1200, 8),
-        ("Cheeseburger",  1200, 6),
-        ("Veggie Burger", 1200, 2),
-        ("Patatina S",     500, 4),
-        ("Patatina L",     800, 3),
+        ("Hamburger",     1200, 8, FoodType.BURGERS),
+        ("Cheeseburger",  1200, 6, FoodType.BURGERS),
+        ("Veggie Burger", 1200, 2, FoodType.BURGERS),
+        ("Patatina S",     500, 4, FoodType.FRIED),
+        ("Patatina L",     800, 3, FoodType.FRIED),
     ],
     "SCROCCHIA": [
-        ("CLASSICA",       700, 5),
-        ("SAPORITA",       800, 4),
+        ("CLASSICA",       700, 5, FoodType.SANDWICHES),
+        ("SAPORITA",       800, 4, FoodType.SANDWICHES),
     ],
     "PULLED PORK": [
-        ("Pulled",        1200, 5),
-        ("Veggie",        1200, 2),
-        ("Fritto",         800, 3),
+        ("Pulled",        1200, 5, FoodType.SANDWICHES),
+        ("Veggie",        1200, 2, FoodType.SANDWICHES),
+        ("Fritto",         800, 3, FoodType.FRIED),
     ],
 }
 
@@ -235,6 +235,7 @@ async def _find_or_create_product(
     category: ProductCategory | None,
     unit: ProductUnit,
     price_cents: int | None,
+    food_type: FoodType | None = None,
 ) -> Product:
     """Idempotent product creation. Matches Slesh's reality where the
     same product name might be sold across multiple events."""
@@ -254,6 +255,7 @@ async def _find_or_create_product(
         name=name,
         product_type=product_type,
         category=category,
+        food_type=food_type,
         unit=unit,
         default_price_cents=price_cents,
         is_archived=False,
@@ -401,10 +403,10 @@ async def cmd_setup() -> None:
         # Food products
         n_food = 0
         for items in FOOD_MENU.values():
-            for name, price, _w in items:
+            for name, price, _w, food_type in items:
                 await _find_or_create_product(
                     session, name, ProductType.FOOD, None,
-                    ProductUnit.PIECE, price,
+                    ProductUnit.PIECE, price, food_type=food_type,
                 )
                 n_food += 1
         print(f"✓ {n_food} food products in catalog")
@@ -505,7 +507,7 @@ async def cmd_run(duration_seconds: int) -> None:
         food_pools: dict[str, list[tuple[Product, int]]] = {}
         for bar_name, items in FOOD_MENU.items():
             pool = []
-            for name, _price, weight in items:
+            for name, _price, weight, _food_type in items:
                 q = await session.execute(
                     select(Product).where(
                         Product.tenant_id == NOMA_TENANT_ID,

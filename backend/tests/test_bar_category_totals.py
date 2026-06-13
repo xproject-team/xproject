@@ -288,7 +288,8 @@ async def test_food_in_buckets_but_excluded_from_top_drinks(
     db_session: AsyncSession,
     isolated_client: AsyncClient,
 ):
-    """Burger sales appear in food bucket but NOT in top_5_drinks."""
+    """Burger + cocktail sales at a mixed bar: burger appears in food bucket
+    AND ranks in top-5 alongside drinks (post-Sundance behavior change)."""
     tenant = await _get_tenant(db_session)
     venue = await _create_venue(db_session, tenant.id)
     event = await _create_event(db_session, tenant.id, venue.id)
@@ -315,11 +316,13 @@ async def test_food_in_buckets_but_excluded_from_top_drinks(
     bar_data = r.json()["bars"][0]
     buckets = {c["bucket"]: c for c in bar_data["categories"]}
     assert buckets["food"]["units"] == 50
-    # Top-5 should contain only the cocktail, not the burger
+    # Top-5 now includes food (burger) too — ranks by units across both
+    # product types. Drink bars naturally show drink-only top-5; food trucks
+    # show food-only top-5; mixed bars show both.
     top_names = [d["product_name"] for d in bar_data["top_5_drinks"]]
-    # Names have a uuid suffix per the test helper, so check by prefix.
-    assert not any(n.startswith("Burger") for n in top_names)
+    assert any(n.startswith("Burger") for n in top_names)
     assert any(n.startswith("Sprtiz") for n in top_names)
+    assert top_names[0].startswith("Burger")  # 50 units > 3 units
 
 
 # ─── 5. unknown event 404 ──────────────────────────────────────────

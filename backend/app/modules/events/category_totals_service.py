@@ -42,7 +42,7 @@ from app.modules.predictions.predictors.heuristic import (
     REVENUE_SOURCES,
     _classify_category,
 )
-from app.modules.products.models import Product, ProductCategory
+from app.modules.products.models import Product, ProductCategory, FoodType
 from app.modules.stock_transactions.models import StockTransaction
 
 
@@ -61,7 +61,7 @@ _ROLLUP_TO_BUCKET: dict[str, DisplayBucket] = {
     ProductCategory.WINE_RED.value:         "wine",
     ProductCategory.WINE_WHITE.value:       "wine",
     ProductCategory.WINE_SPARKLING.value:   "wine",
-    # SOFT_DRINK intentionally not mapped — not a card bucket.
+    ProductCategory.SOFT_DRINK.value:       "soft_drink",
 
     # From _classify_category() name-fallback (Python deriver buckets)
     "beer":              "beer",
@@ -133,6 +133,8 @@ class BarCategoryTotalsService:
                 Product.id.label("product_id"),
                 Product.name.label("product_name"),
                 Product.category.label("product_category"),
+                Product.food_type.label("product_food_type"),
+                Product.product_type.label("product_kind"),
                 units_expr,
                 revenue_expr,
                 txn_count_expr,
@@ -148,6 +150,7 @@ class BarCategoryTotalsService:
             .group_by(
                 Bar.id, Bar.name,
                 Product.id, Product.name, Product.category,
+                Product.food_type, Product.product_type,
             )
             .order_by(Bar.name, desc("units"))
         )
@@ -169,12 +172,31 @@ class BarCategoryTotalsService:
                 }
             slot = per_bar[bar_id]
 
-            # Resolve granular category for this (bar, product) row
+            # Resolve granular category for this (bar, product) row.
+            # For DRINK products: use Product.category enum (with name-fallback).
+            # For FOOD products: use Product.food_type — bucket directly to one
+            # of burgers/sandwiches/fried/skewers/pizza/gelato/other. When
+            # food_type is NULL (legacy data), fall back to the deprecated
+            # single "food" bucket.
             granular_category: str
-            if r.product_category is not None:
-                granular_category = r.product_category.value
+            bucket: DisplayBucket | None
+            is_food = (
+                r.product_kind is not None
+                and getattr(r.product_kind, "value", str(r.product_kind)) == "food"
+            )
+            if is_food:
+                if r.product_food_type is not None:
+                    granular_category = r.product_food_type.value
+                    bucket = granular_category  # type: ignore[assignment]
+                else:
+                    granular_category = "food"
+                    bucket = "food"
             else:
-                granular_category = _classify_category(r.product_name)
+                if r.product_category is not None:
+                    granular_category = r.product_category.value
+                else:
+                    granular_category = _classify_category(r.product_name)
+                bucket = _bucket_for(granular_category)
 
             units = int(r.units or 0)
             revenue = Decimal(str(r.revenue_eur or 0))
@@ -183,14 +205,14 @@ class BarCategoryTotalsService:
 
             # Roll up to display bucket (may be None → hidden from card,
             # but still counted in totals above)
-            bucket = _bucket_for(granular_category)
             if bucket is not None:
                 slot["buckets"][bucket]["units"] += units
                 slot["buckets"][bucket]["revenue_eur"] += revenue
 
-            # Top-5 candidate: only DRINK categories.
-            # Food and supply are excluded from "top drinks."
-            if bucket in ("beer", "cocktails", "premium_cocktails", "wine"):
+            # Top-5 candidate: every visible product (drinks + foods).
+            # Drink bars naturally produce a drink-only top-5; food bars
+            # produce a food-only top-5.
+            if bucket is not None:
                 slot["products"].append({
                     "product_name": r.product_name,
                     "category": granular_category,

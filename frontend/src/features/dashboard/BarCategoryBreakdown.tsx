@@ -28,10 +28,21 @@ import type {
 // Matches the BarMiniChart colors so the visual vocabulary stays
 // consistent across the dashboard.
 const _BUCKET_COLOR: Record<BarCategoryBucketDTO['bucket'], string> = {
+  // Drinks
   beer:              '#C49A2A',
   cocktails:         '#C2185B',
   premium_cocktails: '#6A1B9A',
   wine:              '#8B0000',
+  soft_drink:        '#0288D1',
+  // Food sub-buckets (FoodType enum values)
+  burgers:           '#D84315',
+  sandwiches:        '#F9A825',
+  fried:             '#FB8C00',
+  skewers:           '#6D4C41',
+  pizza:             '#C62828',
+  gelato:            '#7E57C2',
+  other:             '#558B2F',
+  // Deprecated single-bucket fallback (only when food_type IS NULL)
   food:              '#558B2F',
 }
 
@@ -40,11 +51,21 @@ const _BUCKET_LABEL: Record<BarCategoryBucketDTO['bucket'], string> = {
   cocktails:         'Cocktails',
   premium_cocktails: 'Premium',
   wine:              'Wine',
+  soft_drink:        'Soft Drinks',
+  burgers:           'Burgers',
+  sandwiches:        'Sandwiches',
+  fried:             'Fried',
+  skewers:           'Skewers',
+  pizza:             'Pizza',
+  gelato:            'Gelato',
+  other:             'Other',
   food:              'Food',
 }
 
-// Granular category -> rolled-up bucket (for top-5 drinks color tag)
-const _GRANULAR_TO_BUCKET: Record<string, BarCategoryBucketDTO['bucket'] | 'other'> = {
+// Granular category -> bucket key used for the color dot on top-5 rows.
+// Drinks roll up; food types map to themselves (already bucket keys).
+const _GRANULAR_TO_BUCKET: Record<string, BarCategoryBucketDTO['bucket']> = {
+  // Drink categories
   beer_bottle:      'beer',
   beer_draft:       'beer',
   basic_cocktail:   'cocktails',
@@ -55,9 +76,19 @@ const _GRANULAR_TO_BUCKET: Record<string, BarCategoryBucketDTO['bucket'] | 'othe
   wine_white:       'wine',
   wine_sparkling:   'wine',
   wine:             'wine',
+  soft_drink:       'soft_drink',
+  // Food types (identity mapping — already bucket keys)
+  burgers:          'burgers',
+  sandwiches:       'sandwiches',
+  fried:            'fried',
+  skewers:          'skewers',
+  pizza:            'pizza',
+  gelato:           'gelato',
+  other:            'other',
+  food:             'food',
 }
 
-function _bucketFor(granular: string): BarCategoryBucketDTO['bucket'] | 'other' {
+function _bucketFor(granular: string): BarCategoryBucketDTO['bucket'] {
   return _GRANULAR_TO_BUCKET[granular] ?? 'other'
 }
 
@@ -81,9 +112,16 @@ interface BarCategoryBreakdownProps {
   bar_type?: 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 }
 
+// Drink bucket preference order for stable left-to-right rendering.
+const _DRINK_ORDER: BarCategoryBucketDTO['bucket'][] = [
+  'beer', 'cocktails', 'premium_cocktails', 'wine', 'soft_drink',
+]
+// Food bucket preference order (FoodType enum order).
+const _FOOD_ORDER: BarCategoryBucketDTO['bucket'][] = [
+  'burgers', 'sandwiches', 'fried', 'skewers', 'pizza', 'gelato', 'other', 'food',
+]
+
 export function BarCategoryBreakdown({ bar, bar_type }: BarCategoryBreakdownProps) {
-  // Food bars don't sell drinks — overlay renders a food-specific section.
-  if (bar_type === 'food') return null
   if (!bar || bar.categories.length === 0) {
     return (
       <p className="text-sm text-[#A0AEC0] italic">
@@ -92,35 +130,45 @@ export function BarCategoryBreakdown({ bar, bar_type }: BarCategoryBreakdownProp
     )
   }
 
-  // Drink bars: 4 drink buckets only. FOOD pill is always 0 on drink bars
-  // (food is sold by separate trucks), so we drop it to remove visual noise.
-  const ORDER: BarCategoryBucketDTO['bucket'][] = [
-    'beer', 'cocktails', 'premium_cocktails', 'wine',
-  ]
+  // Render only buckets that actually exist on this event's menu (i.e. that
+  // produced sales). Empty placeholder pills are dropped per Hesam's spec:
+  // "squares must be in sync with the event menu".
+  const reference = bar_type === 'food' ? _FOOD_ORDER : _DRINK_ORDER
   const byBucket = new Map(bar.categories.map((c) => [c.bucket, c]))
+  // Stable order: reference first (in known order), then any extras the
+  // backend may add later (forward-compatible).
+  const ordered: BarCategoryBucketDTO['bucket'][] = []
+  for (const b of reference) if (byBucket.has(b)) ordered.push(b)
+  for (const c of bar.categories) if (!ordered.includes(c.bucket)) ordered.push(c.bucket)
+
+  // Responsive grid: scales with bucket count. Food trucks may have 1-3,
+  // drink bars typically 4-5. Cap at 5 cols on small screens.
+  const cols = Math.min(ordered.length, 5)
+  const gridClass = [
+    'grid gap-2',
+    cols <= 2 ? 'grid-cols-2' :
+    cols === 3 ? 'grid-cols-2 sm:grid-cols-3' :
+    cols === 4 ? 'grid-cols-2 sm:grid-cols-4' :
+                 'grid-cols-2 sm:grid-cols-5',
+  ].join(' ')
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      {ORDER.map((b) => {
+    <div className={gridClass}>
+      {ordered.map((b) => {
         const row = byBucket.get(b)
-        const units = row?.units ?? 0
-        const rev = row?.revenue_eur ?? '0'
-        const isEmpty = units === 0
+        if (!row) return null
+        const units = row.units
+        const rev = row.revenue_eur
         return (
           <div
             key={b}
-            className={[
-              'border rounded-lg px-3 py-2 text-center',
-              isEmpty
-                ? 'bg-[#F7FAFC] border-[#E2E8F0] text-[#A0AEC0]'
-                : 'bg-white border-[#E2E8F0]',
-            ].join(' ')}
+            className="border rounded-lg px-3 py-2 text-center bg-white border-[#E2E8F0]"
           >
             <p
               className="text-[10px] uppercase tracking-wide font-semibold"
-              style={{ color: isEmpty ? '#A0AEC0' : _BUCKET_COLOR[b] }}
+              style={{ color: _BUCKET_COLOR[b] ?? '#4A5568' }}
             >
-              {_BUCKET_LABEL[b]}
+              {_BUCKET_LABEL[b] ?? b.replace(/_/g, ' ')}
             </p>
             <p className="text-lg font-bold mt-0.5 text-[#1A202C]">{units}</p>
             <p className="text-[11px] text-[#4A5568]">{_formatEur(rev)}</p>
@@ -142,8 +190,7 @@ interface BarTopDrinksProps {
   bar_type?: 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 }
 
-export function BarTopDrinks({ bar, bar_type }: BarTopDrinksProps) {
-  if (bar_type === 'food') return null
+export function BarTopDrinks({ bar, bar_type: _bar_type }: BarTopDrinksProps) {
   if (!bar || bar.top_5_drinks.length === 0) {
     return (
       <p className="text-sm text-[#A0AEC0] italic">
@@ -156,7 +203,7 @@ export function BarTopDrinks({ bar, bar_type }: BarTopDrinksProps) {
     <div className="space-y-1.5">
       {bar.top_5_drinks.map((d: BarTopDrinkDTO, rank) => {
         const bucket = _bucketFor(d.category)
-        const color = bucket === 'other' ? '#A0AEC0' : _BUCKET_COLOR[bucket]
+        const color = _BUCKET_COLOR[bucket] ?? '#A0AEC0'
         return (
           <div
             key={d.product_name + rank}

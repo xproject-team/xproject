@@ -23,11 +23,18 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-# 5 visible buckets on the bar card. Everything else
-# (mixers/supply/spirits) is folded into the closest bucket
-# or hidden by the frontend.
+# Visible buckets on the bar card. Drink bars render the drink buckets;
+# food bars render the food sub-buckets. The single "food" bucket from the
+# pre-Sundance design is retained as a fallback only when a food product
+# has no food_type set (shouldn't happen post-backfill).
+# Mixers/supply/spirits are folded or hidden by the frontend.
 DisplayBucket = Literal[
-    "beer", "cocktails", "premium_cocktails", "wine", "food",
+    # Drinks (5)
+    "beer", "cocktails", "premium_cocktails", "wine", "soft_drink",
+    # Food sub-buckets (7) — from FoodType enum values
+    "burgers", "sandwiches", "fried", "skewers", "pizza", "gelato", "other",
+    # Deprecated single-bucket fallback
+    "food",
 ]
 
 

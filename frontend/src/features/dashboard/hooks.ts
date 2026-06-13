@@ -193,7 +193,7 @@ export function useBurnRatesForEvent(eventId: string | null | undefined) {
 // ─────────────────────────────────────────────────────────────────────
 
 export interface BarCategoryBucketDTO {
-  bucket:       'beer' | 'cocktails' | 'premium_cocktails' | 'wine' | 'food'
+  bucket:       'beer' | 'cocktails' | 'premium_cocktails' | 'wine' | 'soft_drink' | 'burgers' | 'sandwiches' | 'fried' | 'skewers' | 'pizza' | 'gelato' | 'other' | 'food'
   units:        number
   revenue_eur:  string   // backend serializes Decimal as string
 }
