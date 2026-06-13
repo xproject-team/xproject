@@ -13,11 +13,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   useAllProducts,
-  useBarStockForEvent,
-  useBurnRatesForEvent,
+  useBarSupplierStock,
   useLiveEvent,
   useTransactionsForEvent,
-  useBarCategoryTotals
+  useBarCategoryTotals,
 } from '@/features/dashboard/hooks'
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
 import {
@@ -108,25 +107,7 @@ function RevenueChart({ barId }: RevenueChartProps) {
   )
 }
 
-// ─── Stock table (real per-product rows, sorted by stock% ascending) ────────
-
-type DerivedStockStatus = 'depleted' | 'critical' | 'warning' | 'healthy'
-
-const PRODUCT_STATUS_CFG: Record<DerivedStockStatus, { label: string; cls: string }> = {
-  healthy: { label: 'Healthy', cls: 'bg-green-100 text-[#38A169] border border-green-200' },
-  warning: { label: 'Warning', cls: 'bg-yellow-100 text-[#D69E2E] border border-yellow-200' },
-  critical: { label: 'Critical', cls: 'bg-red-100 text-[#E53E3E] border border-red-200' },
-  depleted: { label: 'Depleted', cls: 'bg-gray-100 text-[#718096] border border-gray-200' },
-}
-
-function deriveStockStatus(currentQty: number, allocatedQty: number): DerivedStockStatus {
-  if (currentQty === 0) return 'depleted'
-  if (allocatedQty === 0) return 'healthy'  // edge case: no allocation baseline
-  const pct = (currentQty / allocatedQty) * 100
-  if (pct > 60) return 'healthy'
-  if (pct > 30) return 'warning'
-  return 'critical'
-}
+// ─── Stock table — Phase 3 ml-depletion (Sundance 14) ─────────────
 
 interface StockTableProps {
   barId: string
@@ -134,120 +115,94 @@ interface StockTableProps {
 }
 
 function StockTable({ barId, eventId }: StockTableProps) {
-  const barStockQuery = useBarStockForEvent(eventId)
-  const productsQuery = useAllProducts()
-  const burnRatesQuery = useBurnRatesForEvent(eventId)
+  // Phase 3 — Sundance 14: reads from /bar-supplier-stock which exposes
+  // per-(bar, supplier_product) ml-depletion math from event_category_
+  // ingredients. Backend simultaneously fires depletion alerts on
+  // threshold flips (worst-case high-recall design).
+  const stockQuery = useBarSupplierStock(eventId, barId)
 
-  if (barStockQuery.isLoading || productsQuery.isLoading || burnRatesQuery.isLoading) {
+  if (stockQuery.isLoading) {
     return (
       <div className="text-xs text-[#A0AEC0] italic py-6 text-center">
-        Loading stock&hellip;
+        Loading stock…
       </div>
     )
   }
-
-  const allStock = barStockQuery.data ?? []
-  const products = productsQuery.data ?? []
-  const burnRates = burnRatesQuery.data ?? []
-  const brByKey = new Map(burnRates.map((r) => [r.bar_id + ":" + r.product_id, r]))
-
-  // Index products for O(1) join
-  const productById = new Map(products.map((p) => [p.id, p]))
-
-  // Filter to this bar, compute derived fields, sort by stock% ascending
-  const rows = allStock
-    .filter((s) => s.bar_id === barId)
-    .map((s) => {
-      const product = productById.get(s.product_id)
-      const pct = s.allocated_qty === 0
-        ? 0
-        : Math.round((s.current_qty / s.allocated_qty) * 100)
-      const br = brByKey.get(s.bar_id + ":" + s.product_id)
-      return {
-        stockId: s.id,
-        productId: s.product_id,
-        burnRate: br ? parseFloat(br.burn_rate_per_hour) : null,
-        burnLabel: br ? br.window_label : null,
-        depletionMin: br && br.time_to_depletion_min !== null ? parseFloat(br.time_to_depletion_min) : null,
-        productName: product?.name ?? 'Unknown product',
-        category: product?.category ?? '—',
-        currentQty: s.current_qty,
-        allocatedQty: s.allocated_qty,
-        unit: product?.unit ?? 'units',
-        pct,
-        status: deriveStockStatus(s.current_qty, s.allocated_qty),
-      }
-    })
-    .sort((a, b) => a.pct - b.pct)  // ascending: most urgent first
+  const items = stockQuery.data?.items ?? []
+  // Sort: critical first, then by remaining_pct ascending (most-empty first)
+  const rows = [...items].sort((a, b) => {
+    const sev = (s: string) => (s === 'critical' ? 0 : s === 'low' ? 1 : 2)
+    if (sev(a.status) !== sev(b.status)) return sev(a.status) - sev(b.status)
+    return a.remaining_pct - b.remaining_pct
+  })
 
   if (rows.length === 0) {
     return (
       <div className="text-xs text-[#A0AEC0] italic py-6 text-center">
-        No stock allocated at this bar yet.
+        No stock dispatched to this bar yet.
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b border-[#E2E8F0]">
-            {['Product', 'Category', 'Stock', 'Status', 'Burn Rate', 'Depletion'].map((h) => (
-              <th
-                key={h}
-                className="text-left text-[10px] font-bold text-[#4A5568] uppercase tracking-wide py-2 pr-3 whitespace-nowrap"
+    <div className="space-y-2">
+      {rows.map((r) => {
+        // Color by status
+        const barColor =
+          r.status === 'critical' ? '#DC2626'
+          : r.status === 'low'    ? '#D97706'
+          :                         '#16A34A'
+        const bgColor =
+          r.status === 'critical' ? '#FEE2E2'
+          : r.status === 'low'    ? '#FEF3C7'
+          :                         '#DCFCE7'
+        const statusBadge =
+          r.status === 'critical' ? '🔴 CRITICAL'
+          : r.status === 'low'    ? '🟡 LOW'
+          :                         '🟢 HEALTHY'
+        // ml display: prefer ml; for whole bottles (vol_per_unit ≤ 750ml
+        // and integer dispatched_units), show "X / Y units"
+        const pctClamped = Math.max(0, Math.min(100, r.remaining_pct))
+        return (
+          <div
+            key={r.supplier_product_id}
+            className="border border-[#E2E8F0] rounded-lg p-3 bg-white"
+          >
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-sm font-medium text-[#1A202C] truncate pr-2" title={r.item_name}>
+                {r.item_name}
+              </span>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wide tabular-nums shrink-0"
+                style={{ color: barColor }}
               >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            const st = PRODUCT_STATUS_CFG[r.status]
-            const urgent = r.status === 'critical' || r.status === 'depleted'
-            return (
-              <tr
-                key={r.stockId}
-                className={[
-                  'border-b border-[#F7FAFC]',
-                  urgent ? 'bg-red-50/50' : 'hover:bg-[#F7FAFC]',
-                ].join(' ')}
-              >
-                <td className="py-2.5 pr-3 font-medium text-[#1A202C] whitespace-nowrap">
-                  {r.productName}
-                </td>
-                <td className="py-2.5 pr-3 text-[#4A5568]">{r.category}</td>
-                <td
-                  className="py-2.5 pr-3 font-mono text-[#1A202C] whitespace-nowrap"
-                  title={'Started with ' + r.allocatedQty + ' ' + r.unit}
-                >
-                  {r.currentQty}/{r.allocatedQty}
-                  <span className="text-[#4A5568] ml-1">({r.pct}%)</span>
-                </td>
-                <td className="py-2.5 pr-3">
-                  <span className={'text-[10px] font-bold px-1.5 py-0.5 rounded-full ' + st.cls}>
-                    {st.label}
-                  </span>
-                </td>
-                <td
-                  className={"py-2.5 pr-3 font-mono whitespace-nowrap " + (r.burnRate === null ? "text-[#A0AEC0] italic" : "text-[#1A202C]")}
-                  title={r.burnRate === null ? "No recent sales — burn rate will appear once transactions arrive" : ({last_30m: "Rate over last 30 minutes", last_60m: "Rate over last hour", last_120m: "Rate over last 2 hours", event_wide: "Rate averaged over the full event"}[r.burnLabel ?? "event_wide"] ?? "Rate computed from event data")}
-                >
-                  {r.burnRate === null ? "—" : r.burnRate.toFixed(1) + " " + r.unit + "/h"}
-                </td>
-                <td
-                  className={"py-2.5 font-mono whitespace-nowrap " + (r.depletionMin === null ? "text-[#A0AEC0] italic" : "text-[#1A202C]")}
-                  title={r.depletionMin === null ? "No depletion estimate yet" : "Estimated at current rate"}
-                >
-                  {r.depletionMin === null || r.currentQty === 0 ? "—" : r.depletionMin < 60 ? Math.round(r.depletionMin) + "m" : Math.floor(r.depletionMin/60) + "h" + Math.round(r.depletionMin%60) + "m"}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                {statusBadge}
+              </span>
+            </div>
+            {/* Loading bar */}
+            <div
+              className="w-full h-3 rounded-full overflow-hidden"
+              style={{ backgroundColor: bgColor }}
+            >
+              <div
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${pctClamped}%`,
+                  backgroundColor: barColor,
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-[#4A5568]">
+              <span className="tabular-nums">
+                {Math.round(r.remaining_ml).toLocaleString()} ml / {Math.round(r.dispatched_ml).toLocaleString()} ml
+              </span>
+              <span className="tabular-nums font-semibold" style={{ color: barColor }}>
+                {Math.round(pctClamped)}%
+              </span>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

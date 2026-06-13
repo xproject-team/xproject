@@ -194,3 +194,72 @@ class EventStockBarAllocation(TenantScopedModel):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+
+
+
+class EventCategoryIngredient(TenantScopedModel):
+    """Slesh-category → ingredient depletion rule for ml-based stock tracking.
+
+    Each row declares: "When a sale of <slesh_category> rings up at
+    <bar_id or any bar>, subtract <ml_per_sale> from <supplier_product>
+    at the firing bar."
+
+    Worst-case math design (locked with Hesam, June 13 2026):
+    Multiple rows can share the same (event, slesh_category) so a single
+    Signature sale depletes Vodka + Gin + Rum + Tequila in parallel.
+    This systematically over-counts (the actual sale used just one
+    spirit), firing ~Nx the alerts a perfectly-accurate system would.
+    Omar accepts the noise; humans verify by physically walking past
+    bottles when an alert fires. False positives << false negatives.
+
+    bar_id semantics:
+      NULL → rule applies to EVERY bar that sells this category
+      set  → rule restricted to that specific bar (GIN No 3 sponsor at
+             NO.3 BAR only — Premium category there depletes one extra
+             bottle the other drink bars don't have)
+
+    Thresholds drive auto-alert firing on status flips:
+      healthy  (remaining_pct > 100 - threshold_pct_warn)
+      low      (between warn and empty)
+      critical (consumed >= threshold_pct_empty)
+    """
+
+    __tablename__ = "event_category_ingredients"
+
+    event_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # The exact category string Slesh sends in the order line (and which
+    # we also set as Product.name for menu-button products). E.g.
+    # "SPRITZ", "PREMIUM", "GIN TONIC", "HEINEKEN".
+    slesh_category: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True,
+    )
+
+    supplier_product_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("supplier_products.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+
+    ml_per_sale: Mapped[Decimal] = mapped_column(
+        Numeric(10, 2), nullable=False,
+    )
+
+    bar_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("bars.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+
+    threshold_pct_warn: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("70.00"),
+    )
+    threshold_pct_empty: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, default=Decimal("100.00"),
+    )

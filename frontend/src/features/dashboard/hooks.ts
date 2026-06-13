@@ -341,3 +341,60 @@ export function useMenuPerformance(eventId: string | null | undefined) {
     refetchInterval: LIVE_REFETCH_MS,
   })
 }
+
+
+
+// ─── Phase 3: ml-depletion stock from event_category_ingredients ──
+// Wired in for Sundance 14. Returns per-(bar, supplier_product) loading
+// bars + per-bar aggregated stock %. Calling this endpoint ALSO fires
+// depletion alerts on the backend when status crosses thresholds — so
+// DashboardPage polls it at LIVE_REFETCH_MS to keep alerts firing.
+
+export interface BarSupplierStockItemDTO {
+  bar_id:              string
+  bar_name:            string
+  supplier_product_id: string
+  item_name:           string
+  dispatched_units:    number
+  dispatched_ml:       number
+  consumed_ml:         number
+  remaining_ml:        number
+  remaining_pct:       number
+  status:              'healthy' | 'low' | 'critical'
+  threshold_pct_warn:  number
+  threshold_pct_empty: number
+}
+
+export interface BarAggregatedStockDTO {
+  bar_id:        string
+  bar_name:      string
+  dispatched_ml: number
+  remaining_ml:  number
+  pct:           number
+  status:        'healthy' | 'low' | 'critical'
+}
+
+export interface BarSupplierStockResponseDTO {
+  event_id: string
+  items:    BarSupplierStockItemDTO[]
+  by_bar:   BarAggregatedStockDTO[]
+}
+
+export function useBarSupplierStock(
+  eventId: string | null | undefined,
+  barId: string | null = null,
+) {
+  return useQuery<BarSupplierStockResponseDTO>({
+    queryKey: ['events', eventId ?? 'none', 'bar-supplier-stock', barId ?? 'all'],
+    queryFn: async () => {
+      const url =
+        `/events/${eventId}/bar-supplier-stock` +
+        (barId ? `?bar_id=${barId}` : '')
+      const { data } = await api.get<BarSupplierStockResponseDTO>(url)
+      return data
+    },
+    enabled: Boolean(eventId),
+    refetchInterval: LIVE_REFETCH_MS,
+    staleTime: LIVE_REFETCH_MS / 2,
+  })
+}

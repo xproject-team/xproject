@@ -32,6 +32,16 @@ from app.modules.events.category_totals_schemas import (
 from app.modules.events.category_totals_service import (
     BarCategoryTotalsService,
 )
+from app.modules.event_storage.bar_supplier_stock_service import (
+    aggregate_bar_stock_pct,
+    compute_bar_supplier_stock,
+    fire_depletion_alerts,
+)
+from app.modules.event_storage.bar_supplier_stock_schemas import (
+    BarAggregatedStock,
+    BarSupplierStockItem,
+    BarSupplierStockResponse,
+)
 from app.modules.events.event_kpi_schemas import EventKpiSummary
 from app.modules.events.event_kpi_service import EventKpiSummaryService
 from app.modules.events.menu_performance_schemas import EventMenuPerformance
@@ -466,6 +476,89 @@ async def get_event_bar_category_totals(
             detail="Event not found",
         )
     return result
+
+
+@router.get(
+    "/{event_id}/bar-supplier-stock",
+    response_model=BarSupplierStockResponse,
+)
+async def get_event_bar_supplier_stock(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    bar_id: UUID | None = None,
+) -> BarSupplierStockResponse:
+    """Per-(bar, supplier_product) ml-depletion stock with status.
+
+    Implements the worst-case high-recall depletion math for Sundance 14:
+    every transaction in a Slesh-category C decrements ALL supplier_products
+    mapped to C via event_category_ingredients (NULL bar_id = any bar; set
+    bar_id = restricted to that bar — e.g. GIN No 3 sponsor at NO.3 BAR).
+
+    Returns:
+      - items: per-(bar, supplier_product) rows with dispatched_ml,
+        consumed_ml, remaining_ml, remaining_pct, status, thresholds
+      - by_bar: Σ-aggregated per-bar stock % for the bar-card indicator
+
+    Optional bar_id query param filters to a single bar (used by the
+    BarDetailOverlay STOCK section).
+    """
+    rows = await compute_bar_supplier_stock(
+        session=db,
+        tenant_id=tenant_id,
+        event_id=event_id,
+        bar_id=bar_id,
+    )
+    # Side-effect: fire/update/auto-resolve depletion alerts on status flips.
+    # Idempotent — dedup on (bar, supplier_product) via context_json.
+    # Only do this when the request is unbounded (covers all bars), so a
+    # filtered single-bar call doesn't accidentally bypass cross-bar alerts.
+    if bar_id is None:
+        await fire_depletion_alerts(
+            session=db,
+            tenant_id=tenant_id,
+            event_id=event_id,
+            rows=rows,
+        )
+        # Persist any alerts created / updated / auto-resolved. The session
+        # dependency does NOT auto-commit; without this, alerts would roll
+        # back when the request returns.
+        await db.commit()
+    items = [
+        BarSupplierStockItem(
+            bar_id=r.bar_id,
+            bar_name=r.bar_name,
+            supplier_product_id=r.supplier_product_id,
+            item_name=r.item_name,
+            dispatched_units=r.dispatched_units,
+            dispatched_ml=r.dispatched_ml,
+            consumed_ml=r.consumed_ml,
+            remaining_ml=r.remaining_ml,
+            remaining_pct=r.remaining_pct,
+            status=r.status,  # type: ignore[arg-type]
+            threshold_pct_warn=r.threshold_pct_warn,
+            threshold_pct_empty=r.threshold_pct_empty,
+        )
+        for r in rows
+    ]
+    by_bar_map = await aggregate_bar_stock_pct(rows)
+    by_bar = [
+        BarAggregatedStock(
+            bar_id=b_id,
+            bar_name=slot["bar_name"],
+            dispatched_ml=slot["dispatched_ml"],
+            remaining_ml=slot["remaining_ml"],
+            pct=slot["pct"],
+            status=slot["status"],  # type: ignore[arg-type]
+        )
+        for b_id, slot in by_bar_map.items()
+    ]
+    by_bar.sort(key=lambda b: b.bar_name)
+    return BarSupplierStockResponse(
+        event_id=event_id,
+        items=items,
+        by_bar=by_bar,
+    )
 # Why this query is safe to run live: single SQL roundtrip (no inter-row race during live event),
 # event-window bounded, voided scans excluded, tenant-scoped at every CTE,
 # Decimal precision preserved across the wire.

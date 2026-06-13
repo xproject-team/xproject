@@ -67,6 +67,11 @@ from app.modules.chat.models import (  # noqa: F401
 from app.modules.event_storage.models import (  # noqa: F401
     SupplierProduct, EventStockItem, EventStockBarAllocation,
 )
+from app.modules.event_storage.recipe_seeder import (
+    ensure_gin_no_3_for_no3_bar,
+    seed_recipe_for_event,
+)
+from app.modules.event_storage.sundance_14_recipe import SUNDANCE_14_RECIPE
 # (already in registry above — explicit re-import for direct use below)
 from app.modules.event_storage.models import (
     SupplierProduct as SP,
@@ -422,6 +427,27 @@ async def cmd_setup() -> None:
         )
         print(f"✓ Declared {n_items} storage items from Partesa invoice")
         print(f"✓ Pre-dispatched {n_dispatches} baseline allocations to drink bars")
+
+        # GIN No 3 sponsor — direct supply (not on Partesa invoice). 60 bottles
+        # dispatched exclusively to NO.3 BAR.
+        _, gin3_alloc_id = await ensure_gin_no_3_for_no3_bar(
+            session=session, tenant_id=NOMA_TENANT_ID, event_id=event.id,
+        )
+        print(f"✓ GIN No 3 sponsor dispatched to NO.3 BAR (60 bottles)")
+
+        # Recipe: Slesh-category → ingredient-pool depletion rules.
+        rcounts = await seed_recipe_for_event(
+            session=session, tenant_id=NOMA_TENANT_ID, event_id=event.id,
+            recipe=SUNDANCE_14_RECIPE,
+        )
+        print(
+            f"✓ Recipe seeded: {rcounts['created']} new rules, "
+            f"{rcounts['skipped']} pre-existing, "
+            f"{len(rcounts['unresolved_products'])} unresolved products"
+        )
+        if rcounts['unresolved_products']:
+            for cat, name in rcounts['unresolved_products']:
+                print(f"  ⚠️  unresolved: {cat} → '{name}'")
 
         await session.commit()
         print(f"\n✅ Setup complete. Next: ./scripts/simulate_sundance_14.py go-live")

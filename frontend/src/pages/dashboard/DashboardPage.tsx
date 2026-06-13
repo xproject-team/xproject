@@ -44,6 +44,7 @@ import {
   type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
 import { useBarMappingState, useMergeBars } from '@/features/bars/hooks'
+import { useBarSupplierStock } from '@/features/dashboard/hooks'
 import {
   selectBarKpis,
 } from '@/features/dashboard/selectors'
@@ -431,6 +432,11 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // ── Data hooks (all gated on eventId via `enabled` internally) ──
   const barsQuery          = useBarsForEvent(eventId)
   const barAllocationsQ    = useBarAllocations(eventId ?? undefined)
+  // Phase 3 Sundance 14: drives the depletion alert engine. Polling this
+  // endpoint also triggers fire_depletion_alerts() on the backend so the
+  // existing alerts feed keeps surfacing low / critical stock signals
+  // automatically. Refresh cadence matches LIVE_REFETCH_MS (15s).
+  useBarSupplierStock(eventId)
   const mappingStateQuery  = useBarMappingState(eventId)
   // useMergeBars MUST live with the other top-level data hooks — never
   // below a conditional/early-return path. react-query's useMutation
