@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
 import type { UserRole } from '@/features/auth/AuthContext'
 import { MentionBell } from '@/features/chat/MentionBell'
+import { useLiveEvent } from '@/features/dashboard/hooks'
 
 const ROLE_BADGE: Record<
   UserRole,
@@ -28,6 +29,13 @@ export function TopBar() {
   const initials    = (user?.full_name ?? user?.email ?? '?')
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
   const hasMultipleRoles = (user?.assignedRoles?.length ?? 0) > 1
+
+  // Header chip mirrors the current live event. When no event is LIVE,
+  // shows 'No live event' in a neutral pill — without this the bar would
+  // claim LIVE forever from a stale hardcoded label.
+  const liveEvent      = useLiveEvent().data ?? null
+  const eventLabel     = liveEvent?.name ?? 'No live event'
+  const eventIsLive    = liveEvent?.status === 'live'
 
   useEffect(() => {
     if (!menuOpen) return
@@ -78,13 +86,19 @@ export function TopBar() {
     <header className="h-14 bg-white border-b border-[#E2E8F0] flex items-center px-6 justify-between flex-shrink-0 shadow-sm gap-4">
 
       <div className="flex items-center gap-2.5 shrink-0">
-        <div className="w-2 h-2 rounded-full bg-[#38A169] animate-pulse" />
+        <div className={
+          eventIsLive
+            ? "w-2 h-2 rounded-full bg-[#38A169] animate-pulse"
+            : "w-2 h-2 rounded-full bg-[#CBD5E0]"
+        } />
         <span className="text-sm font-semibold text-[#1A202C]">XProject</span>
         <span className="text-[#CBD5E0]">·</span>
-        <span className="text-sm text-[#4A5568]">Sundance 2026</span>
-        <span className="bg-[#38A169]/10 text-[#38A169] text-[10px] font-semibold px-2 py-0.5 rounded-full border border-[#38A169]/20 tracking-wide">
-          LIVE
-        </span>
+        <span className="text-sm text-[#4A5568]">{eventLabel}</span>
+        {eventIsLive && (
+          <span className="bg-[#38A169]/10 text-[#38A169] text-[10px] font-semibold px-2 py-0.5 rounded-full border border-[#38A169]/20 tracking-wide">
+            LIVE
+          </span>
+        )}
       </div>
 
       {role === 'bartender' && (
