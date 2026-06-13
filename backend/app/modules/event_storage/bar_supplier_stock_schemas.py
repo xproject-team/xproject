@@ -17,8 +17,10 @@ class BarSupplierStockItem(BaseModel):
     item_name:           str
     dispatched_units:    float  # in default_unit
     dispatched_ml:       float
-    consumed_ml:         float
-    remaining_ml:        float
+    consumed_ml:           float
+    consumed_ml_certain:   float
+    consumed_ml_uncertain: float
+    remaining_ml:          float
     remaining_pct:       float = Field(ge=0)
     status:              StockStatus
     threshold_pct_warn:  float

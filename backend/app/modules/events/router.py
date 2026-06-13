@@ -533,6 +533,8 @@ async def get_event_bar_supplier_stock(
             dispatched_units=r.dispatched_units,
             dispatched_ml=r.dispatched_ml,
             consumed_ml=r.consumed_ml,
+            consumed_ml_certain=r.consumed_ml_certain,
+            consumed_ml_uncertain=r.consumed_ml_uncertain,
             remaining_ml=r.remaining_ml,
             remaining_pct=r.remaining_pct,
             status=r.status,  # type: ignore[arg-type]

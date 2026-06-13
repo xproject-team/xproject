@@ -357,8 +357,10 @@ export interface BarSupplierStockItemDTO {
   item_name:           string
   dispatched_units:    number
   dispatched_ml:       number
-  consumed_ml:         number
-  remaining_ml:        number
+  consumed_ml:           number
+  consumed_ml_certain:   number
+  consumed_ml_uncertain: number
+  remaining_ml:          number
   remaining_pct:       number
   status:              'healthy' | 'low' | 'critical'
   threshold_pct_warn:  number

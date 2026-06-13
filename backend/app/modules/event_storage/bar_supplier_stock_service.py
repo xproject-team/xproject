@@ -73,15 +73,25 @@ class BarSupplierStockRow:
     dispatched_units:    float   # in default_unit (e.g. 30 BO, 5 KAR, 15 FS)
     dispatched_ml:       float
     consumed_ml:         float
+    # Split of total consumed_ml by attribution certainty:
+    #   certain   = ml from sole-rule slesh_categories (e.g. GIN TONIC → only
+    #               Beefeater is consumed, no ambiguity)
+    #   uncertain = ml from multi-rule slesh_categories (e.g. SPRITZ → one
+    #               of 5 spirits actually used; we worst-case all 5)
+    # consumed_ml == consumed_ml_certain + consumed_ml_uncertain (always).
+    consumed_ml_certain:   float
+    consumed_ml_uncertain: float
     remaining_ml:        float
     remaining_pct:       float   # 0-100, clamped
     status:              str     # 'healthy' | 'low' | 'critical'
     threshold_pct_warn:  float
     threshold_pct_empty: float
-    # True iff every slesh_category touching this supplier_product has only
-    # ONE rule (no parallel alternatives). E.g. Heineken keg only depletes
-    # from HEINEKEN sales (1:1), so depletion is exact. False when the SP
-    # shares a category with other rules (worst-case multi-deplete).
+    # True iff this supplier_product participates ONLY in sole-rule
+    # slesh_categories (no uncertain attribution at all). E.g. Heineken
+    # keg, Ichnusa keg, Prosecco DOCG — exact 1:1 depletion. False when at
+    # least one category contributes worst-case ml (Beefeater participates
+    # in GIN TONIC (sole) + DRINK + SIGNATURE — so accurate=False, but
+    # consumed_ml_certain > 0 captures the GIN TONIC portion).
     accurate:            bool = False
 
 
@@ -202,24 +212,33 @@ async def compute_bar_supplier_stock(
             # E.g. CO2 canister has no meaningful ml; skip
             continue
 
-        # Sum consumed ml across all rules touching this supplier_product.
-        consumed_ml = 0.0
+        # Sum consumed ml across all rules touching this supplier_product,
+        # split by attribution certainty (sole-rule vs multi-rule categories).
+        consumed_ml_certain = 0.0
+        consumed_ml_uncertain = 0.0
         warn_pct = 70.0
         empty_pct = 100.0
         for cat, sp_map in rules_by_cat_sp.items():
             if sp_id not in sp_map:
                 continue
+            cat_is_sole = rules_per_category.get(cat, 0) == 1
             for (rule_bar_id, ml_per_sale, w, e) in sp_map[sp_id]:
                 # If rule is restricted to a specific bar, only count tx at that bar.
                 if rule_bar_id is not None and rule_bar_id != b_id:
                     continue
                 tx_n = tx_count.get((b_id, cat), 0)
                 if tx_n > 0:
-                    consumed_ml += tx_n * ml_per_sale
-                # Track the most relevant threshold (use the first found per sp;
+                    bucket = consumed_ml_certain if cat_is_sole else consumed_ml_uncertain
+                    bucket += tx_n * ml_per_sale
+                    if cat_is_sole:
+                        consumed_ml_certain = bucket
+                    else:
+                        consumed_ml_uncertain = bucket
+                # Track the most relevant threshold (use the last found per sp;
                 # all rules for one sp usually share thresholds).
                 warn_pct = w
                 empty_pct = e
+        consumed_ml = consumed_ml_certain + consumed_ml_uncertain
 
         remaining_ml = max(dispatched_ml - consumed_ml, 0.0)
         remaining_pct = (remaining_ml / dispatched_ml * 100.0) if dispatched_ml else 0.0
@@ -241,6 +260,8 @@ async def compute_bar_supplier_stock(
             dispatched_units=float(dispatched_qty),
             dispatched_ml=dispatched_ml,
             consumed_ml=consumed_ml,
+            consumed_ml_certain=consumed_ml_certain,
+            consumed_ml_uncertain=consumed_ml_uncertain,
             remaining_ml=remaining_ml,
             remaining_pct=remaining_pct,
             status=status,
@@ -349,16 +370,18 @@ async def fire_depletion_alerts(
         # status is 'low' or 'critical' → ensure alert exists
         target_severity = _STATUS_TO_SEVERITY[row.status]
         context = {
-            "supplier_product_id": str(row.supplier_product_id),
-            "item_name":           row.item_name,
-            "bar_name":            row.bar_name,
-            "accurate":            row.accurate,
-            "dispatched_ml":       row.dispatched_ml,
-            "consumed_ml":         row.consumed_ml,
-            "remaining_ml":        row.remaining_ml,
-            "remaining_pct":       round(row.remaining_pct, 2),
-            "threshold_pct_warn":  row.threshold_pct_warn,
-            "threshold_pct_empty": row.threshold_pct_empty,
+            "supplier_product_id":    str(row.supplier_product_id),
+            "item_name":              row.item_name,
+            "bar_name":               row.bar_name,
+            "accurate":               row.accurate,
+            "dispatched_ml":          row.dispatched_ml,
+            "consumed_ml":            row.consumed_ml,
+            "consumed_ml_certain":    row.consumed_ml_certain,
+            "consumed_ml_uncertain":  row.consumed_ml_uncertain,
+            "remaining_ml":           row.remaining_ml,
+            "remaining_pct":          round(row.remaining_pct, 2),
+            "threshold_pct_warn":     row.threshold_pct_warn,
+            "threshold_pct_empty":    row.threshold_pct_empty,
         }
         title = (
             f"{row.item_name} {row.status} at {row.bar_name} "
@@ -366,17 +389,25 @@ async def fire_depletion_alerts(
         )
         if row.accurate:
             owner_msg = (
-                f"~{int(row.remaining_pct)}% remaining. This is an ACCURATE "
-                f"reading — {row.item_name} is the sole ingredient consumed "
-                f"by its Slesh category, so depletion math is exact. "
-                f"Restock recommended."
+                f"~{int(row.remaining_pct)}% remaining. ACCURATE reading — "
+                f"{row.item_name} is the sole ingredient of its Slesh "
+                f"category, so depletion math is exact. Restock now."
+            )
+        elif row.consumed_ml_certain > 0 and row.consumed_ml_uncertain > 0:
+            owner_msg = (
+                f"~{int(row.remaining_pct)}% remaining. PARTIAL accuracy: "
+                f"{int(row.consumed_ml_certain)} ml certainly consumed from "
+                f"sole-ingredient sales (accurate); up to "
+                f"{int(row.consumed_ml_uncertain)} ml worst-case from "
+                f"multi-ingredient categories where {row.item_name} is one "
+                f"of several parallel options. Please verify in person."
             )
         else:
             owner_msg = (
-                f"~{int(row.remaining_pct)}% remaining. Worst-case math: "
-                f"Slesh does not tell us which exact ingredient was used per "
-                f"category sale, so we count every parallel ingredient as "
-                f"consumed. Please verify the bottle in person."
+                f"~{int(row.remaining_pct)}% remaining. WORST-CASE math: "
+                f"all consumption attributed to multi-ingredient categories "
+                f"({row.item_name} is one of several parallel options per "
+                f"sale). Please verify the bottle in person."
             )
 
         if existing is not None:

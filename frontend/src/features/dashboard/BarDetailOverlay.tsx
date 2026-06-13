@@ -210,6 +210,22 @@ function StockTable({ barId, eventId }: StockTableProps) {
                 {Math.round(pctClamped)}%
               </span>
             </div>
+            {(r.consumed_ml_certain > 0 || r.consumed_ml_uncertain > 0) && (
+              <div className="flex items-center gap-3 mt-1 text-[10px] text-[#718096] tabular-nums">
+                {r.consumed_ml_certain > 0 && (
+                  <span title="From sole-ingredient categories — exact attribution">
+                    <span className="text-emerald-700 font-semibold">●</span>{' '}
+                    {Math.round(r.consumed_ml_certain).toLocaleString()} ml certain
+                  </span>
+                )}
+                {r.consumed_ml_uncertain > 0 && (
+                  <span title="From multi-ingredient categories — worst-case attribution">
+                    <span className="text-amber-600 font-semibold">●</span>{' '}
+                    up to {Math.round(r.consumed_ml_uncertain).toLocaleString()} ml worst-case
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
