@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import settings
+from app.core.database import _to_async_url
 from app.core.database import Base
 
 # ─── Model imports (required for autogenerate to detect tables) ──────────
@@ -38,7 +39,7 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
-    url = settings.database_url
+    url = _to_async_url(settings.database_url)
     context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
     with context.begin_transaction():
         context.run_migrations()
@@ -51,7 +52,7 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
-    engine = create_async_engine(settings.database_url)
+    engine = create_async_engine(_to_async_url(settings.database_url))
     async with engine.begin() as conn:
         await conn.run_sync(do_run_migrations)
     await engine.dispose()
