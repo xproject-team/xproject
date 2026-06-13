@@ -69,16 +69,30 @@ const EMPTY_BREAKDOWN: DrinksBreakdown = { B: 0, S: 0, P: 0, U: 0 }
 
 // ─── Main selector: build BarKpi[] from raw API responses ────────────────────
 
+import type { BarAllocationSummary } from '@/features/event_storage/types'
+
 export interface SelectorInput {
   bars:         BarRow[]
   barStock:     BarStockRow[]
   transactions: StockTransactionRow[]
   products:     ProductRow[]
   burnRates:    BurnRateRow[]
+  /** Phase 2.5 dispatches. When present for a bar, override bar_stock
+   *  totals (which lag for non-Slesh events). */
+  allocations?: BarAllocationSummary[]
 }
 
 export function selectBarKpis(input: SelectorInput): BarKpi[] {
-  const { bars, barStock, transactions, products, burnRates } = input
+  const { bars, barStock, transactions, products, burnRates, allocations } = input
+  // Phase 2.5 dispatch totals per bar — qty_total_allocated is a Decimal string.
+  const allocTotalByBar = new Map<string, number>()
+  for (const summary of allocations ?? []) {
+    const total = summary.items.reduce(
+      (s, it) => s + (parseFloat(it.qty_total_allocated) || 0),
+      0,
+    )
+    allocTotalByBar.set(summary.bar_id, total)
+  }
 
   // ── Index products by id for O(1) lookup during aggregation ──
   const productById = new Map<string, ProductRow>()
@@ -131,14 +145,23 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
 
 
     // ── Stock aggregates ──
-    const initial_stock = stockAtBar.reduce(
+    // Phase 2.5: when this bar has allocations (Inventory dispatches), they
+    // are the source of truth. Legacy bar_stock only updates from Slesh sync
+    // and lags for sim/dispatched-only events. We approximate consumption as
+    // 1 unit per parent transaction (matches Slesh qty=1 convention).
+    const allocTotal = allocTotalByBar.get(bar.id) ?? 0
+    const stockFromBarStock_initial = stockAtBar.reduce(
       (sum, s) => sum + s.allocated_qty,
       0,
     )
-    const current_stock = stockAtBar.reduce(
+    const stockFromBarStock_current = stockAtBar.reduce(
       (sum, s) => sum + s.current_qty,
       0,
     )
+    const initial_stock = allocTotal > 0 ? allocTotal : stockFromBarStock_initial
+    const current_stock = allocTotal > 0
+      ? Math.max(allocTotal - txAtBar.length, 0)
+      : stockFromBarStock_current
     const stock_pct = initial_stock === 0
       ? 0
       : Math.round((current_stock / initial_stock) * 100)

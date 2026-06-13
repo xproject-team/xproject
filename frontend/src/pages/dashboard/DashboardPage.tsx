@@ -567,7 +567,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const transactions = transactionsQuery.data ?? []
   const products     = productsQuery.data ?? []
 
-  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [] })
+  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [], allocations: barAllocationsQ.data ?? [] })
 
   // Build per-bar storage lookup — used by BarCard to render the
   // 'N items / X units in warehouse' line. Sums history-preserving
