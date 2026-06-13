@@ -588,6 +588,16 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // (rendered as muted EmptyBarCards below the grid). If mapping-state
   // hasn't loaded yet, all bars render as live (pre-Phase-1 behavior).
   const emptyBars          = mappingStateQuery.data?.empty_bars ?? []
+  // True if any bar on this event is mapped to a Slesh shop_id (or is
+  // an auto-stub from Slesh). Drives the FreshnessBadge gate — the
+  // brand-wide Slesh poll freshness is only meaningful when this event
+  // is actually wired into Slesh.
+  const eventHasSleshBars = (
+    (mappingStateQuery.data?.stubs?.length ?? 0) +
+    (mappingStateQuery.data?.mapped_bars ?? [])
+      .filter((b) => b.slesh_negozio_id != null)
+      .length
+  ) > 0
   const emptyBarIdSet      = new Set(emptyBars.map((b) => b.id))
   const liveKpis: BarKpi[] = mappingStateQuery.data
     ? barKpis.filter((k) => !emptyBarIdSet.has(k.id))
@@ -631,7 +641,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
-                <FreshnessBadge />
+                <FreshnessBadge eventHasSleshBars={eventHasSleshBars} />
                 <WeatherPill eventId={eventId} />
               </div>
               <p className="text-xs text-[#4A5568] mt-0.5">

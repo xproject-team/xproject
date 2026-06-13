@@ -20,8 +20,24 @@ function relativeTime(seconds: number | null): string {
   return `${Math.floor(seconds / 3600)}h ago`
 }
 
-export function FreshnessBadge() {
+export interface FreshnessBadgeProps {
+  /**
+   * Whether the current event has any Slesh-mapped bars. The badge
+   * monitors the Slesh poller — for events with no Slesh integration
+   * (manual_bartender flows, simulators, dry runs) the brand-wide
+   * poll state is irrelevant and misleading. Hide the badge in
+   * those cases.
+   */
+  eventHasSleshBars: boolean
+}
+
+export function FreshnessBadge({ eventHasSleshBars }: FreshnessBadgeProps) {
   const { data, isLoading } = useFreshness()
+
+  // No Slesh integration on this event → the polling state is not
+  // meaningful here. Hide rather than confuse with "stalled" reads.
+  if (!eventHasSleshBars) return null
+
 
   if (isLoading) {
     return (
