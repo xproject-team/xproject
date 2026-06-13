@@ -37,7 +37,15 @@ const STATUS_THRESHOLDS = {
   warning:  30,  // stock_pct > 30 → warning; else critical
 } as const
 
-export function deriveStatus(stockPct: number): BarStatus {
+export function deriveStatus(stockPct: number, initialStock: number = -1): BarStatus {
+  // When the bar has no allocation tracked (initial_stock=0), the percentage
+  // is mathematically undefined and the 'critical' fallback below would scare
+  // owners with a red label that means nothing. Treat as 'healthy' instead —
+  // no stock to deplete means no stock concern. Real depletion warnings
+  // still fire correctly once allocations exist.
+  // The default of -1 preserves backward compatibility for callers that
+  // haven't been updated to pass initialStock yet.
+  if (initialStock === 0) return 'healthy'
   if (stockPct > STATUS_THRESHOLDS.healthy) return 'healthy'
   if (stockPct > STATUS_THRESHOLDS.warning) return 'warning'
   return 'critical'
@@ -175,7 +183,7 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       // Real fields
       id:               bar.id,
       name:             bar.name,
-      status:           deriveStatus(stock_pct),
+      status:           deriveStatus(stock_pct, initial_stock),
       revenue_cents,
       drinks_sold,
       drinks_breakdown,
