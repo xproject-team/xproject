@@ -660,6 +660,66 @@ async def cmd_run(duration_seconds: int) -> None:
         print("=" * 60)
 
 
+async def cmd_recharge(bar_name: str, product_substring: str, qty: float) -> None:
+    """Dispatch more of a supplier_product to a bar mid-event. Demo flow:
+
+        python3 scripts/simulate_sundance_14.py recharge \
+            --bar "MAIN BAR" --product "SARTI ROSA" --qty 4
+    """
+    from decimal import Decimal as _D
+    async with AsyncSessionLocal() as session:
+        eq = await session.execute(
+            select(Event).where(
+                Event.tenant_id == NOMA_TENANT_ID,
+                Event.name == "Sundance 14 — SIMULATION",
+                Event.status == EventStatus.LIVE,
+            )
+        )
+        event = eq.scalars().first()
+        if event is None:
+            print("❌ No LIVE sim event. Run setup + go-live first.")
+            return
+        bq = await session.execute(
+            select(Bar).where(
+                Bar.tenant_id == NOMA_TENANT_ID,
+                Bar.event_id == event.id,
+                Bar.name == bar_name,
+            )
+        )
+        bar = bq.scalars().first()
+        if bar is None:
+            print(f"❌ Bar '{bar_name}' not found in event.")
+            return
+        spq = await session.execute(
+            select(SupplierProduct).where(
+                SupplierProduct.tenant_id == NOMA_TENANT_ID,
+                SupplierProduct.item_name.ilike(f"%{product_substring}%"),
+            )
+        )
+        candidates = list(spq.scalars().all())
+        if not candidates:
+            print(f"❌ No supplier_product matches '{product_substring}'")
+            return
+        if len(candidates) > 1:
+            print(f"⚠️  Ambiguous: {len(candidates)} matches; using first.")
+            for c in candidates:
+                print(f"   - {c.item_name}")
+        sp = candidates[0]
+        alloc = EventStockBarAllocation(
+            tenant_id=NOMA_TENANT_ID,
+            event_id=event.id,
+            supplier_product_id=sp.id,
+            bar_id=bar.id,
+            qty_allocated=_D(str(qty)),
+            notes=f"Mid-event recharge ({product_substring})",
+        )
+        session.add(alloc)
+        await session.commit()
+        print(
+            f"✅ Recharged {qty} {sp.default_unit} of {sp.item_name} → {bar_name}"
+        )
+
+
 async def cmd_cleanup() -> None:
     """Mark sim event COMPLETED. Leaves products + bars in DB for the
     real Sundance 14 event creation (Omar can reuse the catalog)."""
@@ -689,6 +749,15 @@ async def amain() -> None:
     run_p = sub.add_parser("run")
     run_p.add_argument("--duration", type=int, default=600,
                        help="Seconds to run (default 600 = 10 min)")
+    rch_p = sub.add_parser(
+        "recharge",
+        help="Dispatch more of a supplier_product to a bar mid-run (demo refill).",
+    )
+    rch_p.add_argument("--bar", required=True, help="Bar name, e.g. 'MAIN BAR'")
+    rch_p.add_argument("--product", required=True,
+                       help="Substring of supplier_product item_name, e.g. 'SARTI'")
+    rch_p.add_argument("--qty", type=float, required=True,
+                       help="Quantity in default_unit (BO/KAR/FS)")
     sub.add_parser("cleanup")
     args = parser.parse_args()
 
@@ -698,6 +767,8 @@ async def amain() -> None:
         await cmd_go_live()
     elif args.cmd == "run":
         await cmd_run(args.duration)
+    elif args.cmd == "recharge":
+        await cmd_recharge(args.bar, args.product, args.qty)
     elif args.cmd == "cleanup":
         await cmd_cleanup()
 
