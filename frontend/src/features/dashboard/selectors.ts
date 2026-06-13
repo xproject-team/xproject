@@ -88,26 +88,39 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
   return bars.map((bar) => {
     // All stock rows at this bar (across every product allocated here)
     const stockAtBar = barStock.filter((s) => s.bar_id === bar.id)
+    // Parent transactions at this bar (hoisted so food_items below can use it).
+    const txAtBar = parentTxs.filter((t) => t.bar_id === bar.id)
 
     // Per-food-item counts for the food-bar card variant (Phase D-bis).
-    // Food bars list each item (sold = allocated - current); drink bars get [].
+    // Food bars: list each item sold this event. Derived from transactions
+    // (NOT bar_stock) — food trucks are third-party and we don't track
+    // their inventory, so 'remaining' is always 0 / unknown. Group all
+    // FOOD-product txs at this bar by product_id and sum qty for 'sold'.
+    // Drink bars get [].
     const food_items: FoodItemCount[] =
       bar.bar_type === 'food'
-        ? stockAtBar
-            .filter((s) => productById.get(s.product_id)?.product_type === 'food')
-            .map((s) => {
-              const p = productById.get(s.product_id)
-              return {
-                name: p?.name ?? 'Unknown item',
-                sold: Math.max(0, s.allocated_qty - s.current_qty),
-                remaining: s.current_qty,
+        ? (() => {
+            const soldByProduct = new Map<string, { name: string; sold: number }>()
+            for (const tx of txAtBar) {
+              const p = productById.get(tx.product_id)
+              if (p?.product_type !== 'food') continue
+              const existing = soldByProduct.get(tx.product_id)
+              const qty = typeof tx.qty === 'string' ? parseFloat(tx.qty) : (tx.qty ?? 0)
+              if (existing) {
+                existing.sold += qty
+              } else {
+                soldByProduct.set(tx.product_id, {
+                  name: p.name ?? 'Unknown item',
+                  sold: qty,
+                })
               }
-            })
-            .sort((a, b) => b.sold - a.sold)
+            }
+            return Array.from(soldByProduct.values())
+              .map((v) => ({ name: v.name, sold: v.sold, remaining: 0 }))
+              .sort((a, b) => b.sold - a.sold)
+          })()
         : []
 
-    // Parent transactions at this bar
-    const txAtBar = parentTxs.filter((t) => t.bar_id === bar.id)
 
     // ── Stock aggregates ──
     const initial_stock = stockAtBar.reduce(
@@ -128,20 +141,23 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       0,
     )
 
-    // ── Drinks breakdown + total: tier-classified products only ──
-    // The KPI is labelled "DRINKS SOLD", so it must count only transactions
-    // on drinks.  A drink is any product whose catalog row has tier_rank set
-    // (1=Basic, 2=Standard, 3=Premium, 4=Ultra).  Non-drink transactions
-    // (food, supplies) are excluded.  Single pass guarantees that drinks_sold
-    // equals the sum of breakdown buckets by construction.
+    // ── Drinks breakdown + total ──
+    // drinks_sold counts every transaction on a DRINK product (definitive
+    // truth from product_type). The tier breakdown is an OPTIONAL refinement:
+    // a drink without tier_rank still counts toward drinks_sold but doesn't
+    // land in any breakdown bucket. This decouples the headline count from
+    // the catalog-curation state of tier_rank, which is often NULL on
+    // freshly-seeded menus (Slesh sends names, tier_rank is set later by
+    // Omar in the catalog).
     const drinks_breakdown: DrinksBreakdown = { ...EMPTY_BREAKDOWN }
     let drinks_sold = 0
     for (const tx of txAtBar) {
       const product = productById.get(tx.product_id)
+      if (product?.product_type !== 'drink') continue
+      drinks_sold += 1
       const tier = tierFromRank(product?.tier_rank ?? null)
       if (tier) {
         drinks_breakdown[tier] += 1
-        drinks_sold           += 1
       }
     }
 
