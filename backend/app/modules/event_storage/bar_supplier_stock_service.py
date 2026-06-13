@@ -78,6 +78,11 @@ class BarSupplierStockRow:
     status:              str     # 'healthy' | 'low' | 'critical'
     threshold_pct_warn:  float
     threshold_pct_empty: float
+    # True iff every slesh_category touching this supplier_product has only
+    # ONE rule (no parallel alternatives). E.g. Heineken keg only depletes
+    # from HEINEKEN sales (1:1), so depletion is exact. False when the SP
+    # shares a category with other rules (worst-case multi-deplete).
+    accurate:            bool = False
 
 
 async def compute_bar_supplier_stock(
@@ -179,6 +184,13 @@ async def compute_bar_supplier_stock(
 
     # 6. For each (bar, supplier_product) dispatched, compute consumed_ml.
     result: list[BarSupplierStockRow] = []
+    # Precompute: how many rules exist per slesh_category in this event?
+    # A supplier_product is accurately depleted only if every category it
+    # participates in has exactly 1 rule (no parallel alternatives).
+    rules_per_category: dict[str, int] = {}
+    for rule in rules:
+        rules_per_category[rule.slesh_category] = rules_per_category.get(rule.slesh_category, 0) + 1
+
     for (b_id, sp_id), dispatched_qty in dispatched_units.items():
         sp = sp_by_id.get(sp_id)
         if sp is None:
@@ -213,6 +225,14 @@ async def compute_bar_supplier_stock(
         remaining_pct = (remaining_ml / dispatched_ml * 100.0) if dispatched_ml else 0.0
         status = _resolve_status(remaining_pct, warn_pct, empty_pct)
 
+        # Accuracy: SP is accurate iff every rule touching it sits in a
+        # slesh_category that has only ONE rule total (no parallel options).
+        is_accurate = True
+        for cat, sp_map in rules_by_cat_sp.items():
+            if sp_id in sp_map:
+                if rules_per_category.get(cat, 0) > 1:
+                    is_accurate = False
+                    break
         result.append(BarSupplierStockRow(
             bar_id=b_id,
             bar_name=bar_name_by_id.get(b_id, "(unknown)"),
@@ -226,6 +246,7 @@ async def compute_bar_supplier_stock(
             status=status,
             threshold_pct_warn=warn_pct,
             threshold_pct_empty=empty_pct,
+            accurate=is_accurate,
         ))
 
     # Sort: bar name, then most-depleted first
@@ -330,6 +351,8 @@ async def fire_depletion_alerts(
         context = {
             "supplier_product_id": str(row.supplier_product_id),
             "item_name":           row.item_name,
+            "bar_name":            row.bar_name,
+            "accurate":            row.accurate,
             "dispatched_ml":       row.dispatched_ml,
             "consumed_ml":         row.consumed_ml,
             "remaining_ml":        row.remaining_ml,
@@ -341,12 +364,20 @@ async def fire_depletion_alerts(
             f"{row.item_name} {row.status} at {row.bar_name} "
             f"({int(row.remaining_pct)}% remaining)"
         )
-        owner_msg = (
-            f"~{int(row.remaining_pct)}% remaining. Worst-case math: Slesh "
-            f"does not tell us which exact ingredient was used per category "
-            f"sale, so we count every parallel ingredient as consumed. "
-            f"Please verify the bottle in person."
-        )
+        if row.accurate:
+            owner_msg = (
+                f"~{int(row.remaining_pct)}% remaining. This is an ACCURATE "
+                f"reading — {row.item_name} is the sole ingredient consumed "
+                f"by its Slesh category, so depletion math is exact. "
+                f"Restock recommended."
+            )
+        else:
+            owner_msg = (
+                f"~{int(row.remaining_pct)}% remaining. Worst-case math: "
+                f"Slesh does not tell us which exact ingredient was used per "
+                f"category sale, so we count every parallel ingredient as "
+                f"consumed. Please verify the bottle in person."
+            )
 
         if existing is not None:
             # Update severity if it escalated (low → critical) or context

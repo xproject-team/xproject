@@ -363,6 +363,7 @@ export interface BarSupplierStockItemDTO {
   status:              'healthy' | 'low' | 'critical'
   threshold_pct_warn:  number
   threshold_pct_empty: number
+  accurate:            boolean
 }
 
 export interface BarAggregatedStockDTO {

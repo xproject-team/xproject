@@ -168,16 +168,26 @@ function StockTable({ barId, eventId }: StockTableProps) {
             key={r.supplier_product_id}
             className="border border-[#E2E8F0] rounded-lg p-3 bg-white"
           >
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-sm font-medium text-[#1A202C] truncate pr-2" title={r.item_name}>
+            <div className="flex items-center justify-between mb-1.5 gap-2">
+              <span className="text-sm font-medium text-[#1A202C] truncate" title={r.item_name}>
                 {r.item_name}
               </span>
-              <span
-                className="text-[10px] font-bold uppercase tracking-wide tabular-nums shrink-0"
-                style={{ color: barColor }}
-              >
-                {statusBadge}
-              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {r.accurate && (
+                  <span
+                    className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    title="Sole ingredient — exact depletion (no worst-case)"
+                  >
+                    accurate
+                  </span>
+                )}
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wide tabular-nums"
+                  style={{ color: barColor }}
+                >
+                  {statusBadge}
+                </span>
+              </div>
             </div>
             {/* Loading bar */}
             <div

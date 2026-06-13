@@ -23,6 +23,7 @@ class BarSupplierStockItem(BaseModel):
     status:              StockStatus
     threshold_pct_warn:  float
     threshold_pct_empty: float
+    accurate:            bool   # True = sole-ingredient (no worst-case)
 
 
 class BarAggregatedStock(BaseModel):

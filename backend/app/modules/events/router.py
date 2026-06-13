@@ -538,6 +538,7 @@ async def get_event_bar_supplier_stock(
             status=r.status,  # type: ignore[arg-type]
             threshold_pct_warn=r.threshold_pct_warn,
             threshold_pct_empty=r.threshold_pct_empty,
+            accurate=r.accurate,
         )
         for r in rows
     ]
