@@ -374,9 +374,31 @@ class BarService:
         )
 
         # Partition into three buckets by (slesh_negozio_id, auto_created).
-        empty_bars   = [b for b in all_bars if b.slesh_negozio_id is None]
-        stubs        = [b for b in all_bars if b.slesh_negozio_id is not None and b.auto_created]
-        mapped_bars  = [b for b in all_bars if b.slesh_negozio_id is not None and not b.auto_created]
+        # Initial pass: anything without a shop_id is "empty".
+        empty_bars_raw = [b for b in all_bars if b.slesh_negozio_id is None]
+        stubs          = [b for b in all_bars if b.slesh_negozio_id is not None and b.auto_created]
+        mapped_bars    = [b for b in all_bars if b.slesh_negozio_id is not None and not b.auto_created]
+
+        # Second pass: reclassify "empty" bars that already have transactions
+        # as effectively-mapped. This covers manual_bartender flows where
+        # a wizard bar receives a non-Slesh sale before any shop_id arrives,
+        # and integration tests / simulators that bypass Slesh entirely.
+        # A bar with data is active — the missing shop_id is just a wiring
+        # gap, not a reason to hide it from the dashboard. For real Slesh
+        # events this changes nothing (every tx has a shop_id-mapped bar).
+        bars_with_tx_q = await self.db.execute(
+            select(StockTransaction.bar_id)
+            .where(
+                StockTransaction.tenant_id == tenant_id,
+                StockTransaction.event_id == event_id,
+            )
+            .distinct()
+        )
+        bars_with_tx = {row[0] for row in bars_with_tx_q.all()}
+
+        active_no_shop = [b for b in empty_bars_raw if b.id in bars_with_tx]
+        empty_bars     = [b for b in empty_bars_raw if b.id not in bars_with_tx]
+        mapped_bars    = mapped_bars + active_no_shop
 
         # Sales count per stub — total parent stock_transactions attributed
         # to that bar. One query covers all stubs at once.
