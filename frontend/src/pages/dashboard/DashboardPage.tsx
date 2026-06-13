@@ -346,7 +346,15 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: A
 
 // ─── Page wrapper: handles loading/error/no-event states ─────────────────────
 
-const START_ELAPSED = 2 * 3600 + 35 * 60  // 2h 35m (placeholder — real timer comes from event.started_at in v1.1)
+// Time-elapsed seconds since the event went LIVE. Derived from
+// event.started_at (set by go-live transition) — falls back to 0
+// if started_at is missing (event not yet promoted or stale data).
+function computeElapsedSec(startedAt: string | null | undefined): number {
+  if (!startedAt) return 0
+  const startMs = new Date(startedAt).getTime()
+  if (!Number.isFinite(startMs)) return 0
+  return Math.max(0, Math.floor((Date.now() - startMs) / 1000))
+}
 
 export default function DashboardPage() {
   const navigate         = useNavigate()
@@ -477,7 +485,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   useReconciliation(eventId)
 
   // ── UI state ──
-  const [elapsed,     setElapsed]     = useState(START_ELAPSED)
+  const [elapsed,     setElapsed]     = useState(() => computeElapsedSec(liveEvent?.started_at))
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
@@ -486,10 +494,18 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // lookup by id for the presentation components.
   const acknowledged = new Set(alerts.filter((a) => a.is_acknowledged).map((a) => a.id))
 
+  // Re-sync the elapsed counter every second against event.started_at
+  // rather than just incrementing. This keeps the timer correct on first
+  // paint AND resilient to tab-backgrounding where setInterval drift would
+  // otherwise accumulate. Re-runs when started_at changes (on go-live).
   useEffect(() => {
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000)
+    setElapsed(computeElapsedSec(liveEvent?.started_at))
+    const id = setInterval(
+      () => setElapsed(computeElapsedSec(liveEvent?.started_at)),
+      1000,
+    )
     return () => clearInterval(id)
-  }, [])
+  }, [liveEvent?.started_at])
 
   const handleAcknowledge = useCallback((id: string) => {
     // Find the current version to pass to the optimistic-lock mutation.
