@@ -76,9 +76,14 @@ function _formatEur(value: string | number): string {
 interface BarCategoryBreakdownProps {
   /** One bar\'s slice of the bar-category-totals response. */
   bar: BarCategoryTotalsDTO | null
+  /** Bar type — drives which buckets render. Food bars render nothing here;
+   *  the overlay renders a food-items list instead. */
+  bar_type?: 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 }
 
-export function BarCategoryBreakdown({ bar }: BarCategoryBreakdownProps) {
+export function BarCategoryBreakdown({ bar, bar_type }: BarCategoryBreakdownProps) {
+  // Food bars don't sell drinks — overlay renders a food-specific section.
+  if (bar_type === 'food') return null
   if (!bar || bar.categories.length === 0) {
     return (
       <p className="text-sm text-[#A0AEC0] italic">
@@ -87,15 +92,15 @@ export function BarCategoryBreakdown({ bar }: BarCategoryBreakdownProps) {
     )
   }
 
-  // Always render the 5 buckets in a stable order, even if a bar has
-  // no sales in some of them (Omar wants the same layout on every card).
+  // Drink bars: 4 drink buckets only. FOOD pill is always 0 on drink bars
+  // (food is sold by separate trucks), so we drop it to remove visual noise.
   const ORDER: BarCategoryBucketDTO['bucket'][] = [
-    'beer', 'cocktails', 'premium_cocktails', 'wine', 'food',
+    'beer', 'cocktails', 'premium_cocktails', 'wine',
   ]
   const byBucket = new Map(bar.categories.map((c) => [c.bucket, c]))
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {ORDER.map((b) => {
         const row = byBucket.get(b)
         const units = row?.units ?? 0
@@ -133,9 +138,12 @@ export function BarCategoryBreakdown({ bar }: BarCategoryBreakdownProps) {
 
 interface BarTopDrinksProps {
   bar: BarCategoryTotalsDTO | null
+  /** Bar type — food bars render food items elsewhere, so this returns null. */
+  bar_type?: 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 }
 
-export function BarTopDrinks({ bar }: BarTopDrinksProps) {
+export function BarTopDrinks({ bar, bar_type }: BarTopDrinksProps) {
+  if (bar_type === 'food') return null
   if (!bar || bar.top_5_drinks.length === 0) {
     return (
       <p className="text-sm text-[#A0AEC0] italic">

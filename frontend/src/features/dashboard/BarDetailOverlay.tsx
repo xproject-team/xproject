@@ -533,17 +533,52 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
                 </section>
 
                 <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
-                  <SectionHeader title="Drinks Breakdown" />
-                  {categoryTotalsQuery.isLoading ? (
+                  <SectionHeader title={b.bar_type === 'food' ? 'Food Sold' : 'Drinks Breakdown'} />
+                  {b.bar_type === 'food' ? (
+                    b.food_items.length === 0 ? (
+                      <p className="text-sm text-[#A0AEC0] italic">No food sales yet.</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#E2E8F0]">
+                          <p className="text-sm text-[#4A5568]">Total items sold</p>
+                          <p className="text-xl font-bold text-[#1A202C] tabular-nums">
+                            {b.food_items.reduce((s, i) => s + i.sold, 0)}
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {b.food_items.map((it, idx) => (
+                            <div
+                              key={it.name}
+                              className="flex items-center gap-3 bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5"
+                            >
+                              <span className="text-[10px] font-bold text-[#A0AEC0] w-5 text-center">
+                                #{idx + 1}
+                              </span>
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: '#558B2F' }}
+                              />
+                              <span className="flex-1 text-sm text-[#1A202C] truncate" title={it.name}>
+                                {it.name}
+                              </span>
+                              <span className="text-sm font-semibold text-[#1A202C] tabular-nums w-12 text-right">
+                                {it.sold}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )
+                  ) : categoryTotalsQuery.isLoading ? (
                     <p className="text-sm text-[#A0AEC0] italic">Loading breakdown...</p>
                   ) : (
                     <>
-                      <BarCategoryBreakdown bar={barCategoryRow} />
+                      <BarCategoryBreakdown bar={barCategoryRow} bar_type={b.bar_type} />
                       <div className="mt-4">
                         <h3 className="text-[11px] uppercase tracking-wide font-semibold text-[#4A5568] mb-2">
                           Top 5 drinks (by units)
                         </h3>
-                        <BarTopDrinks bar={barCategoryRow} />
+                        <BarTopDrinks bar={barCategoryRow} bar_type={b.bar_type} />
                       </div>
                     </>
                   )}
