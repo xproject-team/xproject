@@ -43,9 +43,23 @@ def create_app() -> FastAPI:
         redoc_url="/api/redoc",
     )
 
+    # CORS — allow local dev + production frontend domain. Set
+    # CORS_EXTRA_ORIGINS env var (comma-separated) to add more.
+    import os
+    cors_origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "https://vera-event.com",
+        "https://www.vera-event.com",
+    ]
+    extra = os.getenv("CORS_EXTRA_ORIGINS", "").strip()
+    if extra:
+        cors_origins.extend([o.strip() for o in extra.split(",") if o.strip()])
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

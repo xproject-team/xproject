@@ -5,8 +5,13 @@
 import axios from 'axios'
 import { getToken, refreshToken } from './auth'
 
+// In dev, baseURL is '/api/v1' so Vite's proxy forwards to the local
+// backend. In prod, VITE_API_BASE_URL must point at the deployed API
+// (e.g. https://api.vera-event.com) since there's no dev-server proxy.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '') + '/api/v1'
+
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
 })
 
