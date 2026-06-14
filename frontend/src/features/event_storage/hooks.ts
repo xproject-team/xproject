@@ -132,6 +132,12 @@ export function useBarAllocations(eventId: string | undefined) {
     },
     enabled: Boolean(eventId),
     staleTime: 15_000,
+    // Drives the dashboard's BarCard "Stock Level" + status colour
+    // (selectBarKpis → deriveStatus). Without an explicit refetch
+    // interval, mid-event recharges don't flip the card from red back
+    // to green until the user navigates away and back. 15 s matches
+    // the other live dashboard queries.
+    refetchInterval: 15_000,
   })
 }
 
