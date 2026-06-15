@@ -10,6 +10,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import datetime, timezone
@@ -47,6 +48,8 @@ from app.modules.events.event_kpi_service import EventKpiSummaryService
 from app.modules.events.menu_performance_schemas import EventMenuPerformance
 from app.modules.events.menu_performance_service import MenuPerformanceService
 from app.modules.events.reconciliation_service import compute_report
+from app.modules.events.revenue_breakdown_schemas import RevenueBreakdown
+from app.modules.events.revenue_breakdown_service import RevenueBreakdownService
 from app.modules.events.service import (
     EventNotFoundError,
     EventService,
@@ -665,3 +668,25 @@ async def get_reconciliation_report(
         _raise_http(exc)
         raise   # _raise_http always raises; keeps mypy happy
 
+
+@router.get("/{event_id}/revenue-breakdown", response_model=RevenueBreakdown)
+async def get_revenue_breakdown(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> RevenueBreakdown:
+    """Composite revenue breakdown for the post-event popup.
+
+    Aggregates event_orders rows (one per Slesh order) joined with bars to
+    produce a single payload covering total billed (matches Slesh "Transato"),
+    per-bar sales split drinks/food/cash-desk, cup deposit flow, VAT and
+    fiscal totals, and owner take-home computed from food_revenue_share_pct.
+    """
+    service = RevenueBreakdownService(db)
+    try:
+        return await service.compute(tenant_id, event_id)
+    except NoResultFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
