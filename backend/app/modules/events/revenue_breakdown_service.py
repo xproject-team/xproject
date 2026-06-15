@@ -1,12 +1,14 @@
-"""RevenueBreakdownService — compose the popup payload from event_orders + bars.
+"""RevenueBreakdownService - compose the popup payload from event_orders + bars.
 
-Source of truth: event_orders rows (one per Slesh order) populated by the
-ingester / backfill script. Bar classification (drinks/food/merch) is read
-from Bar.bar_type — data-driven, never name-matched. Food share % is
-per-event from Event.food_revenue_share_pct.
+See docs/revenue-calculation-bible.md for the canonical math.
 
-All money is stored as int cents in the DB; conversion to Decimal EUR
-happens at the response boundary, two-decimal-quantized.
+Source of truth: event_orders rows with status != 'refunded'. Bar classification
+(drinks/food/mixed/merch) is read from Bar.bar_type. Food share % is per-event
+from Event.food_revenue_share_pct, expressed as OWNER's share (30 means
+owner takes 30%, vendor takes 70%).
+
+All money is stored as int cents in the DB; conversion to Decimal EUR happens
+at the response boundary, two-decimal-quantized.
 """
 from __future__ import annotations
 
@@ -28,13 +30,11 @@ from .revenue_breakdown_schemas import (
     Diagnostics,
     DepositsBreakdown,
     FiscalBreakdown,
-    OwnerTakeHome,
+    OwnerWaterfall,
     RevenueBreakdown,
     SalesBreakdown,
 )
 
-
-# ---------- helpers ----------
 
 def _cents_to_eur(cents: int | None) -> Decimal:
     if not cents:
@@ -56,7 +56,8 @@ def _normalize_bar_type(raw) -> str:
     return str(raw)
 
 
-# ---------- service ----------
+REFUNDED_STATUS = "refunded"
+
 
 class RevenueBreakdownService:
 
@@ -67,9 +68,9 @@ class RevenueBreakdownService:
         event = await self._load_event(tenant_id, event_id)
         per_type = await self._totals_by_order_type(tenant_id, event_id)
         per_bar = await self._totals_by_bar(tenant_id, event_id)
-        deposits = await self._deposit_split(tenant_id, event_id)
+        deposits_raw = await self._deposit_split(tenant_id, event_id)
+        refunded_count = await self._refunded_order_count(tenant_id, event_id)
 
-        # ----- top-level totals -----
         all_subtotal = sum(r["subtotal"] for r in per_type.values())
         all_vat = sum(r["vat"] for r in per_type.values())
         all_fiscal_gross = sum(r["fiscal_gross"] for r in per_type.values())
@@ -81,12 +82,10 @@ class RevenueBreakdownService:
         exp = per_type.get("experience", {"subtotal": 0, "count": 0})
         cash = per_type.get("cash-desk", {"subtotal": 0, "count": 0})
 
-        # ----- sales by bar -----
         drinks_bars: list[BarSale] = []
         food_bars: list[BarSale] = []
         drinks_total = 0
         food_total = 0
-
         for row in per_bar:
             bt = row["bar_type"]
             bs = BarSale(
@@ -102,7 +101,6 @@ class RevenueBreakdownService:
             elif bt == "food":
                 food_bars.append(bs)
                 food_total += row["subtotal"]
-            # merch falls out of the per-bar lists — it's reported only via cash-desk total
 
         sales = SalesBreakdown(
             drinks_total_eur=_cents_to_eur(drinks_total),
@@ -113,12 +111,11 @@ class RevenueBreakdownService:
             subtotal_eur=_cents_to_eur(drinks_total + food_total + cash["subtotal"]),
         )
 
-        # ----- deposits -----
-        collected_eur = _cents_to_eur(deposits["collected"])
-        returned_eur = _cents_to_eur(deposits["returned"])
+        collected_eur = _cents_to_eur(deposits_raw["collected"])
+        returned_eur = _cents_to_eur(deposits_raw["returned"])
         forfeited_eur = collected_eur - returned_eur
-        collected_units = int(deposits["collected_units"])
-        returned_units = int(deposits["returned_units"])
+        collected_units = int(deposits_raw["collected_units"])
+        returned_units = int(deposits_raw["returned_units"])
         deposits_b = DepositsBreakdown(
             collected_eur=collected_eur,
             collected_units=collected_units,
@@ -129,7 +126,6 @@ class RevenueBreakdownService:
             return_rate_pct=_safe_pct(returned_eur, collected_eur),
         )
 
-        # ----- fiscal -----
         fiscal_b = FiscalBreakdown(
             vat_eur=_cents_to_eur(all_vat),
             fiscal_gross_eur=_cents_to_eur(all_fiscal_gross),
@@ -137,7 +133,6 @@ class RevenueBreakdownService:
             discounts_eur=_cents_to_eur(all_discount),
         )
 
-        # ----- cash flow (ricariche + unspent are placeholders until manual entry) -----
         cash_flow_b = CashFlowBreakdown(
             ricariche_eur=None,
             cash_desk_in_eur=_cents_to_eur(cash["subtotal"]),
@@ -145,28 +140,32 @@ class RevenueBreakdownService:
             unspent_balance_eur=None,
         )
 
-        # ----- owner take-home -----
         share_pct = int(event.food_revenue_share_pct or 30)
-        drinks_owner = _cents_to_eur(drinks_total)
-        food_gross = _cents_to_eur(food_total)
-        food_share = (food_gross * Decimal(share_pct) / Decimal(100)).quantize(Decimal("0.01"))
-        cash_desk_owner = _cents_to_eur(cash["subtotal"])
-        owner = OwnerTakeHome(
-            drinks_eur=drinks_owner,
-            deposits_forfeited_eur=forfeited_eur,
-            food_gross_eur=food_gross,
-            food_share_pct=share_pct,
-            food_share_eur=food_share,
-            cash_desk_eur=cash_desk_owner,
-            total_eur=drinks_owner + forfeited_eur + food_share + cash_desk_owner,
+        food_owner_share_cents = int(food_total * share_pct / 100)
+        food_vendor_share_cents = food_total - food_owner_share_cents
+        net_takehome_cents = (
+            all_subtotal
+            - deposits_raw["returned"]
+            - all_vat
+            - food_vendor_share_cents
+        )
+        owner = OwnerWaterfall(
+            gross_revenue_eur=_cents_to_eur(all_subtotal),
+            minus_deposits_returned_eur=_cents_to_eur(deposits_raw["returned"]),
+            minus_vat_eur=_cents_to_eur(all_vat),
+            minus_food_vendor_share_eur=_cents_to_eur(food_vendor_share_cents),
+            net_takehome_eur=_cents_to_eur(net_takehome_cents),
+            food_owner_share_pct=share_pct,
+            food_owner_share_eur=_cents_to_eur(food_owner_share_cents),
+            food_vendor_share_pct=100 - share_pct,
         )
 
-        # ----- diagnostics -----
         diag = Diagnostics(
             order_count=all_count,
             experience_order_count=exp["count"],
             cash_desk_order_count=cash["count"],
             cart_line_count=all_cart_lines,
+            refunded_order_count=refunded_count,
         )
 
         return RevenueBreakdown(
@@ -179,11 +178,9 @@ class RevenueBreakdownService:
             deposits=deposits_b,
             fiscal=fiscal_b,
             cash_flow=cash_flow_b,
-            owner_take_home=owner,
+            owner_waterfall=owner,
             diagnostics=diag,
         )
-
-    # ---------- queries ----------
 
     async def _load_event(self, tenant_id: UUID, event_id: UUID) -> Event:
         stmt = (
@@ -197,9 +194,7 @@ class RevenueBreakdownService:
             raise NoResultFound(f"Event {event_id} not found for tenant {tenant_id}")
         return event
 
-    async def _totals_by_order_type(
-        self, tenant_id: UUID, event_id: UUID
-    ) -> dict[str, dict]:
+    async def _totals_by_order_type(self, tenant_id: UUID, event_id: UUID) -> dict[str, dict]:
         stmt = (
             select(
                 EventOrder.order_type,
@@ -215,6 +210,7 @@ class RevenueBreakdownService:
             .where(
                 EventOrder.tenant_id == tenant_id,
                 EventOrder.event_id == event_id,
+                EventOrder.status != REFUNDED_STATUS,
             )
             .group_by(EventOrder.order_type)
         )
@@ -233,9 +229,7 @@ class RevenueBreakdownService:
             for row in result.all()
         }
 
-    async def _totals_by_bar(
-        self, tenant_id: UUID, event_id: UUID
-    ) -> list[dict]:
+    async def _totals_by_bar(self, tenant_id: UUID, event_id: UUID) -> list[dict]:
         stmt = (
             select(
                 Bar.id.label("bar_id"),
@@ -249,6 +243,7 @@ class RevenueBreakdownService:
                 EventOrder.tenant_id == tenant_id,
                 EventOrder.event_id == event_id,
                 EventOrder.bar_id.is_not(None),
+                EventOrder.status != REFUNDED_STATUS,
             )
             .group_by(Bar.id, Bar.name, Bar.bar_type)
             .order_by(func.sum(EventOrder.subtotal_cents).desc())
@@ -265,20 +260,20 @@ class RevenueBreakdownService:
             for row in result.all()
         ]
 
-    async def _deposit_split(
-        self, tenant_id: UUID, event_id: UUID
-    ) -> dict[str, int]:
-        """Compute deposit flow from stock_transactions.
+    async def _refunded_order_count(self, tenant_id: UUID, event_id: UUID) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(EventOrder)
+            .where(
+                EventOrder.tenant_id == tenant_id,
+                EventOrder.event_id == event_id,
+                EventOrder.status == REFUNDED_STATUS,
+            )
+        )
+        result = await self.db.execute(stmt)
+        return int(result.scalar() or 0)
 
-        Refunds don't show up as negative deposit_cents on event_orders — Slesh
-        emits separate stock_transactions rows with pos_line_status='refunded'.
-        So we go straight to stock_transactions and split by status.
-
-        Deposit products are matched by name pattern. Until the Product.category
-        enum grows a 'deposit' value, the conventional Italian deposit names
-        ('Bicchiere' for cups, anything starting with 'Cauzione' for bottles)
-        are the only signal.
-        """
+    async def _deposit_split(self, tenant_id: UUID, event_id: UUID) -> dict[str, int]:
         deposit_prod_subq = (
             select(Product.id)
             .where(
@@ -290,7 +285,6 @@ class RevenueBreakdownService:
             )
             .scalar_subquery()
         )
-
         stmt = (
             select(
                 StockTransaction.pos_line_status,
@@ -308,7 +302,6 @@ class RevenueBreakdownService:
             .group_by(StockTransaction.pos_line_status)
         )
         result = await self.db.execute(stmt)
-
         collected_cents = 0
         returned_cents = 0
         collected_units = 0
@@ -322,7 +315,6 @@ class RevenueBreakdownService:
             elif row.pos_line_status == "refunded":
                 returned_cents = cents
                 returned_units = units
-
         return {
             "collected": collected_cents,
             "returned": returned_cents,

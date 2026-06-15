@@ -1,11 +1,7 @@
 """Pydantic schemas for GET /events/{id}/revenue-breakdown.
 
-Structure mirrors the v5 popup mockup: top "Total Transato" (matching
-Slesh's dashboard figure), then sales-by-bar, deposits, VAT/fiscal,
-wristband cash flow, owner take-home, and diagnostics.
-
-All money fields are Decimal EUR; the service converts from cents at
-the response boundary so the API caller never deals with cents drift.
+Every monetary field has a description that ends up as a tooltip in the
+popup, so the meaning of each number is unambiguous.
 """
 from __future__ import annotations
 
@@ -18,85 +14,81 @@ from pydantic import BaseModel, Field
 class BarSale(BaseModel):
     bar_id: UUID
     bar_name: str
-    bar_type: str  # drinks | food | merch | mixed
-    revenue_eur: Decimal
+    bar_type: str = Field(description="One of: drinks | food | mixed | merch | service")
+    revenue_eur: Decimal = Field(description="Sum of order subtotals at this bar (incl. VAT + deposits)")
     order_count: int
 
 
 class SalesBreakdown(BaseModel):
-    drinks_total_eur: Decimal
+    drinks_total_eur: Decimal = Field(description="Drinks-bars revenue (bar_type in drinks | mixed)")
     drinks_by_bar: list[BarSale]
-    food_total_eur: Decimal
+    food_total_eur: Decimal = Field(description="Food-truck revenue. Vendor share is paid out separately.")
     food_by_bar: list[BarSale]
-    cash_desk_eur: Decimal
-    subtotal_eur: Decimal  # drinks + food + cash_desk (gross, pre-VAT, pre-deposit-net)
+    cash_desk_eur: Decimal = Field(description="Direct cash purchases at cash-desk (no wristband)")
+    subtotal_eur: Decimal = Field(description="drinks + food + cash_desk (sanity check)")
 
 
 class DepositsBreakdown(BaseModel):
-    # Computed from stock_transactions filtered to deposit products
-    # (matched by name pattern — category enum needs a 'deposit' value).
-    # pos_line_status 'confirmed' = collected; 'refunded' = returned.
-    collected_eur: Decimal
+    collected_eur: Decimal = Field(description="Cup/bottle deposits paid by customers at sale. Already included in customer spending above.")
     collected_units: int
-    returned_eur: Decimal
+    returned_eur: Decimal = Field(description="Deposits refunded when customer returned their cup/bottle.")
     returned_units: int
-    forfeited_eur: Decimal       # collected - returned (net to owner)
+    forfeited_eur: Decimal = Field(description="Deposits kept by owner for cups/bottles never returned (owner income).")
     forfeited_units: int
-    return_rate_pct: float | None
+    return_rate_pct: float | None = Field(description="Percent of deposits returned (lower = more forfeited income).")
 
 
 class FiscalBreakdown(BaseModel):
-    vat_eur: Decimal
-    fiscal_gross_eur: Decimal
-    fiscal_net_eur: Decimal
-    discounts_eur: Decimal
+    vat_eur: Decimal = Field(description="VAT collected, must be remitted to Italian Stato. ~10% rate. Not owner income.")
+    fiscal_gross_eur: Decimal = Field(description="Revenue reported to fiscal authorities (= total gross minus deposits).")
+    fiscal_net_eur: Decimal = Field(description="Fiscal revenue net of VAT.")
+    discounts_eur: Decimal = Field(description="Promo discounts applied across orders.")
 
 
 class CashFlowBreakdown(BaseModel):
-    # Ricariche (wristband top-ups) are not exposed via the Slesh API
-    # we currently have access to — stays None until manual entry lands.
-    ricariche_eur: Decimal | None
-    cash_desk_in_eur: Decimal
-    spent_at_bars_eur: Decimal
-    unspent_balance_eur: Decimal | None
+    ricariche_eur: Decimal | None = Field(default=None, description="Wristband top-ups total. Not exposed by Slesh public API - requires manual entry from dashboard.")
+    cash_desk_in_eur: Decimal = Field(description="Direct cash flow at cash-desk.")
+    spent_at_bars_eur: Decimal = Field(description="Money spent at drinks + food bars (excludes cash-desk).")
+    unspent_balance_eur: Decimal | None = Field(default=None, description="Computed as ricariche - spent (only available once ricariche is manually entered).")
 
 
-class OwnerTakeHome(BaseModel):
-    drinks_eur: Decimal
-    deposits_forfeited_eur: Decimal
-    food_gross_eur: Decimal
-    food_share_pct: int
-    food_share_eur: Decimal
-    cash_desk_eur: Decimal
-    total_eur: Decimal
+class OwnerWaterfall(BaseModel):
+    """Step-by-step computation of owner's net cash from gross customer spending."""
+    gross_revenue_eur: Decimal = Field(description="Starting amount: total customer spending (= total_billed_eur).")
+    minus_deposits_returned_eur: Decimal = Field(description="Subtract: deposit refunds returned to customers at cup/bottle return.")
+    minus_vat_eur: Decimal = Field(description="Subtract: VAT to remit to Italian Stato. Legal obligation, not owner income.")
+    minus_food_vendor_share_eur: Decimal = Field(description="Subtract: food truck vendor's revenue share.")
+    net_takehome_eur: Decimal = Field(description="Owner's net cash. Before staff, venue, supplier costs.")
+    food_owner_share_pct: int = Field(description="Percent of food revenue kept by owner (e.g. 30 means owner 30% / vendor 70%).")
+    food_owner_share_eur: Decimal = Field(description="Food revenue portion kept by owner.")
+    food_vendor_share_pct: int = Field(description="Percent of food revenue paid to vendor (= 100 - owner_share_pct).")
 
 
 class Diagnostics(BaseModel):
-    order_count: int
-    experience_order_count: int
-    cash_desk_order_count: int
-    cart_line_count: int
+    order_count: int = Field(description="Total non-refunded orders.")
+    experience_order_count: int = Field(description="Orders via wristband POS (drinks/food bars).")
+    cash_desk_order_count: int = Field(description="Direct cash orders at cash-desk.")
+    cart_line_count: int = Field(description="Total cart lines across all non-refunded orders.")
+    refunded_order_count: int = Field(default=0, description="Number of orders fully refunded (excluded from revenue).")
 
 
 class RevenueBreakdown(BaseModel):
     event_id: UUID
     event_name: str
-
-    # Top metric — matches Slesh "Transato"
     total_billed_eur: Decimal = Field(
         description=(
-            "Gross order total — Slesh's __subtotal already includes VAT, so this "
-            "is the customer-paid total across all orders. Slesh dashboard 'Transato' "
-            "may additionally include wristband ricariche/unspent which the public API "
-            "does not expose; manual entry required to display the full Slesh figure."
+            "Total customer spending at the venue. Sum of order subtotals across "
+            "all non-refunded orders (already includes VAT and deposits). The headline "
+            "revenue figure. Note: Slesh dashboard 'Transato' additionally includes "
+            "unspent wristband top-ups (not exposed via Slesh public API), so it may "
+            "be higher than this figure by the unspent amount."
         )
     )
-    transaction_count: int
-    cancelled_eur: Decimal = Decimal("0.00")  # placeholder until cancellation tracking lands
-
+    transaction_count: int = Field(description="Number of non-refunded orders.")
+    cancelled_eur: Decimal = Decimal("0.00")
     sales: SalesBreakdown
     deposits: DepositsBreakdown
     fiscal: FiscalBreakdown
     cash_flow: CashFlowBreakdown
-    owner_take_home: OwnerTakeHome
+    owner_waterfall: OwnerWaterfall
     diagnostics: Diagnostics

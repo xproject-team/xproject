@@ -453,14 +453,15 @@ export interface CashFlowBreakdownDTO {
   unspent_balance_eur: string | null
 }
 
-export interface OwnerTakeHomeDTO {
-  drinks_eur:             string
-  deposits_forfeited_eur: string
-  food_gross_eur:         string
-  food_share_pct:         number
-  food_share_eur:         string
-  cash_desk_eur:          string
-  total_eur:              string
+export interface OwnerWaterfallDTO {
+  gross_revenue_eur:               string
+  minus_deposits_returned_eur:     string
+  minus_vat_eur:                   string
+  minus_food_vendor_share_eur:     string
+  net_takehome_eur:                string
+  food_owner_share_pct:            number
+  food_owner_share_eur:            string
+  food_vendor_share_pct:           number
 }
 
 export interface RevenueDiagnosticsDTO {
@@ -468,6 +469,7 @@ export interface RevenueDiagnosticsDTO {
   experience_order_count: number
   cash_desk_order_count:  number
   cart_line_count:        number
+  refunded_order_count: number
 }
 
 export interface RevenueBreakdownDTO {
@@ -480,7 +482,7 @@ export interface RevenueBreakdownDTO {
   deposits:          DepositsBreakdownDTO
   fiscal:            FiscalBreakdownDTO
   cash_flow:         CashFlowBreakdownDTO
-  owner_take_home:   OwnerTakeHomeDTO
+  owner_waterfall:   OwnerWaterfallDTO
   diagnostics:       RevenueDiagnosticsDTO
 }
 
