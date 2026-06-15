@@ -93,7 +93,7 @@ async def main():
         seen = inserted = 0
         by_type = {}
 
-        async for order in adapter.list_orders(start, end):
+        async for order in adapter.list_orders(start, end, order_type=None):
             seen += 1
             by_type[order.type] = by_type.get(order.type, 0) + 1
 
