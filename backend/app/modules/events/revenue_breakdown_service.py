@@ -56,7 +56,7 @@ def _normalize_bar_type(raw) -> str:
     return str(raw)
 
 
-REFUNDED_STATUS = "refunded"
+# A fully-refunded order has all its lines refunded — confirmed_line_count == 0.
 
 
 class RevenueBreakdownService:
@@ -210,7 +210,7 @@ class RevenueBreakdownService:
             .where(
                 EventOrder.tenant_id == tenant_id,
                 EventOrder.event_id == event_id,
-                EventOrder.status != REFUNDED_STATUS,
+                EventOrder.confirmed_line_count > 0,
             )
             .group_by(EventOrder.order_type)
         )
@@ -243,7 +243,7 @@ class RevenueBreakdownService:
                 EventOrder.tenant_id == tenant_id,
                 EventOrder.event_id == event_id,
                 EventOrder.bar_id.is_not(None),
-                EventOrder.status != REFUNDED_STATUS,
+                EventOrder.confirmed_line_count > 0,
             )
             .group_by(Bar.id, Bar.name, Bar.bar_type)
             .order_by(func.sum(EventOrder.subtotal_cents).desc())
@@ -261,13 +261,14 @@ class RevenueBreakdownService:
         ]
 
     async def _refunded_order_count(self, tenant_id: UUID, event_id: UUID) -> int:
+        # Fully-refunded order = every line refunded = confirmed_line_count is 0.
         stmt = (
             select(func.count())
             .select_from(EventOrder)
             .where(
                 EventOrder.tenant_id == tenant_id,
                 EventOrder.event_id == event_id,
-                EventOrder.status == REFUNDED_STATUS,
+                EventOrder.confirmed_line_count == 0,
             )
         )
         result = await self.db.execute(stmt)

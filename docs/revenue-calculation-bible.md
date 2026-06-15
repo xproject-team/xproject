@@ -19,10 +19,10 @@ popup. **Do not change the service without updating this document.**
 
 ## Formulas
 
-    GROSS_REVENUE     = sum(subtotal_cents)      WHERE status != 'refunded'
-    VAT_COLLECTED     = sum(vat_cents)           WHERE status != 'refunded'
-    DEPOSITS_TAKEN    = sum(deposit_cents)       WHERE status != 'refunded'
-    FISCAL_REVENUE    = sum(fiscal_gross_cents)  WHERE status != 'refunded'
+    GROSS_REVENUE     = sum(subtotal_cents)      WHERE confirmed_line_count > 0
+    VAT_COLLECTED     = sum(vat_cents)           WHERE confirmed_line_count > 0
+    DEPOSITS_TAKEN    = sum(deposit_cents)       WHERE confirmed_line_count > 0
+    FISCAL_REVENUE    = sum(fiscal_gross_cents)  WHERE confirmed_line_count > 0
                         (= GROSS - DEPOSITS_TAKEN, reported to fisc authorities)
 
     DRINKS_GROSS      = sum(subtotal_cents) WHERE bar.bar_type in (drinks, mixed)
