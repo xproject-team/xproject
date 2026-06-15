@@ -130,7 +130,7 @@ async def test_food_only_share_50():
             ftypes = {ln.food_type: ln for ln in res.food.by_type}
             assert (ftypes["burgers"].units, ftypes["burgers"].revenue_eur) == (4, Decimal("48.00"))
             assert (ftypes["gelato"].units, ftypes["gelato"].revenue_eur) == (2, Decimal("10.00"))
-            assert res.total_revenue_eur == Decimal("29.00")
+            assert res.total_revenue_eur == Decimal("58.00")      # drinks 0 + food gross 58
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()
@@ -159,7 +159,7 @@ async def test_mixed_share_30():
             assert res.food.gross_revenue_eur == Decimal("60.00")
             assert res.food.share_pct == 30
             assert res.food.net_revenue_eur == Decimal("18.00")   # 60 * 30%
-            assert res.total_revenue_eur == Decimal("138.00")     # 120 + 18
+            assert res.total_revenue_eur == Decimal("180.00")     # drinks 120 + food gross 60
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()
@@ -183,7 +183,7 @@ async def test_share_zero_food_net_is_zero():
             assert res.food.gross_revenue_eur == Decimal("30.00")
             assert res.food.share_pct == 0
             assert res.food.net_revenue_eur == Decimal("0.00")
-            assert res.total_revenue_eur == Decimal("10.00")      # drinks only
+            assert res.total_revenue_eur == Decimal("40.00")      # drinks 10 + food gross 30 (header = billed amount, not take-home)
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()

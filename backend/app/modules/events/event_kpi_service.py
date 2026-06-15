@@ -171,11 +171,14 @@ class EventKpiSummaryService:
             # ingredient / supply: not part of the guest-facing KPI (the
             # locked formula is drinks + food only). Intentionally skipped.
 
-        # 4. Apply the partnership split to food, then total.
+        # 4. Apply the partnership split to food.
+        # Header total = GROSS revenue (what customers paid at the bars).
+        # This matches Slesh's dashboard exactly. Net take-home after the
+        # food-truck split is exposed separately via food.net_revenue_eur.
         food_gross = _money(food_gross)
         food_net = _money(food_gross * Decimal(share_pct) / Decimal(100))
         drink_rev = _money(drink_rev)
-        total = _money(drink_rev + food_net)
+        total = _money(drink_rev + food_gross)
 
         drink_lines = [
             DrinkCategoryLine(family=f, units=v["units"], revenue_eur=_money(v["revenue"]))
