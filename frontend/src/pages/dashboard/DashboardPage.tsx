@@ -652,7 +652,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
-                <FreshnessBadge eventHasSleshBars={eventHasSleshBars} />
+                <FreshnessBadge eventHasSleshBars={eventHasSleshBars} eventEndedAt={(liveEvent as { ended_at?: string | null } | null | undefined)?.ended_at ?? null} />
                 <WeatherPill eventId={eventId} />
               </div>
               <p className="text-xs text-[#4A5568] mt-0.5">

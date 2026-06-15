@@ -169,7 +169,7 @@ async def generate_report(ctx: dict, event_id: str) -> dict:
     # Lazy imports — avoids loading reportlab + matplotlib at module import
     # time, which would slow worker boot for tenants that never generate
     # reports. First cron tick pays the cost; subsequent ticks are warm.
-    from app.modules.events.models import Event, EventStatus as _Event
+    from app.modules.events.models import Event as _Event, EventStatus
     from app.modules.reports.service import ReportService
 
     async with async_session_factory() as session:

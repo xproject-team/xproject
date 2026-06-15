@@ -29,14 +29,40 @@ export interface FreshnessBadgeProps {
    * those cases.
    */
   eventHasSleshBars: boolean
+  /**
+   * The event's actual end timestamp (ISO string). When set and in the
+   * past, the badge overrides the polling-state display with an "Event
+   * ended" message — the poller correctly skips polling for ended
+   * events, so the brand-wide freshness signal isn't meaningful.
+   */
+  eventEndedAt?: string | null
 }
 
-export function FreshnessBadge({ eventHasSleshBars }: FreshnessBadgeProps) {
+export function FreshnessBadge({ eventHasSleshBars, eventEndedAt }: FreshnessBadgeProps) {
   const { data, isLoading } = useFreshness()
 
   // No Slesh integration on this event → the polling state is not
   // meaningful here. Hide rather than confuse with "stalled" reads.
   if (!eventHasSleshBars) return null
+
+  // Event has clearly ended → polling correctly skips, but the brand-
+  // wide freshness signal would still read "stale". Show the event
+  // status explicitly instead of misleading "Polling stalled".
+  if (eventEndedAt) {
+    const endedAtMs = new Date(eventEndedAt).getTime()
+    if (!Number.isNaN(endedAtMs) && endedAtMs < Date.now()) {
+      const secondsAgo = Math.floor((Date.now() - endedAtMs) / 1000)
+      return (
+        <span
+          className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600 ring-1 ring-zinc-200"
+          title="The event has ended. The Slesh poller correctly skips polling for ended events."
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+          Event ended · {relativeTime(secondsAgo)}
+        </span>
+      )
+    }
+  }
 
 
   if (isLoading) {
