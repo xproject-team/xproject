@@ -401,3 +401,103 @@ export function useBarSupplierStock(
     staleTime: LIVE_REFETCH_MS / 2,
   })
 }
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Phase 3 — revenue breakdown popup payload.
+// Backend: GET /events/{event_id}/revenue-breakdown.
+// Aggregates event_orders + bars + stock_transactions into one payload
+// covering total billed, sales by bar (drinks/food/cash-desk), deposit
+// flow, VAT/fiscal, wristband cash flow placeholders, and owner take-
+// home. Decimals arrive as strings — convert at render boundary.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface BarSaleDTO {
+  bar_id:      string
+  bar_name:    string
+  bar_type:    string
+  revenue_eur: string
+  order_count: number
+}
+
+export interface SalesBreakdownDTO {
+  drinks_total_eur: string
+  drinks_by_bar:    BarSaleDTO[]
+  food_total_eur:   string
+  food_by_bar:      BarSaleDTO[]
+  cash_desk_eur:    string
+  subtotal_eur:     string
+}
+
+export interface DepositsBreakdownDTO {
+  collected_eur:   string
+  collected_units: number
+  returned_eur:    string
+  returned_units:  number
+  forfeited_eur:   string
+  forfeited_units: number
+  return_rate_pct: number | null
+}
+
+export interface FiscalBreakdownDTO {
+  vat_eur:          string
+  fiscal_gross_eur: string
+  fiscal_net_eur:   string
+  discounts_eur:    string
+}
+
+export interface CashFlowBreakdownDTO {
+  ricariche_eur:       string | null
+  cash_desk_in_eur:    string
+  spent_at_bars_eur:   string
+  unspent_balance_eur: string | null
+}
+
+export interface OwnerTakeHomeDTO {
+  drinks_eur:             string
+  deposits_forfeited_eur: string
+  food_gross_eur:         string
+  food_share_pct:         number
+  food_share_eur:         string
+  cash_desk_eur:          string
+  total_eur:              string
+}
+
+export interface RevenueDiagnosticsDTO {
+  order_count:            number
+  experience_order_count: number
+  cash_desk_order_count:  number
+  cart_line_count:        number
+}
+
+export interface RevenueBreakdownDTO {
+  event_id:          string
+  event_name:        string
+  total_billed_eur:  string
+  transaction_count: number
+  cancelled_eur:     string
+  sales:             SalesBreakdownDTO
+  deposits:          DepositsBreakdownDTO
+  fiscal:            FiscalBreakdownDTO
+  cash_flow:         CashFlowBreakdownDTO
+  owner_take_home:   OwnerTakeHomeDTO
+  diagnostics:       RevenueDiagnosticsDTO
+}
+
+export function useEventRevenueBreakdown(
+  eventId: string | null | undefined,
+  enabled: boolean = true,
+) {
+  return useQuery<RevenueBreakdownDTO>({
+    queryKey: [...dashboardKeys.all, 'revenueBreakdown', eventId ?? 'none'],
+    queryFn: async () => {
+      const { data } = await api.get<RevenueBreakdownDTO>(
+        `/events/${eventId}/revenue-breakdown`,
+      )
+      return data
+    },
+    enabled: Boolean(eventId) && enabled,
+    // Only poll while the modal is open — saves a request every 15s when closed
+    refetchInterval: enabled ? LIVE_REFETCH_MS : false,
+  })
+}

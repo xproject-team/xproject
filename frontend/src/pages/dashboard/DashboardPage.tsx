@@ -31,6 +31,7 @@ import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFee
 import { BarDetailOverlay } from '@/features/dashboard/BarDetailOverlay'
 import { BarDashboardView } from '@/features/dashboard/BarDashboardView'
 import { SalesBreakdownModal } from '@/features/dashboard/SalesBreakdownModal'
+import { RevenueBreakdownModal } from '@/features/dashboard/RevenueBreakdownModal'
 import {
   useAllProducts,
   useBarsForEvent,
@@ -40,6 +41,7 @@ import {
   useTransactionsForEvent,
   useBurnRatesForEvent,
   useEventKpiSummary,
+  useEventRevenueBreakdown,
   useMenuPerformance,
   type EventKpiSummaryDTO,
 } from '@/features/dashboard/hooks'
@@ -494,6 +496,8 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const [elapsed,     setElapsed]     = useState(() => computeElapsedSec(liveEvent?.started_at))
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
+  const [revBreakdownOpen, setRevBreakdownOpen] = useState(false)
+  const revBreakdownQuery = useEventRevenueBreakdown(eventId, revBreakdownOpen)
   const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
   // Acknowledged set derived from server data — not local state. The source of
   // truth is alerts[i].acknowledged_at on the server; this Set is just a fast
@@ -640,6 +644,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           onBreakdownClick={() => setBreakdownOpen(true)}
         />
         <SalesBreakdownModal menu={menuQuery.data ?? null} open={breakdownOpen} onClose={() => setBreakdownOpen(false)} />
+        <RevenueBreakdownModal data={revBreakdownQuery.data ?? null} open={revBreakdownOpen} onClose={() => setRevBreakdownOpen(false)} />
 
         {/* Zone B — Bar card grid */}
         <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">
@@ -654,6 +659,12 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                 {eventName} · {eventStatusLabel} · {barKpis.length} {barKpis.length === 1 ? 'bar' : 'bars'}
               </p>
             </div>
+            <button
+              onClick={() => setRevBreakdownOpen(true)}
+              className="text-xs font-medium text-[#2F9E6E] border border-[#2F9E6E] px-3 py-1.5 rounded-lg hover:bg-[#F0F9F4] transition-colors mr-2"
+            >
+              Revenue
+            </button>
             <button
               onClick={() => navigate('/alerts')}
               className="text-xs font-medium text-[#1E5A8D] border border-[#1E5A8D] px-3 py-1.5 rounded-lg hover:bg-[#F0F7FF] transition-colors"
