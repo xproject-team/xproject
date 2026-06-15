@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, SmallInteger, String, Time
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, Time, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -151,3 +151,78 @@ class Event(TenantScopedModel):
     food_revenue_share_pct: Mapped[int | None] = mapped_column(
         SmallInteger, nullable=True,
     )
+
+
+class EventOrder(TenantScopedModel):
+    """Per-Slesh-order financial extras and metadata.
+
+    Populated by `order_ingester` alongside `stock_transactions`,
+    one row per Slesh order. Captures order-level fields Slesh
+    provides (VAT, deposits, fiscal totals, discounts) plus order
+    type (cash-desk | express | experience), payment type, and
+    aggregate line counts. Consumed by `RevenueBreakdownService`.
+
+    UPSERTed on (tenant_id, slesh_order_id) so Slesh re-emits during
+    refunds, payment updates, etc. are idempotent.
+    """
+    __tablename__ = "event_orders"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "slesh_order_id",
+            name="uq_event_orders_tenant_slesh_order",
+        ),
+        Index(
+            "ix_event_orders_tenant_event_time",
+            "tenant_id", "event_id", "created_at_slesh",
+        ),
+        Index(
+            "ix_event_orders_event_type",
+            "event_id", "order_type",
+        ),
+    )
+
+    event_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    # Slesh identifiers
+    slesh_order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    slesh_shop_id:  Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bar_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), nullable=True,
+    )
+
+    # cash-desk | express | experience  (Slesh _type)
+    order_type: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # Financial fields — cents only (no float drift)
+    subtotal_cents:      Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    vat_cents:           Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    deposit_cents:       Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fiscal_gross_cents:  Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    fiscal_net_cents:    Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    discount_cents:      Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    pre_promo_cents:     Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    # Per-order summary
+    payment_type:         Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cart_line_count:      Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    confirmed_line_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    refunded_line_count:  Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+    # Safety net — full Slesh __* dict for fields we do not model yet
+    raw_extras: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # When Slesh recorded the order
+    created_at_slesh: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+    )
+    # When we wrote this row
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        server_default=text("now()"),
+    )
+

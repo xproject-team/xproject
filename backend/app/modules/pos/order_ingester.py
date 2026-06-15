@@ -39,6 +39,11 @@ Spec: docs/slesh-integration-roadmap.md §B6.3
 """
 from __future__ import annotations
 
+from datetime import datetime as _dt_datetime, timezone as _dt_timezone
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+from app.modules.events.models import EventOrder as _EventOrder
+
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -225,6 +230,49 @@ async def ingest_order(
             logger.exception(
                 "ingest_order %s cart-line %s: unexpected failure", order.id, line.id,
             )
+
+    # ── Phase 1b: write per-order summary row (revenue breakdown) ──
+    # UPSERT on (tenant_id, slesh_order_id) — Slesh re-emits during
+    # refunds and payment updates are idempotent.
+    _confirmed = sum(1 for ln in order.cart if ln.status != "refunded")
+    _refunded  = sum(1 for ln in order.cart if ln.status == "refunded")
+    _slesh_shop_id = shop_ref.id if not isinstance(shop_ref, str) else shop_ref
+
+    def _r(v):
+        """Round optional float (Slesh VAT splits arrive as fractional cents) → int cents."""
+        return None if v is None else int(round(v))
+
+    _eo_values = dict(
+        tenant_id=tenant_id,
+        event_id=event_id,
+        slesh_order_id=order.id,
+        slesh_shop_id=_slesh_shop_id,
+        bar_id=bar.id if bar is not None else None,
+        order_type=getattr(order, "type", "experience"),
+        subtotal_cents=     _r(getattr(order, "subtotal",                 None)),
+        vat_cents=          _r(getattr(order, "cart_vat_amount",          None)),
+        deposit_cents=      _r(getattr(order, "cart_deposit_amount",      None)),
+        fiscal_gross_cents= _r(getattr(order, "cart_fiscal_gross_amount", None)),
+        fiscal_net_cents=   _r(getattr(order, "cart_fiscal_net_amount",   None)),
+        discount_cents=     _r(getattr(order, "cart_discount_amount",     None)),
+        payment_type=payment_type.value if payment_type is not None else None,
+        cart_line_count=len(order.cart),
+        confirmed_line_count=_confirmed,
+        refunded_line_count=_refunded,
+        created_at_slesh=_dt_datetime.fromtimestamp(
+            getattr(order, "created_at", 0) / 1000, tz=_dt_timezone.utc,
+        ),
+    )
+    _eo_stmt = (
+        _pg_insert(_EventOrder)
+        .values(**_eo_values)
+        .on_conflict_do_update(
+            index_elements=["tenant_id", "slesh_order_id"],
+            set_={k: v for k, v in _eo_values.items()
+                  if k not in ("tenant_id", "slesh_order_id", "event_id")},
+        )
+    )
+    await db.execute(_eo_stmt)
 
     logger.info("ingest_order: %s", result)
     return result

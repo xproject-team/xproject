@@ -261,9 +261,15 @@ class Order(_SleshModel):
 
     # Aggregate amounts (Slesh computes these for convenience).
     # Gross is clean int cents; net/VAT contain VAT-split fractions (see CartLine).
-    cart_gross_amount:  int | None       = Field(alias="__cartGrossAmount", default=None)
-    cart_net_amount:    float | None     = Field(alias="__cartNetAmount",   default=None)
-    discount:           int | None       = Field(alias="_discount",         default=None)
+    cart_gross_amount:        int | None   = Field(alias="__cartGrossAmount",       default=None)
+    cart_net_amount:          float | None = Field(alias="__cartNetAmount",         default=None)
+    cart_vat_amount:          float | None = Field(alias="__cartVatAmount",         default=None)
+    cart_deposit_amount:      float | None = Field(alias="__cartDepositAmount",     default=None)
+    cart_fiscal_gross_amount: float | None = Field(alias="__cartFiscalGrossAmount", default=None)
+    cart_fiscal_net_amount:   float | None = Field(alias="__cartFiscalNetAmount",   default=None)
+    cart_discount_amount:     float | None = Field(alias="__cartDiscountAmount",    default=None)
+    subtotal:                 float | None = Field(alias="__subtotal",              default=None)
+    discount:                 int | None   = Field(alias="_discount",                default=None)
 
 
 # ────────────────────────────────────────────────────────────────────────

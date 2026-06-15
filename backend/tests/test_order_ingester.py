@@ -255,7 +255,7 @@ async def test_ingest_order_one_drink_line(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -283,7 +283,7 @@ async def test_ingest_order_no_shop_skips_whole_order(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -311,7 +311,7 @@ async def test_ingest_order_unmatched_bar_auto_creates(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -349,8 +349,9 @@ async def test_ingest_order_refunded_line_skips(patched_lookups):
     assert result.lines_ingested == 0
     assert any("refunded" in r for r in result.skip_reasons)
     assert service.calls == []
-    # Verify the pos_line_status='refunded' UPDATE was issued exactly once
-    assert db_mock.execute.await_count == 1
+    # Two db.execute calls now: (1) pos_line_status='refunded' UPDATE on
+    # the prior-poll row, (2) EventOrder UPSERT for the order summary.
+    assert db_mock.execute.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -369,7 +370,7 @@ async def test_ingest_order_food_line_ingested(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -405,7 +406,7 @@ async def test_ingest_order_food_line_replay_counted(patched_lookups):
     service = FakeService(replay=True)
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -429,7 +430,7 @@ async def test_ingest_order_supply_line_skips(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -453,7 +454,7 @@ async def test_ingest_order_unmatched_product_skips(patched_lookups):
     service = FakeService()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -478,7 +479,7 @@ async def test_ingest_order_replay_counted_separately(patched_lookups):
     service = FakeService(replay=True)   # service reports replay
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -505,7 +506,7 @@ async def test_ingest_order_idempotency_key_format(patched_lookups):
     service = FakeService()
 
     await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -532,7 +533,7 @@ async def test_ingest_order_payment_type_propagated(patched_lookups):
     service = FakeService()
 
     await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -555,7 +556,7 @@ async def test_ingest_order_payment_type_none_when_no_payment(patched_lookups):
     service = FakeService()
 
     await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -581,7 +582,7 @@ async def test_ingest_order_uses_supplied_cache(patched_lookups):
     service = FakeService()
 
     await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=AsyncMock(), order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service, cache=cache,
     )
 
