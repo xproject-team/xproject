@@ -84,7 +84,12 @@ class RevenueBreakdown(BaseModel):
 
     # Top metric — matches Slesh "Transato"
     total_billed_eur: Decimal = Field(
-        description="Subtotal + VAT across all orders. Should match Slesh dashboard's 'Transato' figure."
+        description=(
+            "Gross order total — Slesh's __subtotal already includes VAT, so this "
+            "is the customer-paid total across all orders. Slesh dashboard 'Transato' "
+            "may additionally include wristband ricariche/unspent which the public API "
+            "does not expose; manual entry required to display the full Slesh figure."
+        )
     )
     transaction_count: int
     cancelled_eur: Decimal = Decimal("0.00")  # placeholder until cancellation tracking lands

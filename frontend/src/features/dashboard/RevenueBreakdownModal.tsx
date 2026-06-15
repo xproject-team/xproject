@@ -102,7 +102,7 @@ export function RevenueBreakdownModal({ data, open, onClose }: Props) {
               <div className={SECTION_HEADER}>Total Transato</div>
               <div className="text-2xl font-bold text-[#1A202C] tabular-nums">{eur(data.total_billed_eur)}</div>
               <div className="text-xs text-[#A0AEC0] mt-1">
-                {int(data.transaction_count)} transactions · subtotal + VAT
+                {int(data.transaction_count)} transactions · gross (VAT included)
               </div>
             </div>
             <div className="bg-[#E6F4EC] rounded-xl p-4 border border-[#2F9E6E]/30">

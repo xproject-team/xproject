@@ -172,7 +172,7 @@ class RevenueBreakdownService:
         return RevenueBreakdown(
             event_id=event_id,
             event_name=event.name,
-            total_billed_eur=_cents_to_eur(all_subtotal + all_vat),
+            total_billed_eur=_cents_to_eur(all_subtotal),
             transaction_count=all_count,
             cancelled_eur=Decimal("0.00"),
             sales=sales,
