@@ -13,12 +13,14 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bars.models import Bar
 from app.modules.events.models import Event, EventOrder
+from app.modules.products.models import Product
+from app.modules.stock_transactions.models import StockTransaction
 
 from .revenue_breakdown_schemas import (
     BarSale,
@@ -115,10 +117,15 @@ class RevenueBreakdownService:
         collected_eur = _cents_to_eur(deposits["collected"])
         returned_eur = _cents_to_eur(deposits["returned"])
         forfeited_eur = collected_eur - returned_eur
+        collected_units = int(deposits["collected_units"])
+        returned_units = int(deposits["returned_units"])
         deposits_b = DepositsBreakdown(
             collected_eur=collected_eur,
+            collected_units=collected_units,
             returned_eur=returned_eur,
+            returned_units=returned_units,
             forfeited_eur=forfeited_eur,
+            forfeited_units=collected_units - returned_units,
             return_rate_pct=_safe_pct(returned_eur, collected_eur),
         )
 
@@ -261,24 +268,64 @@ class RevenueBreakdownService:
     async def _deposit_split(
         self, tenant_id: UUID, event_id: UUID
     ) -> dict[str, int]:
-        # Positive deposit_cents = collected; negative = returned. We sum each
-        # side separately so the popup can show the gross flow, not just the net.
-        collected_stmt = (
-            select(func.coalesce(func.sum(EventOrder.deposit_cents), 0))
+        """Compute deposit flow from stock_transactions.
+
+        Refunds don't show up as negative deposit_cents on event_orders — Slesh
+        emits separate stock_transactions rows with pos_line_status='refunded'.
+        So we go straight to stock_transactions and split by status.
+
+        Deposit products are matched by name pattern. Until the Product.category
+        enum grows a 'deposit' value, the conventional Italian deposit names
+        ('Bicchiere' for cups, anything starting with 'Cauzione' for bottles)
+        are the only signal.
+        """
+        deposit_prod_subq = (
+            select(Product.id)
             .where(
-                EventOrder.tenant_id == tenant_id,
-                EventOrder.event_id == event_id,
-                EventOrder.deposit_cents > 0,
+                Product.tenant_id == tenant_id,
+                or_(
+                    Product.name == "Bicchiere",
+                    Product.name.op("ILIKE")("Cauzione%"),
+                ),
             )
+            .scalar_subquery()
         )
-        returned_stmt = (
-            select(func.coalesce(func.sum(EventOrder.deposit_cents), 0))
+
+        stmt = (
+            select(
+                StockTransaction.pos_line_status,
+                func.coalesce(
+                    func.sum(StockTransaction.qty * StockTransaction.price_cents),
+                    0,
+                ).label("total_cents"),
+                func.coalesce(func.sum(StockTransaction.qty), 0).label("units"),
+            )
             .where(
-                EventOrder.tenant_id == tenant_id,
-                EventOrder.event_id == event_id,
-                EventOrder.deposit_cents < 0,
+                StockTransaction.tenant_id == tenant_id,
+                StockTransaction.event_id == event_id,
+                StockTransaction.product_id.in_(deposit_prod_subq),
             )
+            .group_by(StockTransaction.pos_line_status)
         )
-        collected = int((await self.db.execute(collected_stmt)).scalar() or 0)
-        returned = abs(int((await self.db.execute(returned_stmt)).scalar() or 0))
-        return {"collected": collected, "returned": returned}
+        result = await self.db.execute(stmt)
+
+        collected_cents = 0
+        returned_cents = 0
+        collected_units = 0
+        returned_units = 0
+        for row in result.all():
+            cents = int(row.total_cents or 0)
+            units = int(row.units or 0)
+            if row.pos_line_status == "confirmed":
+                collected_cents = cents
+                collected_units = units
+            elif row.pos_line_status == "refunded":
+                returned_cents = cents
+                returned_units = units
+
+        return {
+            "collected": collected_cents,
+            "returned": returned_cents,
+            "collected_units": collected_units,
+            "returned_units": returned_units,
+        }

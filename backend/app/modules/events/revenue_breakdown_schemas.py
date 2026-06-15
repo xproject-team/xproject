@@ -33,9 +33,15 @@ class SalesBreakdown(BaseModel):
 
 
 class DepositsBreakdown(BaseModel):
-    collected_eur: Decimal       # sum of positive deposit_cents
-    returned_eur: Decimal        # abs sum of negative deposit_cents
+    # Computed from stock_transactions filtered to deposit products
+    # (matched by name pattern — category enum needs a 'deposit' value).
+    # pos_line_status 'confirmed' = collected; 'refunded' = returned.
+    collected_eur: Decimal
+    collected_units: int
+    returned_eur: Decimal
+    returned_units: int
     forfeited_eur: Decimal       # collected - returned (net to owner)
+    forfeited_units: int
     return_rate_pct: float | None
 
 
