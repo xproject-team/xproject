@@ -22,10 +22,13 @@ DESIGN CHOICES:
    The reference sync (B5) is responsible for keeping linkages fresh;
    the ingester is just an observer.
 
-3. **Refunded lines are recorded for audit but don't decrement stock.**
-   When Slesh marks a line as `status='refunded'`, we skip it (the
-   primary ingestion of the original sale already happened). A later
-   compensating transaction will be added in B7 if needed.
+3. **Refunded lines update the existing row's `pos_line_status`.**
+   When Slesh marks a line as `status='refunded'`, we UPDATE the row
+   that was written in a prior poll (when it was still 'confirmed'),
+   flipping its `pos_line_status` to 'refunded'. Aggregation queries
+   in event_kpi_service.py and category_totals_service.py filter on
+   `pos_line_status = 'confirmed'`, so refunded lines stop contributing
+   to revenue without losing the audit trail.
 
 4. **DRINK-only ingestion.**
    StockTransactionService.ingest_sale() validates that product_type==DRINK.
@@ -42,7 +45,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bars.models                  import Bar
@@ -245,11 +248,24 @@ async def _ingest_line(
 ) -> None:
     """Ingest one cart line. Mutates `result` in place."""
 
-    # Skip refunded lines — original sale was already ingested in a
-    # prior poll. Compensating transactions land in B7.
+    # Refunded lines: UPDATE the existing row (written in a prior poll
+    # when it was 'confirmed') so aggregation queries exclude it. If no
+    # row exists (refund happened within one poll cycle), the UPDATE is
+    # a no-op and we accept the small audit gap.
     if line.status == "refunded":
+        idem_key = f"slesh:{order.id}:{line.id}"
+        await db.execute(
+            text("""
+                UPDATE stock_transactions
+                SET pos_line_status = 'refunded'
+                WHERE tenant_id = :tenant_id
+                  AND source_idempotency_key = :idem_key
+                  AND pos_line_status != 'refunded'
+            """),
+            {"tenant_id": tenant_id, "idem_key": idem_key},
+        )
         result.lines_skipped += 1
-        result.skip_reasons.append(f"line {line.id}: status=refunded")
+        result.skip_reasons.append(f"line {line.id}: marked refunded")
         return
 
     # Resolve product. Skip if not in our catalog (run reference sync).

@@ -24,6 +24,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from unittest.mock import AsyncMock
 
 from app.modules.pos.order_ingester import (
     IngestResult,
@@ -337,9 +338,10 @@ async def test_ingest_order_refunded_line_skips(patched_lookups):
         cart  = [FakeCartLine(id="line_1", product="prod_1", status="refunded")],
     )
     service = FakeService()
+    db_mock = AsyncMock()
 
     result = await ingest_order(
-        db=None, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
+        db=db_mock, order=order, event_id=EVENT_ID, tenant_id=TENANT_ID,
         service=service,
     )
 
@@ -347,6 +349,8 @@ async def test_ingest_order_refunded_line_skips(patched_lookups):
     assert result.lines_ingested == 0
     assert any("refunded" in r for r in result.skip_reasons)
     assert service.calls == []
+    # Verify the pos_line_status='refunded' UPDATE was issued exactly once
+    assert db_mock.execute.await_count == 1
 
 
 @pytest.mark.asyncio

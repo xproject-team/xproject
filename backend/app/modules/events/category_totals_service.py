@@ -146,6 +146,7 @@ class BarCategoryTotalsService:
                 StockTransaction.event_id == event_id,
                 StockTransaction.source.in_(REVENUE_SOURCES),
                 StockTransaction.price_cents.is_not(None),
+                StockTransaction.pos_line_status == "confirmed",
             )
             .group_by(
                 Bar.id, Bar.name,

@@ -163,3 +163,14 @@ class StockTransaction(TenantScopedModel):
         nullable=True,
         index=True,
     )
+
+    # ─── POS line status (mirrors Slesh CartLine.status) ─────────────────
+    # 'confirmed' for normal sales, 'refunded' for cup/bottle returns.
+    # Aggregation queries filter on status='confirmed' so refunds don't
+    # inflate revenue. Default keeps legacy/manual rows behaving as before.
+    pos_line_status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'confirmed'"),
+        index=True,
+    )
