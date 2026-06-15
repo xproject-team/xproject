@@ -129,7 +129,7 @@ function EventDetailContent({ event }: { event: Event }) {
   const effectiveCanEdit          = effective.status !== 'completed'
   const effectiveCanStart         = effective.status === 'draft' || effective.status === 'active'
   const effectiveCanEnd           = effective.status === 'live'
-  const effectiveCanViewDashboard = effective.status === 'active' || effective.status === 'live'
+  const effectiveCanViewDashboard = effective.status !== 'draft'
   const effectiveCanViewReport    = effective.status === 'completed'
   const effectiveIsLive           = effective.status === 'live'
   // Real bars data — replaces MOCK_BARS for count and table
@@ -275,7 +275,7 @@ function EventDetailContent({ event }: { event: Event }) {
 
   function handleGoToDashboard() {
     setShowGoLiveDestination(false)
-    navigate('/dashboard')
+    navigate(`/dashboard?event_id=${event.id}`)
   }
 
   function handleEndConfirmed() {
@@ -363,7 +363,7 @@ function EventDetailContent({ event }: { event: Event }) {
           {/* View Dashboard — Active + Live */}
           {effectiveCanViewDashboard && !isEditing && (
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate(`/dashboard?event_id=${effective.id}`)}
               className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-4 py-2 rounded-lg transition-colors"
             >
               View Dashboard
