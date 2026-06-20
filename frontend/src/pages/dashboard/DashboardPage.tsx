@@ -15,7 +15,7 @@
  * Loading/error pattern follows EventDetailPage: outer wrapper handles
  * states with early returns, inner component receives guaranteed data.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { formatRelativeTime } from '@/lib/utils'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -465,12 +465,37 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   // render the actual event window instead of falling back to "now - 1h".
   const currentEventQuery = useEvent(eventId)
   const currentEvent      = currentEventQuery.data ?? liveEvent ?? undefined
+
+  // ended_at is admin metadata that can be set hours/days after the actual
+  // event closes. Sundance 14: last sale was Jun 14 ~22:30, but ended_at
+  // was set Jun 15 ~22:30 (we closed the event late in the system),
+  // producing a 33h chart with a 24h flat-line tail. Use the timestamp of
+  // the last transaction as the de-facto event-end signal instead — it
+  // matches the last meaningful data point and avoids that artifact.
+  const lastTxMs = useMemo(() => {
+    const rows = transactionsQuery.data
+    if (!rows?.length) return 0
+    let max = 0
+    for (const tx of rows) {
+      const t = new Date(tx.created_at).getTime()
+      if (t > max) max = t
+    }
+    return max
+  }, [transactionsQuery.data])
+
   const eventStartMs = currentEvent?.started_at
     ? new Date(currentEvent.started_at).getTime()
     : Date.now() - 3600_000
-  const nowMs = currentEvent?.ended_at
+
+  // For non-live events, prefer last-tx time over ended_at to avoid the
+  // long flat tail produced when admin closes the event late.
+  const isLive  = currentEvent?.status === 'live'
+  const endedMs = currentEvent?.ended_at
     ? new Date(currentEvent.ended_at).getTime()
     : Date.now()
+  const nowMs = isLive
+    ? Date.now()
+    : lastTxMs > 0 ? lastTxMs : endedMs
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
   // hooks still keeps the UI correct — belt AND suspenders.
