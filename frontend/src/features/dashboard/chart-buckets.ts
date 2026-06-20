@@ -273,3 +273,125 @@ export function buildEventRevenuePoints(input: BuildEventTotalInput): ChartPoint
   }
   return points
 }
+
+
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Stacked-bar-per-product chart (Hesam-requested, replaces 4-category lines
+// for drink bars). Each time bucket renders as a stacked bar where each
+// segment is one drink product's revenue IN THAT BUCKET (incremental, not
+// cumulative). Tooltip surfaces exact revenue + units per drink for that
+// bucket so Omar can see WHICH drinks drove a peak and WHEN. Builds a
+// productOrder array (rank-by-total-revenue desc) so the component renders
+// <Bar> elements in the correct stack order.
+//
+// ────────────────────────────────────────────────────────────────────────────
+
+export interface StackedBarChartPoint {
+  time_label: string
+  time_ms:    number
+  total:      number  // total euros in this bucket
+  __units:    Record<string, number>  // sidecar: per-product units (for tooltip)
+  __names:    Record<string, string>  // sidecar: per-product display names
+  // Plus dynamic [productId]: number entries — euros per product in this bucket.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any
+}
+
+export interface BuildStackedBarInput {
+  transactions:      StockTransactionRow[]
+  barId:             string
+  eventStartMs:      number
+  nowMs:             number
+  productNameById:   Record<string, string>
+  /** Subset of product IDs to include (e.g. drinks only). Undefined = all. */
+  allowedProductIds?: Set<string>
+}
+
+export interface StackedBarResult {
+  points:       StackedBarChartPoint[]
+  /** Product IDs in rank order (by total revenue desc) — render Bars in this order */
+  productOrder: string[]
+}
+
+export function buildStackedBarPerProduct(
+  input: BuildStackedBarInput,
+): StackedBarResult {
+  const { transactions, barId, eventStartMs, nowMs, productNameById, allowedProductIds } = input
+
+  const relevant = transactions
+    .filter((t) =>
+      t.bar_id === barId &&
+      t.parent_transaction_id === null &&
+      t.price_cents !== null &&
+      (allowedProductIds === undefined || allowedProductIds.has(t.product_id)),
+    )
+    .map((t) => ({
+      ts:        new Date(t.created_at).getTime(),
+      productId: t.product_id,
+      cents:     t.price_cents as number,
+      qty:       t.qty,
+    }))
+    .sort((a, b) => a.ts - b.ts)
+
+  // Compute total per product to determine rank order (desc by revenue).
+  // The component renders <Bar> elements in this order so the visual stack
+  // is consistent across bars and the top-seller is always the bottom of
+  // the stack.
+  const totalCents = new Map<string, number>()
+  for (const r of relevant) {
+    totalCents.set(r.productId, (totalCents.get(r.productId) ?? 0) + r.cents)
+  }
+  const productOrder = [...totalCents.entries()]
+    .filter(([, c]) => c > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id)
+
+  // Bucketing — same ladder as the multi-line chart for consistency.
+  const bucketMin    = pickBucketMinutes(nowMs - eventStartMs)
+  const bucketMs     = bucketMin * 60 * 1000
+  const alignedStart = floorToBucket(eventStartMs, bucketMs)
+  const alignedEnd   = floorToBucket(nowMs, bucketMs) + bucketMs
+
+  const points: StackedBarChartPoint[] = []
+  let txIdx = 0
+
+  for (let bs = alignedStart; bs < alignedEnd; bs += bucketMs) {
+    const be = bs + bucketMs
+    const bucketRev:   Record<string, number> = {}
+    const bucketUnits: Record<string, number> = {}
+
+    while (txIdx < relevant.length && relevant[txIdx].ts < be) {
+      const r = relevant[txIdx]
+      bucketRev[r.productId]   = (bucketRev[r.productId]   ?? 0) + r.cents
+      bucketUnits[r.productId] = (bucketUnits[r.productId] ?? 0) + r.qty
+      txIdx += 1
+    }
+
+    let total = 0
+    const point: StackedBarChartPoint = {
+      time_label: formatTime(bs),
+      time_ms:    bs,
+      total:      0,
+      __units:    {},
+      __names:    {},
+    }
+
+    for (const id of productOrder) {
+      const cents = bucketRev[id] ?? 0
+      if (cents > 0) {
+        const euros        = Math.round(cents / 100)
+        point[id]          = euros
+        point.__units[id]  = bucketUnits[id] ?? 0
+        point.__names[id]  = productNameById[id] ?? id.slice(0, 8)
+        total += euros
+      }
+    }
+    point.total = total
+
+    points.push(point)
+  }
+
+  return { points, productOrder }
+}
+
