@@ -24,6 +24,7 @@ import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
 import { useBarAllocations } from '@/features/event_storage/hooks'
+import { useEvent } from '@/features/events/hooks'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
@@ -455,15 +456,21 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const alertsQuery        = useAlertsForEvent(eventId, { onlyActive: false })
   const alertCountsByBarQuery = useAlertsCountByBar(eventId)
 
-  // Time references for the multi-line charts.
-  // Computed ONCE per render so all 22 bar cards + the event chart
-  // share the same buckets. liveEvent.started_at may be null for
-  // events that haven\'t started — fall back to "1h ago" so charts
-  // render an empty timeline instead of crashing.
-  const nowMs = Date.now()
-  const eventStartMs = liveEvent?.started_at
-    ? new Date(liveEvent.started_at).getTime()
-    : nowMs - 3600_000
+  // For LIVE events:      eventStartMs = started_at, nowMs = Date.now() (ticks)
+  // For COMPLETED events: eventStartMs = started_at, nowMs = ended_at  (frozen)
+  // For DRAFT/SCHEDULED:  fall back to "now - 1h" so the chart renders empty.
+  //
+  // liveEvent is only populated for status=LIVE. For past events accessed
+  // via ?event_id=, we resolve currentEvent via useEvent(eventId) so charts
+  // render the actual event window instead of falling back to "now - 1h".
+  const currentEventQuery = useEvent(eventId)
+  const currentEvent      = currentEventQuery.data ?? liveEvent ?? undefined
+  const eventStartMs = currentEvent?.started_at
+    ? new Date(currentEvent.started_at).getTime()
+    : Date.now() - 3600_000
+  const nowMs = currentEvent?.ended_at
+    ? new Date(currentEvent.ended_at).getTime()
+    : Date.now()
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
   // hooks still keeps the UI correct — belt AND suspenders.
