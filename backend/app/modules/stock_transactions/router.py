@@ -66,7 +66,7 @@ async def list_transactions_for_event(
         Query(description="Filter by source"),
     ] = None,
     limit: Annotated[
-        int, Query(ge=1, le=500, description="Max rows (default/max 500)"),
+        int, Query(ge=1, le=25000, description="Max rows (default 500, max 25000 — dashboard aggregation needs full event)"),
     ] = 500,
 ) -> list[StockTransactionResponse]:
     """Ledger rows for an event, newest first.

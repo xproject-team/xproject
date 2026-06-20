@@ -131,7 +131,7 @@ export function useTransactionsForEvent(eventId: string | null | undefined) {
     queryKey: dashboardKeys.transactions(eventId ?? 'none'),
     queryFn: async () => {
       const { data } = await api.get<StockTransactionRow[]>(
-        `/stock-transactions/by-event/${eventId}?limit=500`,
+        `/stock-transactions/by-event/${eventId}?limit=25000`,
       )
       return data
     },
