@@ -56,11 +56,30 @@ class BarService:
         event_id: UUID,
         only_active: bool = False,
     ) -> Sequence[Bar]:
-        """All bars for one event. Validates event exists in tenant first."""
+        """All bars for one event with POS devices attached.
+
+        Each Bar instance gets `.devices` (list[BarDevice]) and
+        `.devices_active` (int) populated as instance attributes.
+        Pydantic\'s from_attributes=True reads these into
+        BarResponse.devices and BarResponse.devices_active.
+
+        Phase 2 (Jun 21 2026): replaces the old shape that returned
+        bars without device data. Existing callers still get a
+        Sequence[Bar]; the new fields are additive.
+        """
         event = await self.events.get_by_id(tenant_id, event_id)
         if event is None:
             raise EventNotFoundForBarError(f"Event {event_id} not found")
-        return await self.repo.list_for_event(tenant_id, event_id, only_active)
+        bars = await self.repo.list_for_event(tenant_id, event_id, only_active)
+        devices_by_bar = await self.repo.fetch_devices_for_event(
+            tenant_id, event_id,
+        )
+        for bar in bars:
+            bar.devices = devices_by_bar.get(bar.id, [])
+            bar.devices_active = sum(
+                1 for d in bar.devices if d.is_active
+            )
+        return bars
 
     async def get_bar(self, tenant_id: UUID, bar_id: UUID) -> Bar:
         """Fetch a single bar. Raises BarNotFoundError if missing."""

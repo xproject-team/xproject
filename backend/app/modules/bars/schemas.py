@@ -7,6 +7,7 @@ Note: bar_type is a string (not enum) matching the underlying model,
 which uses String(32) for forward compatibility with future bar types.
 Validated at the schema layer to the known set of values.
 """
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -14,6 +15,29 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # The canonical set of bar_type values. Extend here when new types are added.
 BarType = Literal["drinks", "food", "mixed", "merch", "service"]
+
+
+class BarDeviceResponse(BaseModel):
+    """A POS device assigned to a bar for the current event.
+
+    Maps 1:1 to a Slesh operator account (Ss-bar-main-1@slesh.it etc).
+    Returned as part of BarResponse.devices when the bar is fetched
+    in a per-event context.
+
+    Phase 2 (Jun 21 2026).
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    bar_id: UUID
+    event_id: UUID
+    slesh_operator_id: str
+    slesh_operator_email: str
+    device_number: int | None = None
+    role: str
+    display_name: str | None = None
+    is_active: bool
+    last_order_at: datetime | None = None
 
 
 class BarResponse(BaseModel):
@@ -33,6 +57,14 @@ class BarResponse(BaseModel):
     slesh_category: str | None = None
     is_active: bool
     auto_created: bool = False
+
+    # ─── Phase 2 (Jun 21 2026): device tracking ──────────────────────
+    # `device_count` (above) is the historical Excel-derived number,
+    # kept for backward compat. `devices` is the live list of POS
+    # devices for this event. `devices_active` counts only devices
+    # that have processed >= 1 order.
+    devices: list[BarDeviceResponse] = []
+    devices_active: int = 0
 
 
 class BarCreate(BaseModel):

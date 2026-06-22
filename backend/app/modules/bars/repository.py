@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bars.models import Bar
+from app.modules.bars.device_model import BarDevice
 from app.modules.bars.schemas import BarCreate, BarUpdate
 
 
@@ -102,3 +103,27 @@ class BarRepository:
         """Hard delete. For soft-remove, set is_active=False via update()."""
         await self.db.delete(bar)
         await self.db.flush()
+
+    # ─── Phase 2 (Jun 21 2026): device queries ───────────────────────
+
+    async def fetch_devices_for_event(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> dict[UUID, list[BarDevice]]:
+        """Return all bar_devices for an event, grouped by bar_id.
+
+        Single query, no N+1. Used by list_bars_for_event to attach
+        devices to each Bar instance before serialization.
+        """
+        stmt = (
+            select(BarDevice)
+            .where(BarDevice.tenant_id == tenant_id)
+            .where(BarDevice.event_id == event_id)
+            .order_by(BarDevice.bar_id, BarDevice.device_number.asc())
+        )
+        result = await self.db.execute(stmt)
+        out: dict[UUID, list[BarDevice]] = {}
+        for d in result.scalars().all():
+            out.setdefault(d.bar_id, []).append(d)
+        return out
