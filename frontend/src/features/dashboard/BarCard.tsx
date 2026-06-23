@@ -12,9 +12,10 @@
  */
 import { useState } from 'react'
 
-import type { BarKpi, BarRow, BarStatus, FoodItemCount, StockTransactionRow } from '@/lib/mockData'
+import type { BarKpi, BarRow, BarStatus, StockTransactionRow } from '@/lib/mockData'
 
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
+import { FoodBarCard } from '@/features/dashboard/FoodBarCard'
 import type { ProductLike } from '@/features/dashboard/category-resolver' 
 
 interface BarCardProps {
@@ -47,7 +48,7 @@ interface BarCardProps {
   }
 }
 
-const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
+export const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
   healthy:  { dot: 'bg-[#38A169]',              label: 'Healthy',   labelColor: 'text-[#38A169]' },
   warning:  { dot: 'bg-[#D69E2E]',              label: 'Low Stock', labelColor: 'text-[#D69E2E]' },
   critical: { dot: 'bg-[#E53E3E] animate-pulse', label: 'Critical',  labelColor: 'text-[#E53E3E]' },
@@ -63,7 +64,7 @@ function stockBarColor(pct: number) {
 // Kept intentionally quiet — doesn't scream, but makes it obvious this number
 // will become real once the relevant backend ships. One line, italicized, dim.
 
-function Placeholder({ label }: { label: string }) {
+export function Placeholder({ label }: { label: string }) {
   return (
     <span className="text-[#A0AEC0] italic" title={`${label} — coming soon`}>
       —
@@ -74,41 +75,6 @@ function Placeholder({ label }: { label: string }) {
 // ─── Food-bar middle section (Phase D-bis) ──────────────────────────────────
 // Food bars don't have drink categories or a burn chart; they show per-item
 // counts (sold + remaining). Same card wrapper, name, alert pill, overlay.
-function FoodBarCardBody({ items }: { items: FoodItemCount[] }) {
-  const totalSold = items.reduce((sum, i) => sum + i.sold, 0)
-  const top = items.slice(0, 6)
-  return (
-    <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-xs text-[#4A5568]">Food Items Sold</p>
-        <p className="text-sm font-bold text-[#1A202C]">{totalSold}</p>
-      </div>
-      {top.length === 0 ? (
-        <p className="text-[11px] text-[#A0AEC0] italic py-3 text-center">
-          No food items allocated yet
-        </p>
-      ) : (
-        <ul className="space-y-1">
-          {top.map((it) => (
-            <li key={it.name} className="flex items-center justify-between text-xs">
-              <span className="text-[#1A202C] truncate pr-2">{it.name}</span>
-              <span className="shrink-0 tabular-nums">
-                <span className="font-semibold text-[#1A202C]">{it.sold}</span>
-                <span className="text-[#A0AEC0]"> · {it.remaining} left</span>
-              </span>
-            </li>
-          ))}
-          {items.length > top.length && (
-            <li className="text-[10px] text-[#A0AEC0] italic pt-0.5">
-              +{items.length - top.length} more…
-            </li>
-          )}
-        </ul>
-      )}
-    </div>
-  )
-}
-
 export function BarCard({
   bar,
   criticalAlertCount = 0,
@@ -126,6 +92,24 @@ export function BarCard({
   // the select so a fast double-tap can't issue a second mutation in
   // the ~1s window before mapping-state refetches and the stub unmounts.
   const [pickedDstId, setPickedDstId] = useState<string>('')
+
+  // ── Food vendor bars get a different card variant ──
+  // Food trucks/vendors are independent businesses Omar invites to the
+  // event — they bring their own staff + inventory. Burn-rate / depletion /
+  // stock-level tiles describe inventory the VENDOR owns, not Omar, so they
+  // don't apply here. Delegate to FoodBarCard which shows the things Omar
+  // actually cares about for food bars: revenue, his cut, items sold, and
+  // device health. See FoodBarCard.tsx for the full rationale.
+  if (bar.bar_type === 'food') {
+    return (
+      <FoodBarCard
+        bar={bar}
+        criticalAlertCount={criticalAlertCount}
+        onClick={onClick}
+        mergeOptions={mergeOptions}
+      />
+    )
+  }
 
   const revenueEuros = Math.round(bar.revenue_cents / 100)
 
@@ -251,24 +235,22 @@ export function BarCard({
             Replaces the old tier B/S/P/U chips. Locked May 27 2026: bars
             display multi-line per-category chart for live-sale-crash
             detection. Categories: beer / cocktails / premium_cocktails / wine. */}
-      {bar.bar_type === 'food' ? (
-        <FoodBarCardBody items={bar.food_items} />
-      ) : (
-        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs text-[#4A5568]">Drinks Sold</p>
-            <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
-          </div>
-          <BarMiniChart
-            barId={bar.id}
-            transactions={transactions}
-            products={products}
-            eventStartMs={eventStartMs}
-            nowMs={nowMs}
-            height={120}
-          />
+      {/* Drinks-sold chart. Food bars short-circuit to FoodBarCard at the
+          top of this function, so this block is drinks-only. */}
+      <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs text-[#4A5568]">Drinks Sold</p>
+          <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
         </div>
-      )}
+        <BarMiniChart
+          barId={bar.id}
+          transactions={transactions}
+          products={products}
+          eventStartMs={eventStartMs}
+          nowMs={nowMs}
+          height={120}
+        />
+      </div>
 
       {/* 5 — Stock Level (REAL) */}
       <div className="mb-3">
