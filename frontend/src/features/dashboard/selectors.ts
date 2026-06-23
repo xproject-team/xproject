@@ -223,6 +223,10 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       time_to_depletion_min: bar_ttd,
       staff_count:          null,
       last_alert:           null,
+      // ── Phase 2 (Jun 21 2026): real device data from BarRow ──
+      devices:        bar.devices ?? [],
+      devices_total:  (bar.devices ?? []).length,
+      devices_active: bar.devices_active ?? 0,
     }
   })
 }

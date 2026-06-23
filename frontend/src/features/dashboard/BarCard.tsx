@@ -305,15 +305,30 @@ export function BarCard({
           <p className="text-[9px] text-[#4A5568]">remaining</p>
         </div>
 
+        {/* Staff tile — Phase 2 (Jun 21 2026): real device data.
+             Format: {active}/{total}, e.g. "7/9" — one Slesh device per bartender.
+             Active goes green when any device is logged in; subtitle adapts. */}
         <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
           <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Staff</p>
           <p className="text-sm font-bold mt-0.5 flex items-center justify-center gap-0.5">
-            <svg className="w-3.5 h-3.5 text-[#A0AEC0]" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-3.5 h-3.5 text-[#4A5568]" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
             </svg>
-            <Placeholder label="Staff shift module" />
+            {bar.devices_total === 0 ? (
+              <Placeholder label="No devices configured" />
+            ) : (
+              <span>
+                <span className={bar.devices_active > 0 ? 'text-[#38A169]' : 'text-[#A0AEC0]'}>
+                  {bar.devices_active}
+                </span>
+                <span className="text-[#A0AEC0]">/</span>
+                {bar.devices_total}
+              </span>
+            )}
           </p>
-          <p className="text-[9px] text-[#4A5568]">on shift</p>
+          <p className="text-[9px] text-[#4A5568]">
+            {bar.devices_total === 0 ? 'unconfigured' : 'active'}
+          </p>
         </div>
       </div>
 

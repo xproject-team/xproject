@@ -699,6 +699,21 @@ export interface ReconciliationReport {
 
 export type BarType = 'drinks' | 'food' | 'mixed' | 'merch' | 'service'
 
+export interface BarDevice {
+  // Per-event POS device. 1:1 with a Slesh operator account.
+  // Maps to backend BarDeviceResponse (Phase 2, Jun 21 2026).
+  id:                   string
+  bar_id:               string
+  event_id:             string
+  slesh_operator_id:    string
+  slesh_operator_email: string
+  device_number:        number | null
+  role:                 string         // 'bartender' | 'helper'
+  display_name:         string | null
+  is_active:            boolean
+  last_order_at:        string | null  // ISO 8601
+}
+
 export interface BarRow {
   id: string
   event_id: string
@@ -711,6 +726,11 @@ export interface BarRow {
   device_count?: number
   slesh_category?: string | null
   auto_created?: boolean
+
+  // Phase 2 (Jun 21 2026) — backend BarResponse now sends devices.
+  // Optional so legacy mock fixtures elsewhere in this file keep compiling.
+  devices?:        BarDevice[]
+  devices_active?: number
 }
 
 // ─── /api/v1/bars/mapping-state response (Phase 1 — dashboard 3-region) ──────
@@ -787,6 +807,51 @@ export interface BarKpi {
   burn_rate:     number | null                 // btl/hr — needs time-windowed tx analysis
   burn_trend:    null                 // 'up' | 'down' | 'stable'
   time_to_depletion_min: number | null         // derived from burn_rate + current_stock
-  staff_count:   null                 // no backend — staff module is post-Sundance
+  staff_count:   null                 // legacy placeholder — use devices_total
   last_alert:    null                 // no backend — alerts module separate
+
+  // ── Phase 2 (Jun 21 2026): real device data ──
+  // Populated by selectBarKpis from BarRow.devices.
+  devices:        BarDevice[]
+  devices_total:  number              // = devices.length, convenience
+  devices_active: number              // count where is_active=true
+}
+
+// ─── /api/v1/recharge-stations/by-event/{event_id} (Phase 2) ─────────────
+// Dashboard payload for the Recharge Desk card. One station per event in
+// practice (Sundance design); the shape supports multiple if needed.
+
+export interface RechargeDeviceKpi {
+  id:                       string
+  event_id:                 string
+  recharge_station_id:      string
+  slesh_operator_id:        string
+  slesh_operator_email:     string
+  device_number:            number | null
+  role:                     string         // 'cashier'
+  is_active:                boolean
+  last_order_at:            string | null
+  // Aggregates from ricarica_transactions:
+  total_amount_cents:       number
+  total_transactions:       number
+  stripe_ttp_amount_cents:  number
+  stripe_ttp_transactions:  number
+  contanti_amount_cents:    number
+  contanti_transactions:    number
+}
+
+export interface RechargeStationKpi {
+  id:                       string
+  event_id:                 string
+  name:                     string
+  devices:                  RechargeDeviceKpi[]
+  devices_total:            number
+  devices_active:           number
+  // Roll-ups across all devices at this station:
+  total_amount_cents:       number
+  total_transactions:       number
+  stripe_ttp_amount_cents:  number
+  stripe_ttp_transactions:  number
+  contanti_amount_cents:    number
+  contanti_transactions:    number
 }
