@@ -23,6 +23,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
+import { RechargeDeskCard } from '@/features/dashboard/RechargeDeskCard'
 import { useBarAllocations } from '@/features/event_storage/hooks'
 import { useEvent } from '@/features/events/hooks'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
@@ -732,6 +733,14 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   eventStartMs={eventStartMs}
                   nowMs={nowMs}
                 />
+              </div>
+              {/* Recharge desk — Phase 2 (Jun 21 2026). Money-in row sits
+                  between the event-total chart and the bar grid so the
+                  page reads top-down: top KPIs → live trend → money came
+                  in via top-ups → money got spent across bars. Card hides
+                  itself if the event has no recharge stations configured. */}
+              <div className="mb-4">
+                <RechargeDeskCard eventId={eventId} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {liveKpis.map((kpi) => {
