@@ -43,6 +43,7 @@ from datetime import datetime as _dt_datetime, timezone as _dt_timezone
 from sqlalchemy.dialects.postgresql import insert as _pg_insert
 
 from app.modules.events.models import EventOrder as _EventOrder
+from app.modules.bars.device_model import BarDevice as _BarDevice
 
 import logging
 from dataclasses import dataclass, field
@@ -242,10 +243,28 @@ async def ingest_order(
         """Round optional float (Slesh VAT splits arrive as fractional cents) → int cents."""
         return None if v is None else int(round(v))
 
+    # Preserve operator + user from the parsed Slesh order. Until Phase 3
+    # (Jun 21 2026) this column was always NULL, which meant we had no
+    # way to link a sale back to the device that made it — bar_devices
+    # rows never lit up. Now stored as a small jsonb blob; full raw
+    # order doc is intentionally NOT stored to keep row size manageable.
+    _raw_extras = {}
+    _op = getattr(order, "operator", None)
+    if _op is not None and not isinstance(_op, str):
+        _raw_extras["operator"] = _op.model_dump(mode="json", exclude_none=True)
+    elif isinstance(_op, str):
+        _raw_extras["operator"] = {"_id": _op}
+    _u = getattr(order, "user", None)
+    if _u is not None and not isinstance(_u, str):
+        _raw_extras["user"] = _u.model_dump(mode="json", exclude_none=True)
+    elif isinstance(_u, str):
+        _raw_extras["user"] = {"_id": _u}
+
     _eo_values = dict(
         tenant_id=tenant_id,
         event_id=event_id,
         slesh_order_id=order.id,
+        raw_extras=_raw_extras or None,
         slesh_shop_id=_slesh_shop_id,
         bar_id=bar.id if bar is not None else None,
         order_type=getattr(order, "type", "experience"),
@@ -274,8 +293,129 @@ async def ingest_order(
     )
     await db.execute(_eo_stmt)
 
+    # ── Phase 3 (Jun 21 2026): mark the bar_device that processed
+    # this order as active. Defensive: any failure in device
+    # resolution must not propagate — the order itself is already
+    # persisted, that's the critical path.
+    if bar is not None:
+        try:
+            await _touch_bar_device(
+                db=db,
+                tenant_id=tenant_id,
+                event_id=event_id,
+                bar_id=bar.id,
+                operator=getattr(order, "operator", None),
+                order_created_at=_eo_values["created_at_slesh"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "ingest_order %s: bar_device touch failed (non-fatal): %s",
+                order.id, exc,
+            )
+
     logger.info("ingest_order: %s", result)
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Device touch — Phase 3 (Jun 21 2026)
+# ─────────────────────────────────────────────────────────────────────
+async def _touch_bar_device(
+    *,
+    db:        AsyncSession,
+    tenant_id: UUID,
+    event_id:  UUID,
+    bar_id:    UUID,
+    operator,                         # User | str | None (typed via schemas)
+    order_created_at: _dt_datetime,
+) -> None:
+    """Mark the bar_device that processed an order as active.
+
+    Resolution strategy:
+      1) Match by slesh_operator_id (Mongo _id). Stable join key for any
+         row written by a previous live touch.
+      2) Match by slesh_operator_email. Excel-imported rows store the
+         email in BOTH slesh_operator_id and slesh_operator_email columns
+         (importer uses the email as a placeholder ID). When we find a
+         row this way, we backfill the real Mongo _id into the id column
+         so subsequent orders match on the cheaper (1) path.
+      3) Lazy-create a new row. Defensive — Phase 4 wizard will pre-
+         populate bar_devices for every event, but if an unmapped Slesh
+         operator surfaces mid-event we still want it tracked rather
+         than silently dropped.
+
+    On every match, we set is_active=True and bump last_order_at only
+    if the order is newer than the stored value. last_order_at MUST
+    advance monotonically — out-of-order polls (rare but possible)
+    should not rewind it.
+    """
+    if operator is None:
+        return
+
+    # Extract identity. Slesh sends operator as either a populated User
+    # object or a bare Mongo _id string, depending on `populatedField`.
+    if isinstance(operator, str):
+        op_id, op_email = operator, None
+    else:
+        op_id = getattr(operator, "id", None)
+        info  = getattr(operator, "info", None) or {}
+        op_email = info.get("email") if isinstance(info, dict) else None
+
+    if not op_id and not op_email:
+        return  # nothing to match on
+
+    # ── 1) Lookup by Mongo _id
+    device = None
+    if op_id:
+        res = await db.execute(
+            select(_BarDevice)
+            .where(_BarDevice.tenant_id == tenant_id)
+            .where(_BarDevice.event_id  == event_id)
+            .where(_BarDevice.slesh_operator_id == op_id)
+        )
+        device = res.scalar_one_or_none()
+
+    # ── 2) Fallback: lookup by email (Excel-imported rows)
+    if device is None and op_email:
+        res = await db.execute(
+            select(_BarDevice)
+            .where(_BarDevice.tenant_id == tenant_id)
+            .where(_BarDevice.event_id  == event_id)
+            .where(_BarDevice.slesh_operator_email == op_email)
+        )
+        device = res.scalar_one_or_none()
+        if device is not None and op_id and device.slesh_operator_id != op_id:
+            # Backfill the real Mongo _id so future orders hit path (1).
+            device.slesh_operator_id = op_id
+
+    # ── 3) Lazy-create if neither path matched
+    if device is None:
+        # We need a non-NULL email to create the row (schema constraint).
+        # If Slesh only gave us an _id string with no email, fabricate a
+        # placeholder so the row is creatable; Phase 4 wizard or a future
+        # reconcile pass can correct it.
+        if not op_email:
+            op_email = f"{op_id}@unknown.slesh"
+        device = _BarDevice(
+            tenant_id            = tenant_id,
+            event_id             = event_id,
+            bar_id               = bar_id,
+            slesh_operator_id    = op_id or op_email,
+            slesh_operator_email = op_email,
+            device_number        = None,
+            role                 = "bartender",
+            display_name         = None,
+            is_active            = True,
+            last_order_at        = order_created_at,
+        )
+        db.add(device)
+        return  # nothing else to update — we just created it active
+
+    # ── Existing row: flip active + bump last_order_at (monotonic)
+    if not device.is_active:
+        device.is_active = True
+    if device.last_order_at is None or order_created_at > device.last_order_at:
+        device.last_order_at = order_created_at
 
 
 # ─────────────────────────────────────────────────────────────────────

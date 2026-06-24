@@ -23,6 +23,7 @@ from app.modules.stock_transactions.models import StockTransaction
 from app.modules.stock_transactions.service import StockTransactionService
 from tests.fixtures.alerts.factories import (
     delete_tenant_cascade,
+    make_bar,
     make_event,
     make_product,
     make_tenant,
@@ -61,6 +62,19 @@ class _Order:
     payment: _Payment | None = None
     type: str = "experience"
     status: str = "completed"
+    operator: Any = None       # Phase 3: _User | str | None
+    user: Any = None           # wristband holder, currently unused by tests
+    created_at: int = 0        # ms since epoch, Slesh's format
+
+
+@dataclass
+class _User:
+    """Mirrors the Pydantic User shape from app.modules.pos.schemas:
+    a Slesh operator or wristband holder."""
+    id: str | None = None      # Mongo _id (raw value, not aliased)
+    type: str | None = None    # "operator" | "user"
+    tag: str | None = None
+    info: dict | None = None
 
 
 async def _setup(session, *, external_pos_id: str):
@@ -160,3 +174,216 @@ async def test_unmapped_shop_reused_on_second_order():
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()
+# ─────────────────────────────────────────────────────────────────────
+# Phase 3 (Jun 21 2026) — bar_device live-touch
+# ─────────────────────────────────────────────────────────────────────
+# These exercise _touch_bar_device directly with a real session.
+# Each test covers one resolution branch:
+#   1. match by Mongo _id (fast path, future steady-state)
+#   2. match by email + backfill the Mongo _id (Excel-imported rows)
+#   3. lazy-create on miss (defensive — Phase 4 wizard will pre-populate)
+#   4. monotonic last_order_at (out-of-order polls must not rewind it)
+from datetime import datetime, timedelta, timezone as _tz
+
+from app.modules.bars.device_model import BarDevice
+from app.modules.pos.order_ingester import _touch_bar_device
+
+
+async def _make_bar_device(
+    session, *,
+    tenant_id, event_id, bar_id,
+    slesh_operator_id: str,
+    slesh_operator_email: str,
+    is_active: bool = False,
+    last_order_at: datetime | None = None,
+) -> BarDevice:
+    """Inline factory — no make_bar_device in fixtures/."""
+    bd = BarDevice(
+        tenant_id            = tenant_id,
+        event_id             = event_id,
+        bar_id               = bar_id,
+        slesh_operator_id    = slesh_operator_id,
+        slesh_operator_email = slesh_operator_email,
+        device_number        = None,
+        role                 = "bartender",
+        display_name         = None,
+        is_active            = is_active,
+        last_order_at        = last_order_at,
+    )
+    session.add(bd)
+    await session.flush()
+    return bd
+
+
+async def test_touch_bar_device_matches_by_mongo_id():
+    """Existing row keyed by Mongo _id — fast-path lookup, flipped active."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event  = await make_event(session, tenant.id)
+        bar    = await make_bar(session, tenant.id, event.id)
+
+        bd = await _make_bar_device(
+            session,
+            tenant_id            = tenant.id,
+            event_id             = event.id,
+            bar_id               = bar.id,
+            slesh_operator_id    = "6650abc1234def5678e2f9aa",
+            slesh_operator_email = "Ss-bar-main-3@slesh.it",
+            is_active            = False,
+            last_order_at        = None,
+        )
+
+        operator = _User(
+            id   = "6650abc1234def5678e2f9aa",
+            type = "operator",
+            info = {"email": "Ss-bar-main-3@slesh.it", "name": "Mario"},
+        )
+        ts = datetime(2026, 7, 5, 22, 30, tzinfo=_tz.utc)
+
+        await _touch_bar_device(
+            db=session, tenant_id=tenant.id, event_id=event.id,
+            bar_id=bar.id, operator=operator, order_created_at=ts,
+        )
+        await session.flush()
+        await session.refresh(bd)
+
+        assert bd.is_active is True
+        assert bd.last_order_at == ts
+
+        # No duplicate row created
+        total = await session.scalar(
+            select(func.count()).select_from(BarDevice)
+            .where(BarDevice.event_id == event.id)
+        )
+        assert total == 1
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_touch_bar_device_matches_by_email_and_backfills_mongo_id():
+    """Excel-imported row stores email as slesh_operator_id. When a live
+    order arrives with the real Mongo _id, we should match via email
+    AND overwrite slesh_operator_id with the real _id."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event  = await make_event(session, tenant.id)
+        bar    = await make_bar(session, tenant.id, event.id)
+
+        # Excel-style row: slesh_operator_id is the email (placeholder)
+        bd = await _make_bar_device(
+            session,
+            tenant_id            = tenant.id,
+            event_id             = event.id,
+            bar_id               = bar.id,
+            slesh_operator_id    = "Ss-bar-stage-2@slesh.it",
+            slesh_operator_email = "Ss-bar-stage-2@slesh.it",
+            is_active            = False,
+        )
+
+        operator = _User(
+            id   = "6650bbb1234def5678e2f9bb",   # real Mongo _id
+            type = "operator",
+            info = {"email": "Ss-bar-stage-2@slesh.it"},
+        )
+        ts = datetime(2026, 7, 5, 23, 0, tzinfo=_tz.utc)
+
+        await _touch_bar_device(
+            db=session, tenant_id=tenant.id, event_id=event.id,
+            bar_id=bar.id, operator=operator, order_created_at=ts,
+        )
+        await session.flush()
+        await session.refresh(bd)
+
+        assert bd.is_active is True
+        assert bd.last_order_at == ts
+        assert bd.slesh_operator_id == "6650bbb1234def5678e2f9bb"
+        # Email column untouched — that's the stable, human-readable label
+        assert bd.slesh_operator_email == "Ss-bar-stage-2@slesh.it"
+
+        total = await session.scalar(
+            select(func.count()).select_from(BarDevice)
+            .where(BarDevice.event_id == event.id)
+        )
+        assert total == 1
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_touch_bar_device_lazy_creates_when_missing():
+    """No matching row anywhere -> create a new active device row.
+    Defensive: Phase 4 wizard pre-populates, but unmapped operators
+    can surface mid-event (new staff, ad-hoc devices) and must be tracked."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event  = await make_event(session, tenant.id)
+        bar    = await make_bar(session, tenant.id, event.id)
+
+        # NO pre-existing bar_devices row.
+        operator = _User(
+            id   = "6650ccc1234def5678e2f9cc",
+            type = "operator",
+            info = {"email": "Ss-bar-three-1@slesh.it", "name": "Sara"},
+        )
+        ts = datetime(2026, 7, 5, 21, 0, tzinfo=_tz.utc)
+
+        await _touch_bar_device(
+            db=session, tenant_id=tenant.id, event_id=event.id,
+            bar_id=bar.id, operator=operator, order_created_at=ts,
+        )
+        await session.flush()
+
+        created = await session.scalar(
+            select(BarDevice)
+            .where(BarDevice.event_id == event.id)
+            .where(BarDevice.slesh_operator_id == "6650ccc1234def5678e2f9cc")
+        )
+        assert created is not None
+        assert created.is_active is True
+        assert created.last_order_at == ts
+        assert created.slesh_operator_email == "Ss-bar-three-1@slesh.it"
+        assert created.role == "bartender"
+        assert created.bar_id == bar.id
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_touch_bar_device_last_order_at_is_monotonic():
+    """An older order arriving after a newer one (rare but possible with
+    polling overlap) must not rewind last_order_at."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event  = await make_event(session, tenant.id)
+        bar    = await make_bar(session, tenant.id, event.id)
+
+        newer = datetime(2026, 7, 5, 23, 30, tzinfo=_tz.utc)
+        older = newer - timedelta(minutes=15)
+
+        bd = await _make_bar_device(
+            session,
+            tenant_id            = tenant.id,
+            event_id             = event.id,
+            bar_id               = bar.id,
+            slesh_operator_id    = "6650ddd1234def5678e2f9dd",
+            slesh_operator_email = "Ss-bar-main-1@slesh.it",
+            is_active            = True,
+            last_order_at        = newer,
+        )
+
+        operator = _User(
+            id   = "6650ddd1234def5678e2f9dd",
+            type = "operator",
+            info = {"email": "Ss-bar-main-1@slesh.it"},
+        )
+
+        # Older order arrives — must not regress last_order_at
+        await _touch_bar_device(
+            db=session, tenant_id=tenant.id, event_id=event.id,
+            bar_id=bar.id, operator=operator, order_created_at=older,
+        )
+        await session.flush()
+        await session.refresh(bd)
+
+        assert bd.last_order_at == newer  # held its ground
+        assert bd.is_active is True       # still active
+
+        await delete_tenant_cascade(session, tenant.id)
