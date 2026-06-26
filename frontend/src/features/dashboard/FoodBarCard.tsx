@@ -24,12 +24,14 @@ import type { BarKpi, BarRow, FoodItemCount } from '@/lib/mockData'
 
 import { STATUS_CFG, Placeholder } from '@/features/dashboard/BarCard'
 
-// ── Omar's percentage share of food-vendor gross revenue ─────────────────────
-// Sundance 14 baked this in at 30% (see commit 0868449 "30% food share").
-// Stays hardcoded here until the Create Event wizard (Phase 4) lets us
-// configure per-event / per-vendor.
-// TODO(phase-4): move to event.food_share_pct or vendor_contracts table.
-const FOOD_SHARE_PCT = 0.30
+// ── Owner's share of food-vendor gross revenue ───────────────────────────────
+// Read from event.food_revenue_share_pct (carried on each BarKpi as
+// food_revenue_share_pct). The DB column is an int 0-100; we convert to a
+// 0-1 ratio at the use site. Wizard (Phase 4) is where Omar configures
+// this per event. When NULL we fall back to 30% — matches Sundance 14
+// baseline and keeps the card legible for events created before the field
+// was wired through.
+const FOOD_SHARE_PCT_DEFAULT = 30  // percent
 
 interface FoodBarCardProps {
   bar: BarKpi
@@ -89,7 +91,8 @@ export function FoodBarCard({
   const [pickedDstId, setPickedDstId] = useState<string>('')
 
   const revenueEuros  = Math.round(bar.revenue_cents / 100)
-  const omarsCutEuros = Math.round((bar.revenue_cents * FOOD_SHARE_PCT) / 100)
+  const sharePct  = bar.food_revenue_share_pct ?? FOOD_SHARE_PCT_DEFAULT
+  const omarsCutEuros = Math.round((bar.revenue_cents * sharePct) / 100 / 100)
 
   return (
     <button
@@ -199,7 +202,7 @@ export function FoodBarCard({
             €{omarsCutEuros.toLocaleString()}
           </p>
           <p className="text-[9px] text-[#4A5568]">
-            {Math.round(FOOD_SHARE_PCT * 100)}% share
+            {sharePct}% share
           </p>
         </div>
 

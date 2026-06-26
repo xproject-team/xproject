@@ -57,6 +57,9 @@ export interface Event {
   ended_at: string | null
   created_at: string
   updated_at: string
+  /** Owner's % cut of food gross. Backend column events.food_revenue_share_pct.
+   *  Range 0-100; NULL means "no value set" — UI defaults to 30 in that case. */
+  food_revenue_share_pct: number | null
 }
 
 /** POST /events payload. Client does NOT send status — always starts at draft. */
@@ -228,6 +231,7 @@ export const MOCK_EVENT: Event = {
   ended_at: null,
   created_at: '2026-06-01T00:00:00Z',
   updated_at: '2026-06-15T20:00:00Z',
+  food_revenue_share_pct: null,
 }
 
 // ─── 1b. MOCK_EVENTS (list) ───────────────────────────────────────────────────
@@ -248,6 +252,7 @@ export const MOCK_EVENTS: Event[] = [
     ended_at: null,
     created_at: '2026-06-01T00:00:00Z',
     updated_at: '2026-06-15T20:00:00Z',
+    food_revenue_share_pct: null,
   },
   {
     id: 'evt-2',
@@ -264,6 +269,7 @@ export const MOCK_EVENTS: Event[] = [
     ended_at: null,
     created_at: '2026-03-15T00:00:00Z',
     updated_at: '2026-03-15T00:00:00Z',
+    food_revenue_share_pct: null,
   },
   {
     id: 'evt-3',
@@ -280,6 +286,7 @@ export const MOCK_EVENTS: Event[] = [
     ended_at: null,
     created_at: '2026-03-20T00:00:00Z',
     updated_at: '2026-03-20T00:00:00Z',
+    food_revenue_share_pct: null,
   },
   {
     id: 'evt-4',
@@ -296,6 +303,7 @@ export const MOCK_EVENTS: Event[] = [
     ended_at: '2025-04-12T23:00:00Z',
     created_at: '2025-01-10T00:00:00Z',
     updated_at: '2025-04-12T23:00:00Z',
+    food_revenue_share_pct: null,
   },
 ]
 
@@ -800,6 +808,9 @@ export interface BarKpi {
   stock_pct:      number              // 0..100, rounded
   bar_type:       BarType             // 'drinks' | 'food' — drives the card variant
   food_items:     FoodItemCount[]     // per-item counts for food bars; [] for drink bars
+  // Event-level owner cut % (carried on every BarKpi for convenience; only
+  // food cards actually render it). NULL = "use card default" (30).
+  food_revenue_share_pct: number | null
   auto_created:   boolean             // true if the ingester minted this bar for an unmapped Slesh shop_id — surfaces the NEEDS REVIEW pill + dashed amber treatment
   slesh_negozio_id: string | null     // the bound Slesh shop_id (null = not yet mapped); shown as suffix under name on mapped cards for alert cross-reference
 

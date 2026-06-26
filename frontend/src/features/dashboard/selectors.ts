@@ -80,6 +80,8 @@ export interface SelectorInput {
   /** Phase 2.5 dispatches. When present for a bar, override bar_stock
    *  totals (which lag for non-Slesh events). */
   allocations?: BarAllocationSummary[]
+  /** event.food_revenue_share_pct from the live event; injected by DashboardPage */
+  eventFoodRevenueSharePct?: number | null
 }
 
 export function selectBarKpis(input: SelectorInput): BarKpi[] {
@@ -227,6 +229,8 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       devices:        bar.devices ?? [],
       devices_total:  (bar.devices ?? []).length,
       devices_active: bar.devices_active ?? 0,
+      // Wired Jun 21 2026 (Phase 4 step 1): replaces hardcoded 30%.
+      food_revenue_share_pct: input.eventFoodRevenueSharePct ?? null,
     }
   })
 }
