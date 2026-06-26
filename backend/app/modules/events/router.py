@@ -9,7 +9,7 @@ parse request, call service, translate exceptions, return response.
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status, UploadFile, File
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,10 @@ from app.modules.events.schemas import (
     EventUpdate,
     FullEventCreate,
     FullEventCreateResponse,
+)
+from app.modules.events.event_plan_excel import (
+    parse_event_plan as _parse_event_plan,
+    ParsedEventPlan as _ParsedEventPlan,
 )
 from app.modules.events.reconciliation_schemas import ReconciliationReport
 from app.modules.events.category_totals_schemas import (
@@ -159,6 +163,61 @@ async def list_events(
         response_dict = await service.build_response_dict(event)
         responses.append(EventResponse.model_validate(response_dict))
     return responses
+
+
+@router.post(
+    "/import-plan",
+    response_model=_ParsedEventPlan,
+    status_code=status.HTTP_200_OK,
+    summary="Parse a Slesh event-plan Excel and return a structured preview",
+)
+async def import_event_plan(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    file: Annotated[UploadFile, File(description="Slesh event-plan .xlsx file")],
+) -> _ParsedEventPlan:
+    """Parse a Slesh event-plan Excel file and return its contents as
+    structured JSON — WITHOUT writing anything to the database.
+
+    Used by the Create Event wizard's Step 2 (Excel upload). The wizard
+    renders the returned ParsedEventPlan as an editable preview; Omar
+    confirms / edits / discards; the wizard then calls the finalize
+    endpoint (separate) to atomically create the event + bars + devices
+    + products from the confirmed payload.
+
+    Safety:
+      - 2 MB hard cap on file size (real Slesh plans are ~125 KB).
+      - Content-Type loose-checked; we accept anything but rely on the
+        parser's own defensive paths if the bytes aren't a real xlsx.
+      - Tenant-scoped via the standard auth pattern; nothing is written
+        to the database here, but we still gate access to Owner/Admin
+        via the existing dependency chain.
+
+    Errors:
+      400 — empty body / missing file
+      413 — file exceeds the 2 MB cap
+      200 — always returns a ParsedEventPlan even if the file is junk
+            (the parser surfaces problems via the `warnings` list)
+    """
+    # FastAPI delivers the file lazily; read it into memory once.
+    body = await file.read()
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty file uploaded.",
+        )
+    # 2 MB hard cap. Real Slesh plans are ~125 KB; anything materially
+    # larger is either the wrong file or an attempt to DoS the parser.
+    MAX_BYTES = 2 * 1024 * 1024
+    if len(body) > MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large ({len(body)} bytes). Max {MAX_BYTES} bytes.",
+        )
+
+    # Pure parse — no DB write. Defensive parser never raises;
+    # malformed input produces a ParsedEventPlan with warnings populated.
+    return _parse_event_plan(body)
 
 
 @router.get("/{event_id}", response_model=EventResponse)
