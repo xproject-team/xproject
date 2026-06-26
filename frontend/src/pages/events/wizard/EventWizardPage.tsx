@@ -1,5 +1,5 @@
 /**
- * EventWizardPage \u2014 the redesigned Create Event flow (Phase 4).
+ * EventWizardPage — the redesigned Create Event flow (Phase 4).
  *
  * Mounted at /events/create-v2 during development so it runs in parallel
  * to the existing /events/create page. Once the wizard is fully working
@@ -14,9 +14,9 @@
  *   \u2022 Guard against accidental loss with a "discard draft" prompt
  *
  * What this page does NOT do (yet):
- *   \u2022 Submit / finalize \u2014 the Finalize step is a placeholder until
+ *   \u2022 Submit / finalize — the Finalize step is a placeholder until
  *     the backend finalize endpoint lands
- *   \u2022 Real-time validation \u2014 each step component owns its own
+ *   \u2022 Real-time validation — each step component owns its own
  *     validation; the page only walks them through
  */
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -31,7 +31,7 @@ import { WizardStep2Upload }   from "./steps/WizardStep2Upload"
 import { WizardStep3Bars }     from "./steps/WizardStep3Bars"
 import { WizardStep4Recharge } from "./steps/WizardStep4Recharge"
 
-// Tabs metadata \u2014 keep in sync with current_step (1..4).
+// Tabs metadata — keep in sync with current_step (1..4).
 const TABS: { num: 1 | 2 | 3 | 4; label: string }[] = [
   { num: 1, label: "Basics"   },
   { num: 2, label: "Upload"   },
@@ -40,7 +40,7 @@ const TABS: { num: 1 | 2 | 3 | 4; label: string }[] = [
 ]
 
 /**
- * Outer wrapper \u2014 gates the wizard mount on `useAuth` having resolved.
+ * Outer wrapper — gates the wizard mount on `useAuth` having resolved.
  *
  * If we render the inner Content before `user` loads, `useState(init)` runs
  * once with userId="anon", and localStorage save/load use the wrong key.
@@ -73,7 +73,7 @@ function EventWizardContent({ userId }: ContentProps) {
   // flag for the "Draft auto-saved" indicator; gating the save itself on
   // it would mean step-navigation changes (which go through setState
   // directly, not the onChange wrapper) never persist. Bug caught
-  // Jun 21 2026 \u2014 the first version had `if (!is_dirty) return`
+  // Jun 21 2026 — the first version had `if (!is_dirty) return`
   // and refresh always reset to step 1.
   const saveTimer = useRef<number | null>(null)
   const hasMounted = useRef(false)
@@ -118,7 +118,7 @@ function EventWizardContent({ userId }: ContentProps) {
 
   const onDiscard = () => {
     const confirmed = window.confirm(
-      "Discard this draft? Anything you\u2019ve entered will be lost."
+      "Discard this draft? Anything you’ve entered will be lost."
     )
     if (!confirmed) return
     clearDraft(userId)
@@ -143,7 +143,7 @@ function EventWizardContent({ userId }: ContentProps) {
         <div>
           <h1 className="text-2xl font-bold text-[#1A202C]">Create Event</h1>
           <p className="text-sm text-[#4A5568] mt-1">
-            New wizard flow \u00B7 work-in-progress preview
+            New wizard flow · work-in-progress preview
           </p>
         </div>
         <div className="flex items-center gap-2">

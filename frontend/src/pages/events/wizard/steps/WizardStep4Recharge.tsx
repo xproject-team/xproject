@@ -1,5 +1,5 @@
 /**
- * Wizard Step 4 \u2014 Recharge
+ * Wizard Step 4 — Recharge
  *
  * Placeholder. Real implementation lands in a follow-up commit.
  * For now this renders a single message so the wizard shell is navigable
@@ -16,10 +16,10 @@ export function WizardStep4Recharge({ state: _state, onChange: _onChange }: Prop
   return (
     <div className="bg-white border border-[#E2E8F0] rounded-lg p-8 text-center">
       <p className="text-[#718096] text-sm">
-        Step 4 \u00B7 Recharge
+        Step 4 · Recharge
       </p>
       <p className="text-[#A0AEC0] text-xs mt-2">
-        Coming in the next commit \u2014 Configure recharge station + device count
+        Coming in the next commit — Configure recharge station + device count
       </p>
     </div>
   )
