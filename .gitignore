@@ -42,6 +42,8 @@ data/*
 !data/sundance-2024/
 !data/sundance-2025/
 *.xlsx
+# but DO track the Slesh event-plan fixture (Phase 4 parser tests)
+!backend/tests/fixtures/excel/*.xlsx
 *.xls
 *.bak
 backups/
