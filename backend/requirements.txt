@@ -46,3 +46,6 @@ slowapi==0.1.9
 reportlab==4.4.10
 matplotlib==3.10.8
 rapidfuzz==3.14.5
+
+# Excel parsing (event_plan_excel module)
+openpyxl==3.1.5
