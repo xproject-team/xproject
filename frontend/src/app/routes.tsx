@@ -11,6 +11,7 @@ import LoginPage             from '@/pages/auth/LoginPage'
 import DashboardPage         from '@/pages/dashboard/DashboardPage'
 import EventListPage         from '@/pages/events/EventListPage'
 import EventCreatePage       from '@/pages/events/EventCreatePage'
+import EventWizardPage       from '@/pages/events/wizard/EventWizardPage'
 import EventDetailPage       from '@/pages/events/EventDetailPage'
 import { EventReconciliationPage } from '@/pages/events/EventReconciliationPage'
 import InventoryPage         from '@/pages/inventory/InventoryPage'
@@ -170,6 +171,21 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canCreateEvent">
             <EventCreatePage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /events/create-v2 \u2014 new 4-step wizard (Phase 4, in development).
+       * Runs in PARALLEL with /events/create until the wizard is fully
+       * working. Then a swap commit renames this to /events/create and
+       * removes the old page. No EventListPage links here yet \u2014 the
+       * route is reached by typing the URL during dev/QA.
+       */}
+      <Route
+        path="/events/create-v2"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventWizardPage />
           </RequirePermission>
         }
       />
