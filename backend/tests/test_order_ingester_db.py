@@ -387,3 +387,108 @@ async def test_touch_bar_device_last_order_at_is_monotonic():
         assert bd.is_active is True       # still active
 
         await delete_tenant_cascade(session, tenant.id)
+# ─────────────────────────────────────────────────────────────────────
+# Phase 4 step 4 (Jun 21 2026) — bar-type auto-classification
+# ─────────────────────────────────────────────────────────────────────
+# Plan-B safety net: if Omar forgets to configure a food vendor in the
+# Create Event wizard, the ingester auto-creates a stub bar with
+# bar_type='drinks' (the default). Without reclassification, the food
+# truck renders as a drinks card with €0 stock — wrong. With it, the
+# stub flips to bar_type='food' as soon as the first food-only signal
+# arrives, and the FoodBarCard renders correctly.
+from app.modules.bars.models import Bar
+
+
+async def test_auto_created_bar_with_only_food_products_reclassifies_to_food():
+    """Auto-created stub selling exclusively food products should flip
+    bar_type='drinks' -> 'food' so the dashboard renders FoodBarCard."""
+    SHOP_ID = "6650food1234def5678e2faa"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-burger")
+        prod.product_type = ProductType.FOOD
+        await session.flush()
+
+        order = _Order(
+            id="o-food-1",
+            cart=[_CartLine(id="l-1", product="ext-burger", gross_amount=1200)],
+            shop=_Shop(id=SHOP_ID, name="MALANDRINO Slesh"),
+            payment=_Payment(type="cash"),
+        )
+        svc = StockTransactionService(session)
+        await ingest_order(
+            db=session, order=order, event_id=ev.id,
+            tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        # Bar should exist + be reclassified
+        bar = await session.scalar(
+            select(Bar).where(Bar.event_id == ev.id).where(Bar.slesh_negozio_id == SHOP_ID)
+        )
+        assert bar is not None
+        assert bar.auto_created is True
+        assert bar.bar_type == "food", (
+            f"expected bar_type='food', got {bar.bar_type!r} — "
+            f"the food-only auto-classifier did not fire"
+        )
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_auto_created_bar_with_mixed_products_stays_drinks():
+    """Auto-created stub selling at least one DRINK alongside food
+    must NOT flip to bar_type='food'. Mixed bars stay as drinks
+    (BarCard renders fine for mixed; FoodBarCard would mislead)."""
+    SHOP_ID = "6650mixed1234def5678e2bb"
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        ev = await make_event(session, tenant.id)
+
+        drink_prod = await make_product(session, tenant.id, product_type=ProductType.DRINK)
+        drink_prod.external_pos_id = "ext-heineken"
+        drink_prod.default_price_cents = 700
+
+        food_prod = await make_product(session, tenant.id, product_type=ProductType.FOOD)
+        food_prod.external_pos_id = "ext-burger"
+        food_prod.default_price_cents = 1200
+        await session.flush()
+
+        svc = StockTransactionService(session)
+
+        # First order: one DRINK at the bar
+        await ingest_order(
+            db=session,
+            order=_Order(
+                id="o-mixed-1",
+                cart=[_CartLine(id="l-1", product="ext-heineken", gross_amount=700)],
+                shop=_Shop(id=SHOP_ID, name="MIXED BAR"),
+                payment=_Payment(type="cash"),
+            ),
+            event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        # Second order: a FOOD product at the SAME bar — must NOT flip
+        # since prior DRINK transaction disqualifies it.
+        await ingest_order(
+            db=session,
+            order=_Order(
+                id="o-mixed-2",
+                cart=[_CartLine(id="l-2", product="ext-burger", gross_amount=1200)],
+                shop=_Shop(id=SHOP_ID, name="MIXED BAR"),
+                payment=_Payment(type="cash"),
+            ),
+            event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        bar = await session.scalar(
+            select(Bar).where(Bar.event_id == ev.id).where(Bar.slesh_negozio_id == SHOP_ID)
+        )
+        assert bar is not None
+        assert bar.auto_created is True
+        assert bar.bar_type == "drinks", (
+            f"expected bar_type='drinks' (mixed sales seen), got {bar.bar_type!r}"
+        )
+
+        await delete_tenant_cascade(session, tenant.id)

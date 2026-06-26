@@ -51,7 +51,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bars.models                  import Bar
@@ -483,6 +483,20 @@ async def _ingest_line(
         )
         return
 
+    # ── Phase 4 (Jun 21 2026): re-classify auto-created bars as 'food'
+    # if every product sold at them is FOOD. The ingester defaults
+    # auto-created stubs to bar_type='drinks' because most events ARE
+    # drink-dominated; this catches food trucks Omar forgot to configure
+    # in the wizard. Defensive: non-fatal failure, critical path is the
+    # sale ingest below.
+    try:
+        await _maybe_classify_bar_as_food(db=db, bar=bar, current_product=product)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "ingest_order line %s: bar-type reclassification failed (non-fatal): %s",
+            line.id, exc,
+        )
+
     # Build the ingest request (same shape for drink + food)
     request = SaleIngestRequest(
         event_id     = event_id,
@@ -558,6 +572,64 @@ async def _resolve_bar(
         bar.id, display, slesh_id,
     )
     return bar
+
+
+async def _maybe_classify_bar_as_food(
+    *,
+    db: AsyncSession,
+    bar: Bar,
+    current_product: Product,
+) -> None:
+    """Re-classify an auto-created drinks stub as a food bar when warranted.
+
+    Trigger conditions (all must hold):
+      1. Bar was auto-created by the ingester (not wizard-defined). Wizard
+         data is sacred — we never overwrite operator intent.
+      2. Bar is still classified as 'drinks' (the default). Once flipped
+         away from drinks, the check is skipped to keep this a one-shot
+         operation (cheap on every order).
+      3. The current cart line's product is product_type=food. A pure
+         food bar can only be detected once at least one food product
+         sells there. Drinks at a drinks bar early-exit at this gate.
+      4. EVERY DISTINCT product previously sold at this bar is also
+         product_type=food. Single positive check; a single drink sale
+         in the bar's history disqualifies it.
+
+    On a positive verdict, flips bar.bar_type to 'food' (single attribute
+    set; the surrounding session commit persists it). On the next order
+    arriving at the same bar, condition (2) skips this work entirely.
+
+    Cheap SQL: bool_and over the distinct product_types seen at the bar,
+    joined to the products table. Index on stock_transactions.bar_id +
+    products.id (PK) means this is O(distinct products) per check, run
+    at most ONCE per bar across its lifetime.
+    """
+    if not bar.auto_created or bar.bar_type != "drinks":
+        return
+    if current_product.product_type != ProductType.FOOD:
+        return
+
+    # Pure-food check: bool_and(product_type='food') across every distinct
+    # product previously sold at this bar. This is true even for a bar
+    # with zero prior transactions (NULL → treated as TRUE here, which we
+    # want: a brand-new bar's first sale being food makes it food).
+    from app.modules.stock_transactions.models import StockTransaction
+    res = await db.execute(
+        select(func.bool_and(Product.product_type == ProductType.FOOD))
+        .select_from(StockTransaction)
+        .join(Product, Product.id == StockTransaction.product_id)
+        .where(StockTransaction.bar_id == bar.id)
+    )
+    all_food_so_far = res.scalar()  # bool | None
+    # NULL means no prior transactions exist; current line is food, so
+    # this becomes a pure-food bar by inference. Treat NULL as True.
+    if all_food_so_far is None or all_food_so_far is True:
+        bar.bar_type = "food"
+        logger.info(
+            "ingester: reclassified auto-created bar %s (name=%s) "
+            "from drinks to food (all products at this bar are food)",
+            bar.id, bar.name,
+        )
 
 
 async def _find_product_by_external_id(
