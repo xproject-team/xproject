@@ -292,15 +292,23 @@ async def _fetch_slesh_shops_cached(brand_id: str) -> _SleshShopsResponse:
     except Exception as exc:  # noqa: BLE001
         _slesh_router_logger.warning("Slesh shops cache read failed: %s", exc)
 
-    # Cache miss / read failed — try Slesh
+    # Cache miss / read failed — try Slesh.
+    # SleshAdapter is an async context manager (closes its httpx client
+    # on exit). Constructing it directly without `async with` would leak
+    # the client. Kwarg names must match the adapter signature exactly:
+    # `token` (not api_token), `request_timeout` (not timeout). Tests
+    # mocked SleshAdapter so the live-call signature mismatch slipped
+    # through — now caught + fixed.
     try:
-        adapter = SleshAdapter(
-            base_url   = slesh_settings.slesh_base_url,
-            api_token  = slesh_settings.slesh_api_token,
-            brand_id   = brand_id,
-            timeout    = slesh_settings.slesh_request_timeout,
-        )
-        shops_raw = await adapter.list_shops(experience_id=None)
+        async with SleshAdapter(
+            token              = slesh_settings.slesh_api_token,
+            brand_id           = brand_id,
+            base_url           = slesh_settings.slesh_base_url,
+            request_timeout    = slesh_settings.slesh_request_timeout,
+            rate_limit_rps     = slesh_settings.slesh_rate_limit_rps,
+            max_retries        = slesh_settings.slesh_max_retries,
+        ) as adapter:
+            shops_raw = await adapter.list_shops(experience_id=None)
         shops = [
             _SleshShopOut(
                 id        = s.id,

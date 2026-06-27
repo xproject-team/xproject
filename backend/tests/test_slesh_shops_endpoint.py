@@ -105,7 +105,12 @@ async def test_slesh_shops_live_success_returns_shops():
         with patch(
             "app.modules.events.router.SleshAdapter"
         ) as MockAdapter:
+            # SleshAdapter is used via `async with`. The construction
+            # returns the MockAdapter instance; `__aenter__` must return
+            # the adapter we want `list_shops` called on.
             inst = MockAdapter.return_value
+            inst.__aenter__ = AsyncMock(return_value=inst)
+            inst.__aexit__  = AsyncMock(return_value=None)
             inst.list_shops = AsyncMock(return_value=fake_shops)
             r = await client.get("/api/v1/events/slesh-shops")
         assert r.status_code == 200, r.text
@@ -184,7 +189,12 @@ async def test_slesh_shops_offline_when_adapter_raises():
         with patch(
             "app.modules.events.router.SleshAdapter"
         ) as MockAdapter:
+            # Async-context-manager protocol; list_shops raises inside
+            # the `async with` block. The endpoint\'s try/except must
+            # catch and return offline.
             inst = MockAdapter.return_value
+            inst.__aenter__ = AsyncMock(return_value=inst)
+            inst.__aexit__  = AsyncMock(return_value=None)
             inst.list_shops = AsyncMock(side_effect=ConnectionError("network down"))
             r = await client.get("/api/v1/events/slesh-shops")
         assert r.status_code == 200, r.text
