@@ -43,7 +43,13 @@ export interface WizardState {
   bars: BarDraft[]
 
   // ── Step 4: Recharge
-  recharge_device_count: number
+  // Recharge bars themselves live in `bars` with bar_type='recharge';
+  // this step\'s editor just filters that list. The two fields below
+  // are denomination preset arrays that don\'t fit the bar model and
+  // are stored at the event level.
+  recharge_device_count: number             // legacy aggregate; auto-derived from recharge bars
+  topup_denominations_user: number[]        // e.g. [10, 20, 50, 100] in euros
+  topup_denominations_staff: number[]       // e.g. [5, 10, 20, 50, 100] in euros
 
   // ── Meta
   current_step: 1 | 2 | 3 | 4
@@ -63,6 +69,8 @@ export function buildEmptyWizardState(): WizardState {
     picked_date: null,
     bars: [],
     recharge_device_count: 0,
+    topup_denominations_user: [],
+    topup_denominations_staff: [],
     current_step: 1,
     is_dirty: false,
   }

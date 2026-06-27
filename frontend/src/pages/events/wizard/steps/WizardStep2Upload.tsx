@@ -32,6 +32,45 @@ const ACCEPTED =
 
 const MAX_BYTES = 2 * 1024 * 1024 // 2 MB — matches backend hard cap
 
+/**
+ * Seed a recharge bar from parsed_plan.recharge_device_count.
+ *
+ * The Excel '3. Device Count' sheet has a row 'Punti di Ricarica' with a
+ * device count. We translate that into a single recharge BarDraft so
+ * Step 4 already has one row to configure. excelHint = 'Accrediti' makes
+ * the Slesh picker auto-suggest the right shop on Sundance.
+ */
+function seedRechargeBarsFromPlan(deviceCount: number): BarDraft[] {
+  if (!deviceCount || deviceCount <= 0) return []
+  return [{
+    client_id: makeClientIdLocal(),
+    name: "Recharge",
+    device_count: deviceCount,
+    bar_type: "recharge",
+    slesh_shop_id: null,
+    from_excel: {
+      name: "Accrediti",
+      device_count: deviceCount,
+      bar_type: "recharge",
+      notes: "Auto-seeded from Excel 'Punti di Ricarica'",
+    },
+  }]
+}
+
+// Local makeClientId — keeps the helper self-contained. The wizard
+// already has one in another file but this avoids a cross-file dep
+// for a 4-line helper.
+function makeClientIdLocal(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID()
+    }
+  } catch {
+    /* fall through */
+  }
+  return `bd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 export function WizardStep2Upload({ state, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -69,6 +108,12 @@ export function WizardStep2Upload({ state, onChange }: Props) {
       ...plan.drink_bars.map(specToDraft),
       ...plan.food_bars.map(specToDraft),
       ...plan.other_bars.map(specToDraft),
+      // Recharge bars don\'t come back as a list from the parser (the
+      // Excel sheet only gives an aggregate device count). Synthesize a
+      // single recharge bar so Step 4 has something to configure rather
+      // than starting empty. excelHint is "Accrediti" so the Slesh
+      // picker auto-suggests the right shop on Sundance.
+      ...seedRechargeBarsFromPlan(plan.recharge_device_count),
     ]
     // Auto-pick the date if the Excel only covers one (no decision needed).
     // Multi-event Excels (4 Sundance dates) require Omar to choose.
@@ -79,6 +124,10 @@ export function WizardStep2Upload({ state, onChange }: Props) {
       picked_date: autoPickedDate,
       bars,
       recharge_device_count: plan.recharge_device_count,
+      // Denominations are event-level (not per-bar); pre-fill from Excel
+      // so Omar doesn\'t re-type the standard Sundance amounts (10/20/50/100).
+      topup_denominations_user:  plan.topup_denominations_user  ?? [],
+      topup_denominations_staff: plan.topup_denominations_staff ?? [],
     })
   }
 
