@@ -6,10 +6,13 @@ Contract reference: §1.1 (4-layer architecture), §6.1 (Events endpoints),
 All business logic lives in the service layer. This file is thin on purpose:
 parse request, call service, translate exceptions, return response.
 """
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status, UploadFile, File
+import json as json
+import logging as logging
+from typing import Literal as Literal
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +33,9 @@ from app.modules.events.event_plan_excel import (
     parse_event_plan as _parse_event_plan,
     ParsedEventPlan as _ParsedEventPlan,
 )
+from app.modules.pos.adapters.slesh import SleshAdapter
+from app.core.redis_client import get_redis
+from app.core.config import settings as slesh_settings
 from app.modules.events.reconciliation_schemas import ReconciliationReport
 from app.modules.events.category_totals_schemas import (
     EventBarCategoryTotalsResponse,
@@ -218,6 +224,137 @@ async def import_event_plan(
     # Pure parse — no DB write. Defensive parser never raises;
     # malformed input produces a ParsedEventPlan with warnings populated.
     return _parse_event_plan(body)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 4 step 8a (Jun 27 2026) — Slesh shops listing for the wizard
+# ─────────────────────────────────────────────────────────────────────
+# Returns the live Slesh shop list so the Create Event wizard's Step 3
+# can present a picker linking each XProject bar to a Slesh shop_id.
+# Caches the result in Redis for 5 minutes per brand_id to avoid
+# hammering the Slesh API on every keystroke.
+#
+# Three response modes:
+#   live    — Slesh fetched successfully just now
+#   cached  — Slesh fetched recently, returning cached list
+#   offline — Slesh unreachable, returning empty list + flag so the
+#             frontend can offer a "type shop_id manually" fallback
+#
+# The endpoint never writes to the database.
+
+class _SleshShopOut(BaseModel):
+    """Single shop as exposed to the wizard. Mirrors what list_shops
+    returns from the Slesh API, trimmed to what the picker needs."""
+    id:        str
+    name:      str
+    is_active: bool
+
+
+class _SleshShopsResponse(BaseModel):
+    """Wrapped response so the frontend can branch on source mode."""
+    shops:       list[_SleshShopOut]
+    source:      Literal["live", "cached", "offline"]
+    fetched_at:  datetime
+    cache_ttl_s: int          # seconds remaining on the cache (0 if live/offline)
+
+
+_SLESH_SHOPS_CACHE_TTL_S = 300         # 5 minutes
+_SLESH_SHOPS_CACHE_KEY   = "slesh:shops:{brand_id}"
+_slesh_router_logger     = logging.getLogger("app.modules.events.router.slesh")
+
+
+async def _fetch_slesh_shops_cached(brand_id: str) -> _SleshShopsResponse:
+    """Return shops for `brand_id`, using Redis cache when fresh.
+
+    Cache key includes the brand_id so multi-tenant setups don’t
+    cross-contaminate (today there’s one brand, but the cost of
+    keying it correctly is zero).
+
+    Errors talking to Slesh do NOT raise — we return an offline response
+    with empty shops so the wizard can still render and offer the manual
+    fallback. The wizard distinguishes the modes via the `source` field.
+    """
+    redis = await get_redis()
+    cache_key = _SLESH_SHOPS_CACHE_KEY.format(brand_id=brand_id)
+
+    # Try cache first
+    try:
+        cachedjson = await redis.get(cache_key)
+        if cachedjson:
+            ttl = await redis.ttl(cache_key)
+            data = json.loads(cachedjson)
+            return _SleshShopsResponse(
+                shops       = [_SleshShopOut(**s) for s in data],
+                source      = "cached",
+                fetched_at  = datetime.now(timezone.utc),
+                cache_ttl_s = max(0, ttl),
+            )
+    except Exception as exc:  # noqa: BLE001
+        _slesh_router_logger.warning("Slesh shops cache read failed: %s", exc)
+
+    # Cache miss / read failed — try Slesh
+    try:
+        adapter = SleshAdapter(
+            base_url   = slesh_settings.slesh_base_url,
+            api_token  = slesh_settings.slesh_api_token,
+            brand_id   = brand_id,
+            timeout    = slesh_settings.slesh_request_timeout,
+        )
+        shops_raw = await adapter.list_shops(experience_id=None)
+        shops = [
+            _SleshShopOut(
+                id        = s.id,
+                name      = s.name,
+                is_active = bool(getattr(s, "is_enabled", True)),
+            )
+            for s in shops_raw
+        ]
+        # Persist to cache (best-effort)
+        try:
+            await redis.setex(
+                cache_key,
+                _SLESH_SHOPS_CACHE_TTL_S,
+                json.dumps([s.model_dump() for s in shops]),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _slesh_router_logger.warning("Slesh shops cache write failed: %s", exc)
+        return _SleshShopsResponse(
+            shops       = shops,
+            source      = "live",
+            fetched_at  = datetime.now(timezone.utc),
+            cache_ttl_s = _SLESH_SHOPS_CACHE_TTL_S,
+        )
+    except Exception as exc:  # noqa: BLE001
+        _slesh_router_logger.warning("Slesh shops fetch failed (offline mode): %s", exc)
+        return _SleshShopsResponse(
+            shops       = [],
+            source      = "offline",
+            fetched_at  = datetime.now(timezone.utc),
+            cache_ttl_s = 0,
+        )
+
+
+@router.get(
+    "/slesh-shops",
+    response_model=_SleshShopsResponse,
+    summary="List Slesh shops for the Create Event wizard’s picker",
+)
+async def list_slesh_shops(
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> _SleshShopsResponse:
+    """Returns the Slesh shop list (id, name, is_active) for the Create
+    Event wizard’s Step 3 shop-picker. Cached 5 minutes; offline
+    mode (empty shops) when Slesh is unreachable."""
+    brand_id = slesh_settings.slesh_brand_id
+    if not brand_id:
+        # Misconfigured — no brand id. Return offline rather than 500.
+        return _SleshShopsResponse(
+            shops       = [],
+            source      = "offline",
+            fetched_at  = datetime.now(timezone.utc),
+            cache_ttl_s = 0,
+        )
+    return await _fetch_slesh_shops_cached(brand_id)
 
 
 @router.get("/{event_id}", response_model=EventResponse)
@@ -572,7 +709,7 @@ async def get_event_bar_supplier_stock(
         bar_id=bar_id,
     )
     # Side-effect: fire/update/auto-resolve depletion alerts on status flips.
-    # Idempotent — dedup on (bar, supplier_product) via context_json.
+    # Idempotent — dedup on (bar, supplier_product) via contextjson.
     # Only do this when the request is unbounded (covers all bars), so a
     # filtered single-bar call doesn't accidentally bypass cross-bar alerts.
     if bar_id is None:
