@@ -20,7 +20,7 @@ import type {
   EventCreatePayload,
   EventUpdatePayload,
 } from '@/lib/mockData'
-import type { ParsedEventPlan } from '@/lib/eventPlan'
+import type { ParsedEventPlan, SleshShopsResponse } from '@/lib/eventPlan'
 
 export const eventKeys = {
   all:    ['events'] as const,
@@ -245,5 +245,28 @@ export function useImportEventPlan() {
       // Stash the normalized message on the error so the component can read it.
       ;(err as Error).message = message
     },
+  })
+}
+
+
+
+// ─── Phase 4 step 8b (Jun 27 2026): Slesh shops listing ──────────────────────
+// Fetches the cached Slesh shop list for the wizard's Step 3 shop picker.
+// Stale-while-revalidate caching (TanStack defaults) plays nicely with the
+// backend's own 5-minute Redis cache — typing into the picker doesn't
+// hammer either layer.
+export function useSleshShops() {
+  return useQuery({
+    queryKey: ['events', 'slesh-shops'],
+    queryFn:  async (): Promise<SleshShopsResponse> => {
+      const res = await api.get<SleshShopsResponse>('/events/slesh-shops')
+      return res.data
+    },
+    // 4 minutes — slightly less than the backend's 5-minute cache TTL so the
+    // FE doesn't ever serve data the BE considers stale.
+    staleTime: 4 * 60 * 1000,
+    // Never refetch on window focus — the wizard isn't time-critical and
+    // refetching mid-edit would flicker the dropdown.
+    refetchOnWindowFocus: false,
   })
 }

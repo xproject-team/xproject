@@ -55,3 +55,23 @@ export interface ParsedEventPlan {
   products: ProductSpec[]
   warnings: ParseWarning[]
 }
+
+
+// ── Slesh shops endpoint shape (Phase 4 step 8a backend) ─────────────
+// Mirrors GET /api/v1/events/slesh-shops. The frontend wizard uses this
+// to populate the per-bar Slesh shop_id picker in Step 3.
+
+export interface SleshShop {
+  id:        string
+  name:      string
+  is_active: boolean
+}
+
+export type SleshShopsSource = 'live' | 'cached' | 'offline'
+
+export interface SleshShopsResponse {
+  shops:       SleshShop[]
+  source:      SleshShopsSource
+  fetched_at:  string         // ISO datetime
+  cache_ttl_s: number
+}
