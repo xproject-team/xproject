@@ -25,6 +25,12 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "@/features/auth/useAuth"
 import { buildEmptyWizardState, type WizardState } from "./types"
 import { clearDraft, loadDraft, saveDraft } from "./storage"
+import { buildFullEventPayload } from "./payload"
+import {
+  useCreateFullEvent,
+  extractFullEventErrors,
+  type FullEventItemError,
+} from "@/features/events/useCreateFullEvent"
 
 import { WizardStep1Basics }   from "./steps/WizardStep1Basics"
 import { WizardStep2Upload }   from "./steps/WizardStep2Upload"
@@ -136,6 +142,48 @@ function EventWizardContent({ userId }: ContentProps) {
     }
   }, [state.current_step, state])
 
+  // ── Phase 4 step 10: Finalize wiring ───────────────────────────────
+  // Builds an atomic FullEventCreatePayload from the wizard state and
+  // POSTs to /events/full. On success: clear draft + redirect to the
+  // newly-created event\'s detail page. On 422: surface per-item errors.
+  const createFull = useCreateFullEvent()
+  const [finalizeBanner, setFinalizeBanner] = useState<string | null>(null)
+  const [finalizeItemErrors, setFinalizeItemErrors] = useState<FullEventItemError[]>([])
+
+  function onFinalize() {
+    setFinalizeBanner(null)
+    setFinalizeItemErrors([])
+    const { payload, preErrors } = buildFullEventPayload(state)
+    if (payload === null) {
+      setFinalizeBanner(preErrors.join(" · "))
+      // Jump back to the earliest step that has an error so Omar can fix it
+      const stepGuess: 1 | 2 | 3 | 4 =
+        preErrors.some((e) => e.startsWith("Basics:")) ? 1 :
+        preErrors.some((e) => e.startsWith("Bars:"))   ? 3 :
+        state.current_step
+      if (stepGuess !== state.current_step) goToStep(stepGuess)
+      return
+    }
+    createFull.mutate(payload, {
+      onSuccess: (result) => {
+        clearDraft(userId)
+        navigate(`/events/${result.event.id}`, { replace: true })
+      },
+      onError: (err: unknown) => {
+        const items = extractFullEventErrors(err)
+        if (items && items.length > 0) {
+          setFinalizeItemErrors(items)
+          setFinalizeBanner(
+            `Server rejected ${items.length} item${items.length === 1 ? "" : "s"}. See details below.`,
+          )
+        } else {
+          const msg = (err as Error)?.message ?? "Unknown error"
+          setFinalizeBanner(`Could not create event: ${msg}`)
+        }
+      },
+    })
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       {/* Header */}
@@ -199,6 +247,22 @@ function EventWizardContent({ userId }: ContentProps) {
       {/* Step body */}
       <div className="mb-6">{StepBody}</div>
 
+      {/* Finalize error banner */}
+      {finalizeBanner && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-900 font-semibold">{finalizeBanner}</p>
+          {finalizeItemErrors.length > 0 && (
+            <ul className="mt-2 text-xs text-red-900 list-disc list-inside space-y-0.5">
+              {finalizeItemErrors.map((e, i) => (
+                <li key={i}>
+                  <span className="font-semibold">{e.section} #{e.index}:</span> {e.error}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="flex items-center justify-between">
         <button
@@ -214,16 +278,20 @@ function EventWizardContent({ userId }: ContentProps) {
           Back
         </button>
         <button
-          onClick={state.current_step < 4 ? goForward : undefined}
-          disabled={state.current_step === 4}
+          onClick={state.current_step < 4 ? goForward : onFinalize}
+          disabled={state.current_step === 4 && createFull.isPending}
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
-            state.current_step < 4
-              ? "bg-[#1ABC9C] hover:bg-[#17a589]"
-              : "bg-[#CBD5E0] cursor-not-allowed",
+            createFull.isPending
+              ? "bg-[#CBD5E0] cursor-not-allowed"
+              : "bg-[#1ABC9C] hover:bg-[#17a589]",
           ].join(" ")}
         >
-          {state.current_step < 4 ? "Save & Continue" : "Finalize (coming soon)"}
+          {state.current_step < 4
+            ? "Save & Continue"
+            : createFull.isPending
+              ? "Finalizing…"
+              : "Finalize"}
         </button>
       </div>
     </div>
