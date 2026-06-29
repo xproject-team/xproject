@@ -42,6 +42,9 @@ ruff==0.4.4
 boto3==1.35.49
 slowapi==0.1.9
 
+# PDF parsing (warehouse invoice PDF upload — Italian fatture)
+pdfplumber==0.11.4
+
 # PDF generation (reports module)
 reportlab==4.4.10
 matplotlib==3.10.8

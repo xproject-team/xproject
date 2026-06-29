@@ -30,7 +30,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -38,6 +38,7 @@ from app.modules.auth.models import User, UserRole
 from app.modules.auth.router import get_current_user
 from app.modules.auth.permissions import get_active_role
 from app.modules.warehouse.inventory_service import InventoryService
+from app.modules.warehouse.invoice_pdf_parser import ParsedInvoice, parse_invoice_pdf
 from app.modules.warehouse.invoice_service import (
     InvalidInvoiceTransitionError,
     InvoiceNotEditableError,
@@ -259,6 +260,80 @@ async def create_invoice(
     svc = InvoiceService(db)
     invoice = await svc.create_invoice(current_user.tenant_id, body)
     return _response_from_invoice(invoice)
+
+
+# ─── PDF upload + parse (preview only, no DB writes) ──────────────────
+# Flow:
+#   1. Frontend uploads a PDF fattura to this endpoint
+#   2. Server parses the PDF -> ParsedInvoice JSON (header + items)
+#   3. Frontend shows the preview modal so the user can fix any
+#      mis-extracted fields (descriptions, missing products, etc)
+#   4. User confirms -> frontend POSTs the edited data to the existing
+#      /invoices endpoint above (which atomically creates DeliveryInvoice
+#      + InvoiceItem rows).
+# This 2-step design lets the user catch parser misses BEFORE the
+# DeliveryInvoice row is created, instead of having to PATCH it after.
+
+_MAX_PDF_BYTES = 10 * 1024 * 1024     # 10 MB — fatture are tiny (typically <50 KB)
+
+
+@router.post(
+    "/invoices/parse-pdf",
+    response_model=ParsedInvoice,
+    summary="Parse a fattura PDF into a structured preview (no DB writes)",
+)
+async def parse_invoice_pdf_endpoint(
+    file: Annotated[UploadFile, File(description="Italian fattura PDF")],
+    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+) -> ParsedInvoice:
+    """Read an uploaded PDF fattura and return the parsed structure.
+
+    Does NOT touch the database. The frontend uses this to populate a
+    review modal; only after the user confirms (and possibly edits) the
+    preview does it POST the data to /invoices.
+    """
+    # Content-type sanity check
+    if file.content_type and "pdf" not in file.content_type.lower():
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={
+                "error": "unsupported_media_type",
+                "message": f"Expected a PDF, got content-type {file.content_type!r}",
+            },
+        )
+
+    # Read with size cap
+    pdf_bytes = await file.read()
+    if len(pdf_bytes) > _MAX_PDF_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail={
+                "error": "pdf_too_large",
+                "message": f"PDF is {len(pdf_bytes)} bytes; limit is {_MAX_PDF_BYTES}",
+            },
+        )
+    if len(pdf_bytes) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "empty_pdf", "message": "Uploaded file is empty"},
+        )
+
+    # Parse — any unexpected error becomes a clean 422 (don\'t leak
+    # pdfplumber internals to the user; the frontend just sees "couldn\'t
+    # parse this PDF, please enter the data manually").
+    try:
+        parsed = parse_invoice_pdf(pdf_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "pdf_parse_failed",
+                "message": "Could not parse this PDF. Use manual entry instead.",
+                "debug": str(e),     # FE hides in production; dev sees it
+            },
+        )
+
+    return parsed
 
 
 @router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
