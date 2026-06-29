@@ -166,11 +166,14 @@ function AuthenticatedRoutes() {
           </RequirePermission>
         }
       />
+      {/* /events/create — wizard flow (Phase 4 step 10c, Jun 27 2026).
+          Previously rendered <EventCreatePage />; that page now serves
+          /events/:id/edit only until edit-via-wizard ships (Phase 5). */}
       <Route
         path="/events/create"
         element={
           <RequirePermission flag="canCreateEvent">
-            <EventCreatePage />
+            <EventWizardPage />
           </RequirePermission>
         }
       />
@@ -181,13 +184,15 @@ function AuthenticatedRoutes() {
        * removes the old page. No EventListPage links here yet \u2014 the
        * route is reached by typing the URL during dev/QA.
        */}
+      {/*
+       * /events/create-v2 — legacy redirect (Phase 4 development URL).
+       * The wizard now lives at /events/create. Any bookmarks made
+       * during Phase 4 will hit this redirect once and end up at the
+       * right place.
+       */}
       <Route
         path="/events/create-v2"
-        element={
-          <RequirePermission flag="canCreateEvent">
-            <EventWizardPage />
-          </RequirePermission>
-        }
+        element={<Navigate to="/events/create" replace />}
       />
       {/*
        * /bars — Owner (canViewAllBars) and Manager
