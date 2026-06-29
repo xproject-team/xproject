@@ -149,3 +149,46 @@ def test_partesa_large_quantity_thousands_separator(parsed_partesa: ParsedInvoic
     produce €3.83 instead. This guards against that regression."""
     it = _item(parsed_partesa, 30)
     assert it.line_total_eur == Decimal("3833.16")
+
+
+# ─── Header extraction ───────────────────────────────────────────────
+
+def test_partesa_supplier_extracted(parsed_partesa: ParsedInvoice) -> None:
+    """Supplier name + VAT come from the top of the first page,
+    immediately after the \"FATTURA\" anchor."""
+    h = parsed_partesa.header
+    assert h.supplier_name == "PARTESA S.R.L."
+    assert h.supplier_vat == "IT09806270154"
+
+
+def test_partesa_customer_extracted(parsed_partesa: ParsedInvoice) -> None:
+    """Customer name + VAT come from the \"Spett.le\" block on the
+    first page. SUNDANCE SRLS is Omar\'s legal entity."""
+    h = parsed_partesa.header
+    assert h.customer_name == "SUNDANCE SRLS"
+    assert h.customer_vat == "IT17156041000"
+
+
+def test_partesa_invoice_number_and_date(parsed_partesa: ParsedInvoice) -> None:
+    """Numero documento + Data documento. The date parser must handle
+    Italian month names — \"09 Giugno 2026\" -> date(2026, 6, 9)."""
+    from datetime import date
+    h = parsed_partesa.header
+    assert h.invoice_number == "5812120214"
+    assert h.invoice_date == date(2026, 6, 9)
+
+
+def test_partesa_summary_totals(parsed_partesa: ParsedInvoice) -> None:
+    """Imponibile + IVA from the summary section on the last page."""
+    h = parsed_partesa.header
+    assert h.total_imponibile == Decimal("15107.39")
+    assert h.total_iva == Decimal("3323.63")
+
+
+def test_partesa_document_total_split_lines(parsed_partesa: ParsedInvoice) -> None:
+    """\"Importo totale documento\" and its euro amount are on SEPARATE
+    lines in the PARTESA layout. Regression: the extractor must fall
+    back to a two-line lookahead when the single-line regex misses.
+    Without that fallback, total_document came back as None."""
+    h = parsed_partesa.header
+    assert h.total_document == Decimal("18431.02")

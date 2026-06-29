@@ -37,6 +37,7 @@ from typing import Optional
 
 import pdfplumber
 
+from .header import extract_header
 from .normalize import clean_description, it_decimal
 from .schemas import ParsedInvoice, ParsedInvoiceHeader, ParsedInvoiceItem
 
@@ -186,8 +187,9 @@ def parse_invoice_pdf(pdf_bytes: bytes) -> ParsedInvoice:
     """
     lines = _extract_lines(pdf_bytes)
     items = _parse_items(lines)
+    header = extract_header(lines)
     return ParsedInvoice(
-        header   = ParsedInvoiceHeader(),  # filled by A3
+        header   = header,
         items    = items,
         raw_text = "\n".join(lines),
     )
