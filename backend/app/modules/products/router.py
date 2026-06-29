@@ -23,8 +23,13 @@ from app.core.database import get_db
 from app.modules.auth.models import User
 from app.modules.auth.router import get_current_user
 from app.modules.products.models import ProductCategory, ProductType
+from app.modules.products.matcher import fuzzy_match_products
 from app.modules.products.schemas import (
     ProductCreate,
+    ProductMatchBatchRequest,
+    ProductMatchBatchResponse,
+    ProductMatchCandidate,
+    ProductMatchResult,
     ProductResponse,
     ProductUpdate,
 )
@@ -232,3 +237,47 @@ async def restore_product(
             },
         )
     return ProductResponse.model_validate(product)
+
+
+# ─── Fuzzy match (B1a) ────────────────────────────────────────────────────────
+
+@router.post(
+    "/match-batch",
+    response_model=ProductMatchBatchResponse,
+    summary="Fuzzy-match a batch of descriptions against existing products",
+)
+async def match_products_batch(
+    body: ProductMatchBatchRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> ProductMatchBatchResponse:
+    """For each query string in `body.queries`, return up to `top_k`
+    Catalog products that look similar.
+
+    Used primarily by the invoice-upload modal: parse a PDF, then call
+    this with all line-item descriptions in one batch to surface match
+    suggestions inline in the preview table.
+
+    The candidate pool is the tenant\'s ACTIVE products (archived
+    excluded — Omar shouldn\'t be matching new invoices against products
+    he\'s already retired).
+    """
+    service = ProductService(db)
+    products = await service.list_products(tenant_id, include_archived=False)
+
+    results: list[ProductMatchResult] = []
+    for q in body.queries:
+        candidates = fuzzy_match_products(
+            q, products, threshold=body.threshold, top_k=body.top_k,
+        )
+        results.append(ProductMatchResult(
+            query=q,
+            matches=[
+                ProductMatchCandidate(
+                    product_id=c.product.id, name=c.product.name, score=c.score,
+                )
+                for c in candidates
+            ],
+        ))
+    return ProductMatchBatchResponse(results=results)
+

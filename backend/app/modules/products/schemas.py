@@ -132,3 +132,35 @@ def derive_tier_rank(
     if category is None:
         return None
     return CATEGORY_DEFAULT_TIER_RANK.get(category)
+
+
+# ─── Fuzzy match (B1a) ─────────────────────────────────────────────────────────
+
+class ProductMatchCandidate(BaseModel):
+    """One match returned for a query — Product id + name + similarity score 0..100."""
+    product_id: UUID
+    name:       str
+    score:      int = Field(..., ge=0, le=100)
+
+
+class ProductMatchResult(BaseModel):
+    """All matches found for a single query string."""
+    query:   str
+    matches: list[ProductMatchCandidate]
+
+
+class ProductMatchBatchRequest(BaseModel):
+    """Batch a list of queries (typically one per invoice line item).
+
+    `threshold` is the minimum score below which a candidate is dropped.
+    `top_k` caps results per query so the response stays bounded.
+    """
+    queries:   list[str] = Field(..., min_length=1, max_length=200)
+    threshold: int       = Field(default=70, ge=0, le=100)
+    top_k:     int       = Field(default=3,  ge=1, le=10)
+
+
+class ProductMatchBatchResponse(BaseModel):
+    """One result per query, same order as input."""
+    results: list[ProductMatchResult]
+
