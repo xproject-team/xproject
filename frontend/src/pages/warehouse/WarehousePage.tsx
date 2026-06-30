@@ -24,6 +24,7 @@
 import { useMemo, useState } from 'react'
 
 import { useLiveEvent } from '@/features/dashboard/hooks'
+import { UploadInvoiceModal } from '@/features/warehouse/invoice_upload'
 import {
   useActivityFeed,
   useStorageSummary,
@@ -102,17 +103,37 @@ export default function WarehousePage() {
     )
   }
 
+  // Phase invoice-upload (Jun 29 2026): modal for dropping fattura PDFs.
+  // Lives on the warehouse page because invoices arrive across many days,
+  // not just at event setup. The wizard mounts the same modal too (B2b).
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+
   return (
     <Shell>
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">
-          Warehouse Management
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          {liveEventQ.data.name} · declared pool, per-bar dispatch, activity feed
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">
+            Warehouse Management
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {liveEventQ.data.name} · declared pool, per-bar dispatch, activity feed
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setInvoiceModalOpen(true)}
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#1ABC9C] hover:bg-[#17a589] px-4 py-2 text-sm font-semibold text-white"
+        >
+          <span className="text-base leading-none">+</span> Upload Invoice
+        </button>
       </div>
+
+      {/* Invoice upload modal */}
+      <UploadInvoiceModal
+        isOpen={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+      />
 
       {/* KPI strip */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

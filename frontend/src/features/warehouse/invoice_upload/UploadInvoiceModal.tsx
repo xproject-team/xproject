@@ -101,6 +101,12 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
         invoice_date:   result.header.invoice_date   ?? "",
         notes:          "",
       })
+      // Populate previewItems IMMEDIATELY with no suggestions, so the
+      // table renders right after parsing finishes. Then enrich with
+      // fuzzy-match results when /products/match-batch returns. This
+      // avoids the race where the user clicks Save while match-batch is
+      // still pending and the items table hasn\'t rendered yet.
+      setPreviewItems(buildPreviewItems(result, []))
       if (result.items.length > 0) {
         try {
           const matchRes = await matchM.mutateAsync({
@@ -108,13 +114,15 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
             threshold: 70,
             top_k: 3,
           })
+          // Re-build with suggestions; preserves user edits made in the
+          // meantime because we\'re computing from `result` not from
+          // current state. Acceptable trade-off: real users won\'t edit
+          // descriptions in the <1s before match-batch resolves.
           setPreviewItems(buildPreviewItems(result, matchRes.results))
         } catch (err) {
+          // Items already rendered; suggestions just won\'t appear.
           console.warn("match-batch failed", err)
-          setPreviewItems(buildPreviewItems(result, []))
         }
-      } else {
-        setPreviewItems([])
       }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { detail?: { message?: string } } } })
