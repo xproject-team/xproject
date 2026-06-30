@@ -78,7 +78,31 @@ function computeLineTotal(
   return net.toFixed(2)
 }
 
+// T7/T8 — manual entry mode helper. Empty PreviewItem with sane defaults
+// so the operator can type a row by hand without the modal blowing up on
+// undefined fields. line_num is 0-indexed and shifted by the table.
+function makeEmptyPreviewItem(line_num: number): PreviewItem {
+  return {
+    line_num,
+    code:           "",
+    description:    "",
+    qty:            "1",
+    unit:           "BO",
+    unit_price_eur: "0.00",
+    discount_pct:   null,
+    discount_eur:   null,
+    line_total_eur: "0.00",
+    iva_pct:        22,
+    suggestions:    [],
+    link:           { kind: "create_new" },
+  }
+}
+
 export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props) {
+  // T7 — entry mode. 'upload' uses the PDF dropzone, 'manual' lets the
+  // operator type the items by hand. Both produce the same PreviewItem[]
+  // shape so the save path stays a single code path.
+  const [mode, setMode] = useState<"upload" | "manual">("upload")
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedInvoice | null>(null)
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([])
@@ -94,6 +118,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
 
   useEffect(() => {
     if (!isOpen) {
+      setMode("upload")
       setFile(null); setParsed(null); setPreviewItems([])
       setHeaderEdits({ supplier_name: "", invoice_number: "", invoice_date: "", notes: "" })
       setBannerError(null)
@@ -155,6 +180,23 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
       setBannerError(msg)
       setFile(null)
     }
+  }
+
+  function switchMode(next: "upload" | "manual") {
+    setMode(next)
+    setFile(null)
+    setParsed(null)
+    setBannerError(null)
+    if (next === "manual") {
+      // Seed an empty row so the operator can type immediately.
+      setPreviewItems([makeEmptyPreviewItem(1)])
+    } else {
+      setPreviewItems([])
+    }
+  }
+
+  function addEmptyRow() {
+    setPreviewItems((prev) => [...prev, makeEmptyPreviewItem(prev.length + 1)])
   }
 
   function buildPreviewItems(p: ParsedInvoice, results: ProductMatchResult[]): PreviewItem[] {
@@ -269,7 +311,39 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
         <div className="flex items-start justify-between border-b border-[#E2E8F0] px-6 py-4 shrink-0">
           <div>
             <h2 className="text-lg font-bold text-[#1A202C]">Upload Invoice</h2>
-            <p className="text-xs text-[#718096]">Drop an Italian fattura PDF — we’ll extract the lines and let you review.</p>
+            <p className="text-xs text-[#718096]">
+            {mode === "upload"
+              ? "Drop an Italian fattura PDF — we’ll extract the lines and let you review."
+              : "Type each bottle into the table below. Use this when you don’t have a PDF or it didn’t parse."}
+          </p>
+
+          {/* T7 — entry mode toggle */}
+          <div className="mt-4 inline-flex rounded-lg border border-[#E2E8F0] p-1 bg-[#F7FAFC]">
+            <button
+              type="button"
+              onClick={() => switchMode("upload")}
+              className={[
+                "px-3 py-1.5 text-xs font-semibold rounded-md transition-colors",
+                mode === "upload"
+                  ? "bg-white text-[#1E5A8D] shadow-sm"
+                  : "text-[#718096] hover:text-[#4A5568]",
+              ].join(" ")}
+            >
+              Upload PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("manual")}
+              className={[
+                "px-3 py-1.5 text-xs font-semibold rounded-md transition-colors",
+                mode === "manual"
+                  ? "bg-white text-[#1E5A8D] shadow-sm"
+                  : "text-[#718096] hover:text-[#4A5568]",
+              ].join(" ")}
+            >
+              Enter Manually
+            </button>
+          </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
             className="rounded-md p-1.5 text-[#A0AEC0] hover:bg-[#F7FAFC] hover:text-[#4A5568]">
@@ -284,7 +358,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
             </div>
           )}
 
-          {!parsed && (
+          {!parsed && mode === "upload" && (
             <div
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -354,7 +428,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
             </div>
           )}
 
-          {parsed && previewItems.length > 0 && (
+          {previewItems.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold text-[#1A202C] uppercase tracking-wider">
@@ -428,6 +502,16 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
                   </tbody>
                 </table>
               </div>
+              <button
+                type="button"
+                onClick={addEmptyRow}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1E5A8D] hover:bg-[#F7FAFC] rounded-md transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Add row
+              </button>
               {matchM.isPending && <p className="mt-2 text-xs text-[#718096]">Looking up product matches…</p>}
             </div>
           )}
