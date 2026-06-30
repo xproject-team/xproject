@@ -454,6 +454,13 @@ class EventWarehouseRow(BaseModel):
     invoiced_value_cents: int      # SUM(line_total_cents), this event (NULL→0)
     unit_count: int                # how many invoice line items rolled up here
 
+    # ── Dispatch math (T10) ──────────────────────────────────────────────────
+    dispatched_qty: Decimal        # SUM(qty_allocated) dispatched to bars FOR
+                                   # this event, attributed back to this product.
+                                   # Always 0 for miscellaneous rows (no product).
+    remaining_qty: Decimal         # invoiced_qty - dispatched_qty. NOT clamped:
+                                   # goes negative when over-dispatched.
+
 
 class EventWarehouseSummary(BaseModel):
     """Per-event roll-up of everything invoiced for the event. Drives the
@@ -464,4 +471,6 @@ class EventWarehouseSummary(BaseModel):
     total_products: int            # number of distinct rows below
     total_qty: Decimal             # SUM of invoiced_qty across all rows
     total_value_cents: int         # SUM of invoiced_value_cents across all rows
+    total_dispatched_qty: Decimal  # SUM of dispatched_qty across all rows
+    total_remaining_qty: Decimal   # SUM of remaining_qty across all rows
     rows: list[EventWarehouseRow]

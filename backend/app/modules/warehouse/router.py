@@ -770,17 +770,23 @@ async def get_event_warehouse_summary(
     An event with no invoices — or one that does not exist for this tenant —
     returns rows=[] and zeroed totals (200, not 404).
 
-    T9 returns invoiced quantity + value only; dispatch math arrives in T10.
+    Each row carries invoiced qty + value (T9) plus dispatched_qty and
+    remaining_qty (T10); see InvoiceRepository.get_event_summary for the
+    supplier_products → products name-match used to attribute dispatch.
     """
     repo = InvoiceRepository(db)
     rows = await repo.get_event_summary(current_user.tenant_id, event_id)
     total_qty = sum((r.invoiced_qty for r in rows), Decimal("0"))
     total_value_cents = sum(r.invoiced_value_cents for r in rows)
+    total_dispatched_qty = sum((r.dispatched_qty for r in rows), Decimal("0"))
+    total_remaining_qty = sum((r.remaining_qty for r in rows), Decimal("0"))
     return EventWarehouseSummary(
         event_id=event_id,
         total_products=len(rows),
         total_qty=total_qty,
         total_value_cents=total_value_cents,
+        total_dispatched_qty=total_dispatched_qty,
+        total_remaining_qty=total_remaining_qty,
         rows=rows,
     )
 

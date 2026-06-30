@@ -23,6 +23,10 @@ from sqlalchemy import and_, desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.modules.event_storage.models import (
+    EventStockBarAllocation,
+    SupplierProduct,
+)
 from app.modules.events.models import Event, EventStatus
 from app.modules.products.models import Product
 from app.modules.warehouse.models import (
@@ -253,12 +257,59 @@ class InvoiceRepository:
         SUM(COALESCE(line_total_cents, 0)) → invoiced_value_cents,
         COUNT(*) → unit_count. NULL line totals count as 0.
 
+        Dispatch (T10): dispatched_qty is SUM(qty_allocated) from this event's
+        event_stock_bar_allocations, attributed back to a catalog product via
+        the supplier_products → products bridge (see below). remaining_qty is
+        invoiced_qty - dispatched_qty, computed by the caller. Miscellaneous
+        rows always get dispatched_qty=0 (allocations reference supplier_
+        products, which only ever map to real catalog products).
+
+        ⚠ supplier_products has NO foreign key to products. The only common
+        field is the name, so dispatch is attributed with a best-effort
+        case-insensitive name match: LOWER(supplier_products.item_name) =
+        LOWER(products.name). This is imperfect — a supplier item whose
+        item_name doesn't exactly match a catalog product.name contributes 0
+        dispatch (and won't subtract from any row). When the schema gains a
+        real supplier_products.product_id FK, swap the join below for it.
+
         Tenant-isolated on every joined table. Returns [] when the event has
         no invoices (or does not exist for this tenant).
-
-        T9 deliberately omits dispatched_qty / remaining_qty — T10 will layer
-        that in by joining warehouse allocations.
         """
+        # ── Dispatch per catalog product (one row per product_id) ───────────
+        # Sum every bar allocation for THIS event, hop supplier_products →
+        # products by name, group by the resolved product. One pass; folded
+        # into the main query as a LEFT JOIN so non-dispatched products read 0.
+        dispatch_subq = (
+            select(
+                Product.id.label("p_id"),
+                func.coalesce(
+                    func.sum(EventStockBarAllocation.qty_allocated), 0
+                ).label("dispatched"),
+            )
+            .join(
+                SupplierProduct,
+                and_(
+                    SupplierProduct.id
+                    == EventStockBarAllocation.supplier_product_id,
+                    SupplierProduct.tenant_id == tenant_id,
+                ),
+            )
+            .join(
+                Product,
+                and_(
+                    func.lower(SupplierProduct.item_name)
+                    == func.lower(Product.name),
+                    Product.tenant_id == tenant_id,
+                ),
+            )
+            .where(
+                EventStockBarAllocation.tenant_id == tenant_id,
+                EventStockBarAllocation.event_id == event_id,
+            )
+            .group_by(Product.id)
+            .subquery()
+        )
+
         product_name = func.coalesce(
             Product.name, InvoiceItem.miscellaneous_description
         )
@@ -275,6 +326,11 @@ class InvoiceRepository:
                     func.sum(func.coalesce(InvoiceItem.line_total_cents, 0)), 0
                 ).label("invoiced_value_cents"),
                 func.count(InvoiceItem.id).label("unit_count"),
+                # dispatch_subq has at most one row per product, so MAX just
+                # surfaces that single constant value within the group.
+                func.coalesce(func.max(dispatch_subq.c.dispatched), 0).label(
+                    "dispatched_qty"
+                ),
             )
             .join(
                 DeliveryInvoice,
@@ -291,6 +347,10 @@ class InvoiceRepository:
                     Product.tenant_id == tenant_id,
                 ),
             )
+            .outerjoin(
+                dispatch_subq,
+                dispatch_subq.c.p_id == InvoiceItem.product_id,
+            )
             .where(InvoiceItem.tenant_id == tenant_id)
             .group_by(
                 InvoiceItem.product_id,
@@ -303,20 +363,29 @@ class InvoiceRepository:
             .order_by(product_name.asc())
         )
         rows = (await self.db.execute(stmt)).all()
-        return [
-            EventWarehouseRow(
-                product_id=r.product_id,
-                product_name=r.product_name,
-                # category/product_type come back as Python enums (native_enum);
-                # unwrap to their string value for the API contract.
-                category=getattr(r.category, "value", r.category),
-                product_type=getattr(r.product_type, "value", r.product_type),
-                invoiced_qty=Decimal(r.invoiced_qty),
-                invoiced_value_cents=int(r.invoiced_value_cents),
-                unit_count=int(r.unit_count),
+        result: list[EventWarehouseRow] = []
+        for r in rows:
+            invoiced_qty = Decimal(r.invoiced_qty)
+            dispatched_qty = Decimal(r.dispatched_qty)
+            result.append(
+                EventWarehouseRow(
+                    product_id=r.product_id,
+                    product_name=r.product_name,
+                    # category/product_type come back as Python enums
+                    # (native_enum); unwrap to their string value for the API.
+                    category=getattr(r.category, "value", r.category),
+                    product_type=getattr(
+                        r.product_type, "value", r.product_type
+                    ),
+                    invoiced_qty=invoiced_qty,
+                    invoiced_value_cents=int(r.invoiced_value_cents),
+                    unit_count=int(r.unit_count),
+                    dispatched_qty=dispatched_qty,
+                    # NOT clamped — negative means over-dispatched.
+                    remaining_qty=invoiced_qty - dispatched_qty,
+                )
             )
-            for r in rows
-        ]
+        return result
 
 
 # ═════════════════════════════════════════════════════════════════════════════
