@@ -214,12 +214,16 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
       expected_arrival_date: headerEdits.invoice_date,
       notes: headerEdits.notes.trim() || null,
       items: previewItems.map((it) => ({
-        kind: it.link.kind === "link" ? "product" : "miscellaneous",
+        // Backend kind enum: 'catalog_product' (link to product) or
+        // 'miscellaneous' (one-off, no product link).
+        kind: it.link.kind === "link" ? "catalog_product" : "miscellaneous",
         product_id: it.link.kind === "link" ? it.link.product_id : null,
         miscellaneous_description: it.link.kind === "create_new" ? it.description : null,
+        // Backend stores expected_qty as Decimal; ship as number.
         expected_qty: toNum(it.qty),
         unit_price_cents: eurosToCents(it.unit_price_eur),
-        line_total_cents: eurosToCents(it.line_total_eur),
+        // line_total_cents is auto-computed server-side from
+        // expected_qty * unit_price_cents — don't send it.
       })),
     }
     try {
@@ -227,12 +231,23 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
       onSaved?.((saved as { id?: string })?.id)
       onClose()
     } catch (e: unknown) {
-      const detail = (e as { response?: { data?: { detail?: { message?: string } | string } } })
+      const detail = (e as { response?: { data?: { detail?: unknown } } })
         ?.response?.data?.detail
-      setBannerError(
-        typeof detail === "string" ? detail :
-        detail?.message ?? "Could not save invoice. Check the items and try again.",
-      )
+      let msg = "Could not save invoice. Check the items and try again."
+      if (typeof detail === "string") {
+        msg = detail
+      } else if (Array.isArray(detail)) {
+        // FastAPI 422 validation errors: [{loc: [...], msg: \"...\", type: \"...\"}, ...]
+        // Show the first 3 so the banner stays readable.
+        const lines = (detail as Array<{ loc?: unknown[]; msg?: string }>).slice(0, 3).map((d) => {
+          const where = Array.isArray(d.loc) ? d.loc.slice(-2).join(".") : ""
+          return where ? `${where}: ${d.msg ?? "invalid"}` : (d.msg ?? "invalid")
+        })
+        msg = lines.join(" · ")
+      } else if (detail && typeof detail === "object" && "message" in detail) {
+        msg = String((detail as { message?: unknown }).message ?? msg)
+      }
+      setBannerError(msg)
     }
   }
 

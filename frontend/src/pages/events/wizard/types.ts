@@ -52,7 +52,7 @@ export interface WizardState {
   topup_denominations_staff: number[]       // e.g. [5, 10, 20, 50, 100] in euros
 
   // ── Meta
-  current_step: 1 | 2 | 3 | 4
+  current_step: 1 | 2 | 3 | 4 | 5
   is_dirty: boolean
 }
 

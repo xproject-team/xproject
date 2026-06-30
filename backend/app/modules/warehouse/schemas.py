@@ -126,6 +126,14 @@ class InvoiceCreate(BaseModel):
     expected_arrival_date: date
     notes: str | None = None
     items: list[InvoiceItemBase] = Field(min_length=1)
+    # When True (default for the upload-PDF flow), the service treats this
+    # invoice as ALREADY ARRIVED: it creates products for any miscellaneous
+    # items, bumps warehouse_inventory.current_qty for every line by
+    # expected_qty, and flips the invoice status to CLOSED. Matches the
+    # operator mental model: "the fattura arrives, the bottles are now in
+    # the storeroom." Set False to preserve the old EXPECTED -> scan-in
+    # workflow if you genuinely don't have the goods yet.
+    auto_intake: bool = True
 
     @model_validator(mode="after")
     def validate_has_items(self) -> InvoiceCreate:

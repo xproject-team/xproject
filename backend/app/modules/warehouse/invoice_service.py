@@ -116,16 +116,122 @@ class InvoiceService:
             expected_arrival_date=data.expected_arrival_date,
             notes=data.notes,
         )
+
+        # Local imports to keep the module-level import block stable. The
+        # auto-intake path needs to create Products + bump the warehouse
+        # pool, which pulls in two services that the older create_invoice
+        # path didn't need.
+        from app.modules.products.schemas import ProductCreate
+        from app.modules.products.service import ProductService
+        product_service = ProductService(self.db)
+
+        # InventoryRepository owns warehouse_inventory.upsert_delta. We
+        # construct it locally to keep this side-effect explicit and avoid
+        # tangling InvoiceService with another long-lived dependency.
+        from app.modules.warehouse.repository import InventoryRepository
+        inventory_repo = InventoryRepository(self.db)
+
         for item in data.items:
+            resolved_product_id = item.product_id
+            resolved_kind = item.kind
+            resolved_misc = item.miscellaneous_description
+
+            # AUTO-INTAKE: if the operator says "these bottles are here",
+            # we materialize miscellaneous lines into real Catalog Products
+            # so the storeroom view can show them.
+            #
+            # product_type="supply" is the safe default here:
+            #   1. "drink" requires a category, which we don't have yet
+            #      (the PDF line is just "BEEFEATER LONDON DRY 1LT");
+            #   2. operator can re-classify later in Catalog UI without
+            #      losing inventory.
+            #
+            # Re-saving the same invoice would collide on the product name
+            # unique index; we catch DuplicateProductError and re-use the
+            # existing product instead.
+            if data.auto_intake and resolved_kind == "miscellaneous":
+                from app.modules.products.service import DuplicateProductError
+                from app.modules.products.models import ProductType, ProductUnit
+                from sqlalchemy import select
+                from app.modules.products.models import Product
+                name = (resolved_misc or "Unnamed item").strip()[:255]
+
+                # Best-effort unit guess from the parsed invoice unit code.
+                # PARTESA-style codes vs the Catalog ProductUnit enum:
+                #   BO  (bottle)   -> BOTTLE
+                #   BM  (cylinder) -> PIECE (CO2 etc., counted whole)
+                #   PZ  (piece)    -> PIECE
+                #   VP  (vassoio)  -> PIECE
+                #   KAR (case)     -> PIECE (Catalog has no CASE; whole units)
+                #   CT  (cartone)  -> PIECE
+                #   FS  (fusto/keg)-> PIECE (Catalog has no KEG)
+                # Default falls back to BOTTLE — most common for drink suppliers.
+                # Operator can reclassify in Catalog later.
+                inv_unit = (getattr(item, "unit", None) or "").upper()
+                unit_guess: ProductUnit = {
+                    "BO":  ProductUnit.BOTTLE,
+                    "BM":  ProductUnit.PIECE,
+                    "PZ":  ProductUnit.PIECE,
+                    "VP":  ProductUnit.PIECE,
+                    "KAR": ProductUnit.PIECE,
+                    "CT":  ProductUnit.PIECE,
+                    "FS":  ProductUnit.PIECE,
+                }.get(inv_unit, ProductUnit.BOTTLE)
+
+                try:
+                    product = await product_service.create_product(
+                        tenant_id,
+                        ProductCreate(
+                            name=name,
+                            product_type="supply",
+                            unit=unit_guess,
+                        ),
+                    )
+                except DuplicateProductError:
+                    # A product with this name already exists for the
+                    # tenant under SOME type (likely the older 'drink'
+                    # rows seeded from the menu). Re-use it instead of
+                    # creating a parallel supply-typed duplicate that
+                    # would split the warehouse pool across two rows.
+                    stmt = select(Product).where(
+                        Product.tenant_id == tenant_id,
+                        Product.name == name,
+                        Product.is_archived.is_(False),
+                    ).limit(1)
+                    existing = (await self.db.execute(stmt)).scalar_one_or_none()
+                    if existing is None:
+                        raise
+                    product = existing
+                resolved_product_id = product.id
+                resolved_kind = "catalog_product"
+                resolved_misc = None
+
             await self.repo.add_item(
                 tenant_id=tenant_id,
                 invoice_id=invoice.id,
-                kind=item.kind,
-                product_id=item.product_id,
-                miscellaneous_description=item.miscellaneous_description,
+                kind=resolved_kind,
+                product_id=resolved_product_id,
+                miscellaneous_description=resolved_misc,
                 expected_qty=item.expected_qty,
                 unit_price_cents=item.unit_price_cents,
             )
+
+            # AUTO-INTAKE: bump warehouse_inventory.current_qty so this
+            # product shows up in the storeroom view immediately. The
+            # InventoryRepository owns this — not the InvoiceRepository
+            # that self.repo points at.
+            if data.auto_intake and resolved_product_id is not None:
+                await inventory_repo.upsert_delta(
+                    tenant_id=tenant_id,
+                    product_id=resolved_product_id,
+                    delta=item.expected_qty,
+                )
+
+        # AUTO-INTAKE: the invoice is fully received, so flip the status.
+        # CLOSED is the terminal "all done" state in the spec.
+        if data.auto_intake:
+            invoice.status = "CLOSED"
+
         await self.db.commit()
         # Re-fetch with items loaded for the response
         return await self.get_invoice(tenant_id, invoice.id)

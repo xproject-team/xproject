@@ -36,13 +36,16 @@ import { WizardStep1Basics }   from "./steps/WizardStep1Basics"
 import { WizardStep2Upload }   from "./steps/WizardStep2Upload"
 import { WizardStep3Bars }     from "./steps/WizardStep3Bars"
 import { WizardStep4Recharge } from "./steps/WizardStep4Recharge"
+import { WizardStep5Invoices } from "./steps/WizardStep5Invoices"
 
-// Tabs metadata — keep in sync with current_step (1..4).
-const TABS: { num: 1 | 2 | 3 | 4; label: string }[] = [
+// Tabs metadata — keep in sync with current_step (1..5).
+const TABS: { num: 1 | 2 | 3 | 4 | 5; label: string }[] = [
   { num: 1, label: "Basics"   },
   { num: 2, label: "Upload"   },
   { num: 3, label: "Bars"     },
   { num: 4, label: "Recharge" },
+  { num: 5, label: "Invoices" },
+
 ]
 
 /**
@@ -106,19 +109,19 @@ function EventWizardContent({ userId }: ContentProps) {
   }
 
   // ── Navigation helpers
-  const goToStep = (num: 1 | 2 | 3 | 4) => {
+  const goToStep = (num: 1 | 2 | 3 | 4 | 5) => {
     setState((prev) => ({ ...prev, current_step: num }))
   }
 
   const goBack = () => {
     if (state.current_step > 1) {
-      goToStep((state.current_step - 1) as 1 | 2 | 3 | 4)
+      goToStep((state.current_step - 1) as 1 | 2 | 3 | 4 | 5)
     }
   }
 
   const goForward = () => {
-    if (state.current_step < 4) {
-      goToStep((state.current_step + 1) as 1 | 2 | 3 | 4)
+    if (state.current_step < 5) {
+      goToStep((state.current_step + 1) as 1 | 2 | 3 | 4 | 5)
     }
   }
 
@@ -139,6 +142,7 @@ function EventWizardContent({ userId }: ContentProps) {
       case 2: return <WizardStep2Upload   state={state} onChange={onChange} />
       case 3: return <WizardStep3Bars     state={state} onChange={onChange} />
       case 4: return <WizardStep4Recharge state={state} onChange={onChange} />
+      case 5: return <WizardStep5Invoices state={state} onChange={onChange} />
     }
   }, [state.current_step, state])
 
@@ -157,7 +161,7 @@ function EventWizardContent({ userId }: ContentProps) {
     if (payload === null) {
       setFinalizeBanner(preErrors.join(" · "))
       // Jump back to the earliest step that has an error so Omar can fix it
-      const stepGuess: 1 | 2 | 3 | 4 =
+      const stepGuess: 1 | 2 | 3 | 4 | 5 =
         preErrors.some((e) => e.startsWith("Basics:")) ? 1 :
         preErrors.some((e) => e.startsWith("Bars:"))   ? 3 :
         state.current_step
@@ -278,8 +282,8 @@ function EventWizardContent({ userId }: ContentProps) {
           Back
         </button>
         <button
-          onClick={state.current_step < 4 ? goForward : onFinalize}
-          disabled={state.current_step === 4 && createFull.isPending}
+          onClick={state.current_step < 5 ? goForward : onFinalize}
+          disabled={state.current_step === 5 && createFull.isPending}
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
             createFull.isPending
@@ -287,7 +291,7 @@ function EventWizardContent({ userId }: ContentProps) {
               : "bg-[#1ABC9C] hover:bg-[#17a589]",
           ].join(" ")}
         >
-          {state.current_step < 4
+          {state.current_step < 5
             ? "Save & Continue"
             : createFull.isPending
               ? "Finalizing…"

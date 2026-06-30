@@ -76,14 +76,14 @@ export interface ProductMatchBatchResponse {
 // + the user's match choices. Sent only after the user clicks "Save".
 
 export interface InvoiceItemCreatePayload {
-  // Either product_id (link to existing) OR miscellaneous_description
-  // (one-off item, will create a placeholder product server-side).
-  kind: 'product' | 'miscellaneous'
-  product_id?: string | null         // UUID
-  miscellaneous_description?: string | null
+  // Backend enum: 'catalog_product' (link to existing) or 'miscellaneous'
+  // (one-off item — backend creates a placeholder product server-side).
+  kind: 'catalog_product' | 'miscellaneous'
+  product_id?: string | null         // UUID, required when kind='catalog_product'
+  miscellaneous_description?: string | null  // required when kind='miscellaneous'
   expected_qty: number
   unit_price_cents?: number | null
-  line_total_cents?: number | null
+  // No line_total_cents — backend auto-computes from qty * unit_price
 }
 
 export interface InvoiceCreatePayload {
