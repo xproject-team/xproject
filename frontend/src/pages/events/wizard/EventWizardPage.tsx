@@ -170,8 +170,16 @@ function EventWizardContent({ userId }: ContentProps) {
     }
     createFull.mutate(payload, {
       onSuccess: (result) => {
-        clearDraft(userId)
-        navigate(`/events/${result.event.id}`, { replace: true })
+        // T5 change: do NOT navigate away yet. Step 5 (invoices) still
+        // needs the event_id we just got back. Stash it in state +
+        // advance the wizard. The "Done" button on Step 5 (added in
+        // the JSX patch below) handles final navigation + clearDraft.
+        setState((prev) => ({
+          ...prev,
+          event_id: result.event.id,
+          current_step: 5,
+          is_dirty: false,
+        }))
       },
       onError: (err: unknown) => {
         const items = extractFullEventErrors(err)
@@ -186,6 +194,16 @@ function EventWizardContent({ userId }: ContentProps) {
         }
       },
     })
+  }
+
+  // T5 — Step 5 final navigation. Once the event has been created
+  // (event_id set by onFinalize), the user uploads invoices through
+  // Step 5; clicking "Done" clears the draft and lands them on the
+  // brand-new event's detail page.
+  function onDone() {
+    if (state.event_id === null) return  // safety; button is disabled in this case
+    clearDraft(userId)
+    navigate(`/events/${state.event_id}`, { replace: true })
   }
 
   return (
@@ -271,7 +289,10 @@ function EventWizardContent({ userId }: ContentProps) {
       <div className="flex items-center justify-between">
         <button
           onClick={goBack}
-          disabled={state.current_step === 1}
+          disabled={
+            state.current_step === 1 ||
+            (state.current_step === 5 && state.event_id !== null)
+          }
           className={[
             "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
             state.current_step === 1
@@ -282,8 +303,17 @@ function EventWizardContent({ userId }: ContentProps) {
           Back
         </button>
         <button
-          onClick={state.current_step < 5 ? goForward : onFinalize}
-          disabled={state.current_step === 5 && createFull.isPending}
+          onClick={
+            state.current_step < 4
+              ? goForward
+              : state.current_step === 4
+                ? onFinalize
+                : onDone   // Step 5
+          }
+          disabled={
+            (state.current_step === 4 && createFull.isPending) ||
+            (state.current_step === 5 && state.event_id === null)
+          }
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
             createFull.isPending
@@ -291,11 +321,11 @@ function EventWizardContent({ userId }: ContentProps) {
               : "bg-[#1ABC9C] hover:bg-[#17a589]",
           ].join(" ")}
         >
-          {state.current_step < 5
+          {state.current_step < 4
             ? "Save & Continue"
-            : createFull.isPending
-              ? "Finalizing…"
-              : "Finalize"}
+            : state.current_step === 4
+              ? createFull.isPending ? "Creating Event…" : "Create Event"
+              : "Done"}
         </button>
       </div>
     </div>

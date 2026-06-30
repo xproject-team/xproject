@@ -5,13 +5,16 @@
  * of doing it later from the standalone Warehouse page. Same modal,
  * same backend pipeline -- this step is pure UX convenience.
  *
- * IMPORTANT: invoices are tenant-scoped (no event_id), so they go
- * straight into the warehouse pool the moment the user clicks "Save
- * Invoice" inside the modal. We do NOT defer them to the wizard
- * Finalize step. That means:
- *   - The invoices remain even if the user abandons the wizard draft
- *   - The warehouse pool carries forward to the next Sundance
- *   - This step is optional: Omar can skip it and upload later
+ * As of T5 (event-scoped architecture rewrite): invoices saved here
+ * attach to the wizard's event_id — set when the user clicks "Create
+ * Event" at the end of Step 4. Step 5 only becomes interactive once
+ * that round-trip succeeds; before that, the Upload button has no real
+ * event to attach to and the create flow is gated by the wizard
+ * itself.
+ *
+ *   - Invoices attach to THIS event only — fresh start for the next one
+ *   - This step is still optional: Omar can click "Done" to skip
+ *     uploads and add them later from the Warehouse page
  *
  * The visible list here is purely a confirmation of what the user
  * uploaded during THIS wizard session, not authoritative state.
@@ -39,7 +42,7 @@ interface Props {
 // feedback during this setup session. If the user closes the wizard
 // and reopens, the list resets -- but the invoices are still in the
 // warehouse pool, accessible from the standalone /warehouse page.
-export function WizardStep5Invoices(_props: Props) {
+export function WizardStep5Invoices({ state }: Props) {
   const [modalOpen, setModalOpen] = useState(false)
   const [uploaded, setUploaded] = useState<UploadedInvoice[]>([])
 
@@ -117,7 +120,7 @@ export function WizardStep5Invoices(_props: Props) {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
-        eventId={null}
+        eventId={state.event_id}
       />
     </div>
   )

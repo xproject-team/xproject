@@ -54,6 +54,13 @@ export interface WizardState {
   // ── Meta
   current_step: 1 | 2 | 3 | 4 | 5
   is_dirty: boolean
+  /**
+   * Set once the event has been created on the server (end of Step 4).
+   * Until then, null. Once set, Step 5's invoice uploads attach to this
+   * id, the Back button is disabled, and Step 5's "Done" navigates to
+   * /events/{event_id}.
+   */
+  event_id: string | null
 }
 
 /** Returned by buildEmptyWizardState(). Safe to mount with no prior draft. */
@@ -73,5 +80,6 @@ export function buildEmptyWizardState(): WizardState {
     topup_denominations_staff: [],
     current_step: 1,
     is_dirty: false,
+    event_id: null,
   }
 }
