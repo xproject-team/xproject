@@ -3,6 +3,8 @@
  * Anything importing from \'@/features/warehouse/invoice_upload\'
  * lands here.
  */
+export { UploadInvoiceModal } from './UploadInvoiceModal'
+
 export {
   useParseInvoicePdf,
   useMatchProductsBatch,

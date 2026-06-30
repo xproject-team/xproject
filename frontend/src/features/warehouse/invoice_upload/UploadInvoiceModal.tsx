@@ -1,0 +1,388 @@
+/**
+ * UploadInvoiceModal — drop a fattura PDF, review/edit, save as invoice.
+ *
+ * One-PDF-at-a-time flow. Matches how Omar actually uses it: fatture
+ * arrive one at a time over many days.
+ *
+ *   1. User drops/picks a PDF
+ *   2. useParseInvoicePdf      -> ParsedInvoice (header + items)
+ *   3. useMatchProductsBatch   -> per-item suggestions from Catalog
+ *   4. Editable preview:
+ *        - Header form (supplier / invoice# / date / notes)
+ *        - Items table: description + qty + price editable;
+ *          per-row dropdown to LINK to existing product OR create new
+ *   5. User clicks Save -> useCreateInvoice -> close
+ *
+ * Auto-link rule: if the top fuzzy match scored >= 85, the row defaults
+ * to LINK. Otherwise it defaults to CREATE NEW. User can override.
+ */
+import { useEffect, useMemo, useRef, useState } from "react"
+
+import {
+  type InvoiceCreatePayload,
+  type ItemLinkChoice,
+  type ParsedInvoice,
+  type PreviewItem,
+  type ProductMatchResult,
+  useCreateInvoice,
+  useMatchProductsBatch,
+  useParseInvoicePdf,
+} from "."
+
+interface Props {
+  isOpen: boolean
+  onClose: () => void
+  onSaved?: (invoiceId?: string) => void
+}
+
+const AUTO_LINK_SCORE = 85
+const ACCEPTED_PDF = ".pdf,application/pdf"
+const MAX_BYTES = 10 * 1024 * 1024 // 10 MB — matches backend cap
+
+function toNum(s: string | null | undefined): number {
+  if (s == null) return 0
+  const n = Number(s)
+  return Number.isFinite(n) ? n : 0
+}
+function fmtEur(s: string | null | undefined): string {
+  return `€ ${toNum(s).toFixed(2)}`
+}
+function eurosToCents(s: string | null | undefined): number | null {
+  if (s == null) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? Math.round(n * 100) : null
+}
+
+export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
+  const [file, setFile] = useState<File | null>(null)
+  const [parsed, setParsed] = useState<ParsedInvoice | null>(null)
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([])
+  const [headerEdits, setHeaderEdits] = useState({
+    supplier_name: "", invoice_number: "", invoice_date: "", notes: "",
+  })
+  const [bannerError, setBannerError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const parseM = useParseInvoicePdf()
+  const matchM = useMatchProductsBatch()
+  const createM = useCreateInvoice()
+
+  useEffect(() => {
+    if (!isOpen) {
+      setFile(null); setParsed(null); setPreviewItems([])
+      setHeaderEdits({ supplier_name: "", invoice_number: "", invoice_date: "", notes: "" })
+      setBannerError(null)
+      parseM.reset(); matchM.reset(); createM.reset()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  function handleFileSelected(f: File) {
+    if (f.size > MAX_BYTES) {
+      setBannerError(`File is ${(f.size / 1024 / 1024).toFixed(1)} MB; limit is 10 MB.`)
+      return
+    }
+    if (!f.type.toLowerCase().includes("pdf") && !f.name.toLowerCase().endsWith(".pdf")) {
+      setBannerError("Only PDF files are accepted.")
+      return
+    }
+    setBannerError(null)
+    setFile(f)
+    void runParse(f)
+  }
+
+  async function runParse(f: File) {
+    try {
+      const result = await parseM.mutateAsync(f)
+      setParsed(result)
+      setHeaderEdits({
+        supplier_name:  result.header.supplier_name  ?? "",
+        invoice_number: result.header.invoice_number ?? "",
+        invoice_date:   result.header.invoice_date   ?? "",
+        notes:          "",
+      })
+      if (result.items.length > 0) {
+        try {
+          const matchRes = await matchM.mutateAsync({
+            queries: result.items.map((it) => it.description),
+            threshold: 70,
+            top_k: 3,
+          })
+          setPreviewItems(buildPreviewItems(result, matchRes.results))
+        } catch (err) {
+          console.warn("match-batch failed", err)
+          setPreviewItems(buildPreviewItems(result, []))
+        }
+      } else {
+        setPreviewItems([])
+      }
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { detail?: { message?: string } } } })
+        ?.response?.data?.detail?.message ?? "Could not parse PDF."
+      setBannerError(msg)
+      setFile(null)
+    }
+  }
+
+  function buildPreviewItems(p: ParsedInvoice, results: ProductMatchResult[]): PreviewItem[] {
+    return p.items.map((item, idx) => {
+      const suggestions = results[idx]?.matches ?? []
+      const top = suggestions[0]
+      const link: ItemLinkChoice =
+        top && top.score >= AUTO_LINK_SCORE
+          ? { kind: "link", product_id: top.product_id, product_name: top.name }
+          : { kind: "create_new" }
+      return { ...item, suggestions, link }
+    })
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelected(e.dataTransfer.files[0])
+    }
+  }
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) { e.preventDefault() }
+
+  function updateItem(idx: number, patch: Partial<PreviewItem>) {
+    setPreviewItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+  }
+  function removeItem(idx: number) {
+    setPreviewItems((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  const totalLine = useMemo(
+    () => previewItems.reduce((acc, it) => acc + toNum(it.line_total_eur), 0),
+    [previewItems],
+  )
+
+  async function handleSave() {
+    setBannerError(null)
+    if (!headerEdits.supplier_name.trim()) {
+      setBannerError("Supplier name is required."); return
+    }
+    if (!headerEdits.invoice_date) {
+      setBannerError("Invoice date is required (YYYY-MM-DD)."); return
+    }
+    if (previewItems.length === 0) {
+      setBannerError("At least one line item is required."); return
+    }
+    const payload: InvoiceCreatePayload = {
+      invoice_number: headerEdits.invoice_number.trim() || null,
+      supplier_name: headerEdits.supplier_name.trim(),
+      expected_arrival_date: headerEdits.invoice_date,
+      notes: headerEdits.notes.trim() || null,
+      items: previewItems.map((it) => ({
+        kind: it.link.kind === "link" ? "product" : "miscellaneous",
+        product_id: it.link.kind === "link" ? it.link.product_id : null,
+        miscellaneous_description: it.link.kind === "create_new" ? it.description : null,
+        expected_qty: toNum(it.qty),
+        unit_price_cents: eurosToCents(it.unit_price_eur),
+        line_total_cents: eurosToCents(it.line_total_eur),
+      })),
+    }
+    try {
+      const saved = await createM.mutateAsync(payload)
+      onSaved?.((saved as { id?: string })?.id)
+      onClose()
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: { message?: string } | string } } })
+        ?.response?.data?.detail
+      setBannerError(
+        typeof detail === "string" ? detail :
+        detail?.message ?? "Could not save invoice. Check the items and try again.",
+      )
+    }
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-xl bg-white shadow-2xl flex flex-col">
+        <div className="flex items-start justify-between border-b border-[#E2E8F0] px-6 py-4 shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-[#1A202C]">Upload Invoice</h2>
+            <p className="text-xs text-[#718096]">Drop an Italian fattura PDF — we’ll extract the lines and let you review.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="rounded-md p-1.5 text-[#A0AEC0] hover:bg-[#F7FAFC] hover:text-[#4A5568]">
+            ✕
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-6 py-5 grow">
+          {bannerError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-900 font-semibold">{bannerError}</p>
+            </div>
+          )}
+
+          {!parsed && (
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onClick={() => fileInputRef.current?.click()}
+              className="cursor-pointer rounded-lg border-2 border-dashed border-[#CBD5E0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC] p-10 text-center transition-colors"
+            >
+              <input ref={fileInputRef} type="file" accept={ACCEPTED_PDF} className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelected(f) }} />
+              {parseM.isPending ? (
+                <div className="flex flex-col items-center gap-2">
+                  <svg className="w-8 h-8 text-[#1E5A8D] animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <p className="text-sm text-[#4A5568]">Parsing PDF…</p>
+                  {file && <p className="text-xs text-[#718096]">{file.name}</p>}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <svg className="w-12 h-12 text-[#A0AEC0]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  <p className="text-base font-semibold text-[#1A202C]">Drop a PDF fattura here</p>
+                  <p className="text-sm text-[#718096]">or click to browse</p>
+                  <p className="text-xs text-[#A0AEC0] mt-2">Max 10 MB · .pdf only</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {parsed && (
+            <div className="mb-5">
+              <h3 className="text-sm font-bold text-[#1A202C] uppercase tracking-wider mb-3">Invoice details</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#4A5568] mb-1">Supplier</label>
+                  <input type="text" value={headerEdits.supplier_name}
+                    onChange={(e) => setHeaderEdits((p) => ({ ...p, supplier_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:border-[#1E5A8D]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#4A5568] mb-1">Invoice number</label>
+                  <input type="text" value={headerEdits.invoice_number}
+                    onChange={(e) => setHeaderEdits((p) => ({ ...p, invoice_number: e.target.value }))}
+                    className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:border-[#1E5A8D]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#4A5568] mb-1">Invoice date</label>
+                  <input type="date" value={headerEdits.invoice_date}
+                    onChange={(e) => setHeaderEdits((p) => ({ ...p, invoice_date: e.target.value }))}
+                    className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:border-[#1E5A8D]" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#4A5568] mb-1">Notes (optional)</label>
+                  <input type="text" value={headerEdits.notes}
+                    onChange={(e) => setHeaderEdits((p) => ({ ...p, notes: e.target.value }))}
+                    placeholder="Any reference to attach"
+                    className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:border-[#1E5A8D]" />
+                </div>
+              </div>
+              {parsed.header.total_document && (
+                <p className="mt-2 text-xs text-[#718096]">
+                  PDF declared total: <span className="font-semibold">{fmtEur(parsed.header.total_document)}</span>
+                  {" "}· imponibile {fmtEur(parsed.header.total_imponibile)}
+                </p>
+              )}
+            </div>
+          )}
+
+          {parsed && previewItems.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-[#1A202C] uppercase tracking-wider">
+                  Line items ({previewItems.length})
+                </h3>
+                <p className="text-xs text-[#718096]">
+                  Sum: <span className="font-semibold">€ {totalLine.toFixed(2)}</span>
+                </p>
+              </div>
+              <div className="border border-[#E2E8F0] rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#F7FAFC] text-[#4A5568] text-xs uppercase">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Description</th>
+                      <th className="px-3 py-2 text-right font-semibold w-20">Qty</th>
+                      <th className="px-3 py-2 text-left font-semibold w-14">Unit</th>
+                      <th className="px-3 py-2 text-right font-semibold w-24">Price</th>
+                      <th className="px-3 py-2 text-right font-semibold w-24">Total</th>
+                      <th className="px-3 py-2 text-left font-semibold w-48">Link to product</th>
+                      <th className="px-3 py-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8F0]">
+                    {previewItems.map((it, idx) => (
+                      <tr key={`${it.line_num}-${idx}`} className="text-[#1A202C]">
+                        <td className="px-3 py-2">
+                          <input type="text" value={it.description}
+                            onChange={(e) => updateItem(idx, { description: e.target.value })}
+                            className="w-full px-2 py-1 border border-transparent hover:border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none rounded text-sm" />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" step="0.01" value={it.qty}
+                            onChange={(e) => updateItem(idx, { qty: e.target.value })}
+                            className="w-20 px-2 py-1 border border-transparent hover:border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none rounded text-right text-sm" />
+                        </td>
+                        <td className="px-3 py-2 text-xs text-[#718096]">{it.unit}</td>
+                        <td className="px-3 py-2 text-right">
+                          <input type="number" step="0.01" value={it.unit_price_eur}
+                            onChange={(e) => updateItem(idx, { unit_price_eur: e.target.value })}
+                            className="w-24 px-2 py-1 border border-transparent hover:border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none rounded text-right text-sm" />
+                        </td>
+                        <td className="px-3 py-2 text-right text-xs text-[#4A5568]">{fmtEur(it.line_total_eur)}</td>
+                        <td className="px-3 py-2">
+                          <select
+                            value={it.link.kind === "link" ? it.link.product_id : "__new__"}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              if (v === "__new__") {
+                                updateItem(idx, { link: { kind: "create_new" } })
+                              } else {
+                                const sug = it.suggestions.find((s) => s.product_id === v)
+                                if (sug) updateItem(idx, { link: { kind: "link", product_id: sug.product_id, product_name: sug.name } })
+                              }
+                            }}
+                            className="w-full px-2 py-1 border border-[#E2E8F0] rounded text-xs focus:outline-none focus:border-[#1E5A8D] bg-white"
+                          >
+                            <option value="__new__">+ Create new product</option>
+                            {it.suggestions.map((s) => (
+                              <option key={s.product_id} value={s.product_id}>
+                                {s.score >= AUTO_LINK_SCORE ? "⭐ " : ""}{s.name} ({s.score}%)
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <button onClick={() => removeItem(idx)} aria-label="Remove row"
+                            className="text-[#A0AEC0] hover:text-[#E53E3E] text-sm">✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {matchM.isPending && <p className="mt-2 text-xs text-[#718096]">Looking up product matches…</p>}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-[#E2E8F0] px-6 py-4 shrink-0 bg-[#F7FAFC]">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-[#4A5568] hover:bg-white rounded-lg">
+            Cancel
+          </button>
+          {parsed && (
+            <button onClick={handleSave} disabled={createM.isPending}
+              className={["px-5 py-2 text-sm font-semibold rounded-lg text-white",
+                createM.isPending ? "bg-[#CBD5E0] cursor-not-allowed" : "bg-[#1ABC9C] hover:bg-[#17a589]"].join(" ")}>
+              {createM.isPending ? "Saving…" : "Save Invoice"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
