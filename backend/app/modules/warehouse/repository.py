@@ -32,6 +32,7 @@ from app.modules.warehouse.models import (
     WarehouseInventory,
     WarehouseScan,
 )
+from app.modules.warehouse.schemas import EventWarehouseRow
 
 # Event statuses that keep allocations "live" — used by active_allocations KPI
 # and by over-allocation prevention. Completed events don't hold reservations.
@@ -229,6 +230,93 @@ class InvoiceRepository:
         await self.db.flush()
         await self.db.refresh(invoice)
         return invoice
+
+    # ─── Event roll-up (T9) ─────────────────────────────────────────────────────
+
+    async def get_event_summary(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> list[EventWarehouseRow]:
+        """Per-product summary of everything invoiced FOR one event.
+
+        One GROUP BY query: join this event's delivery_invoices to their
+        invoice_items, LEFT JOIN products to enrich catalog lines, and roll up.
+
+        Grouping keys:
+          - catalog_product lines collapse by product_id (miscellaneous_
+            description is NULL, so it drops out of the key)
+          - miscellaneous lines collapse by miscellaneous_description (product_id
+            is NULL, so each distinct freetext description is its own row)
+
+        Aggregates: SUM(expected_qty) → invoiced_qty,
+        SUM(COALESCE(line_total_cents, 0)) → invoiced_value_cents,
+        COUNT(*) → unit_count. NULL line totals count as 0.
+
+        Tenant-isolated on every joined table. Returns [] when the event has
+        no invoices (or does not exist for this tenant).
+
+        T9 deliberately omits dispatched_qty / remaining_qty — T10 will layer
+        that in by joining warehouse allocations.
+        """
+        product_name = func.coalesce(
+            Product.name, InvoiceItem.miscellaneous_description
+        )
+        stmt = (
+            select(
+                InvoiceItem.product_id.label("product_id"),
+                product_name.label("product_name"),
+                Product.category.label("category"),
+                Product.product_type.label("product_type"),
+                func.coalesce(func.sum(InvoiceItem.expected_qty), 0).label(
+                    "invoiced_qty"
+                ),
+                func.coalesce(
+                    func.sum(func.coalesce(InvoiceItem.line_total_cents, 0)), 0
+                ).label("invoiced_value_cents"),
+                func.count(InvoiceItem.id).label("unit_count"),
+            )
+            .join(
+                DeliveryInvoice,
+                and_(
+                    DeliveryInvoice.id == InvoiceItem.invoice_id,
+                    DeliveryInvoice.tenant_id == tenant_id,
+                    DeliveryInvoice.event_id == event_id,
+                ),
+            )
+            .outerjoin(
+                Product,
+                and_(
+                    Product.id == InvoiceItem.product_id,
+                    Product.tenant_id == tenant_id,
+                ),
+            )
+            .where(InvoiceItem.tenant_id == tenant_id)
+            .group_by(
+                InvoiceItem.product_id,
+                InvoiceItem.miscellaneous_description,
+                Product.id,
+                Product.name,
+                Product.category,
+                Product.product_type,
+            )
+            .order_by(product_name.asc())
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            EventWarehouseRow(
+                product_id=r.product_id,
+                product_name=r.product_name,
+                # category/product_type come back as Python enums (native_enum);
+                # unwrap to their string value for the API contract.
+                category=getattr(r.category, "value", r.category),
+                product_type=getattr(r.product_type, "value", r.product_type),
+                invoiced_qty=Decimal(r.invoiced_qty),
+                invoiced_value_cents=int(r.invoiced_value_cents),
+                unit_count=int(r.unit_count),
+            )
+            for r in rows
+        ]
 
 
 # ═════════════════════════════════════════════════════════════════════════════

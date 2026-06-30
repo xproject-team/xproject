@@ -426,3 +426,42 @@ class ActivityFeedRow(BaseModel):
     scanned_at: datetime
     is_unexpected: bool
     pending_review: bool
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# EVENT WAREHOUSE SUMMARY (per-event invoiced view — T9)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class EventWarehouseRow(BaseModel):
+    """One product (or one miscellaneous freetext line) summed across every
+    invoice uploaded FOR a single event.
+
+    Catalog lines roll up by product_id and are enriched with the product's
+    name/category/type. Miscellaneous lines have no product_id; each distinct
+    miscellaneous_description becomes its own row, with the description used as
+    the display name and category/type left null.
+
+    T9 scope: invoiced_qty + invoiced_value_cents only. Dispatch math
+    (dispatched_qty / remaining_qty) is deliberately deferred to T10.
+    """
+
+    product_id: UUID | None        # null for miscellaneous-only items
+    product_name: str              # products.name if linked, else the
+                                   # miscellaneous_description
+    category: str | None           # products.category if linked
+    product_type: str | None       # 'drink' | 'supply' | ... if linked
+    invoiced_qty: Decimal          # SUM(invoice_items.expected_qty), this event
+    invoiced_value_cents: int      # SUM(line_total_cents), this event (NULL→0)
+    unit_count: int                # how many invoice line items rolled up here
+
+
+class EventWarehouseSummary(BaseModel):
+    """Per-event roll-up of everything invoiced for the event. Drives the
+    per-event warehouse page that replaces the tenant-pool view.
+    """
+
+    event_id: UUID
+    total_products: int            # number of distinct rows below
+    total_qty: Decimal             # SUM of invoiced_qty across all rows
+    total_value_cents: int         # SUM of invoiced_value_cents across all rows
+    rows: list[EventWarehouseRow]

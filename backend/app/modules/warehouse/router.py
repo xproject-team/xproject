@@ -27,6 +27,7 @@ Spec: docs/warehouse-module-spec.md S8.
 """
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
@@ -45,6 +46,7 @@ from app.modules.warehouse.invoice_service import (
     InvoiceNotFoundError,
     InvoiceService,
 )
+from app.modules.warehouse.repository import InvoiceRepository
 from app.modules.warehouse.scan_service import (
     AllocationNotFoundError,
     InvoiceNotActiveError,
@@ -60,6 +62,7 @@ from app.modules.warehouse.schemas import (
     BarcodeResolveRequest,
     BarcodeResolveResponse,
     DiscrepancyReport,
+    EventWarehouseSummary,
     InventoryKpis,
     InventoryRow,
     InvoiceCreate,
@@ -746,6 +749,40 @@ async def upsert_event_allocations(
         )
         for alloc, product in rows
     ]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# EVENT WAREHOUSE SUMMARY — per-event invoiced roll-up (T9)
+# ═════════════════════════════════════════════════════════════════════════════
+
+@router.get("/event/{event_id}/summary", response_model=EventWarehouseSummary)
+async def get_event_warehouse_summary(
+    event_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> EventWarehouseSummary:
+    """Per-product summary of everything invoiced FOR this event.
+
+    Drives the per-event warehouse page (replaces the tenant-pool view).
+    Aggregation lives in InvoiceRepository.get_event_summary (one GROUP BY
+    query, tenant-isolated). Totals are summed here in Python from the rows.
+
+    An event with no invoices — or one that does not exist for this tenant —
+    returns rows=[] and zeroed totals (200, not 404).
+
+    T9 returns invoiced quantity + value only; dispatch math arrives in T10.
+    """
+    repo = InvoiceRepository(db)
+    rows = await repo.get_event_summary(current_user.tenant_id, event_id)
+    total_qty = sum((r.invoiced_qty for r in rows), Decimal("0"))
+    total_value_cents = sum(r.invoiced_value_cents for r in rows)
+    return EventWarehouseSummary(
+        event_id=event_id,
+        total_products=len(rows),
+        total_qty=total_qty,
+        total_value_cents=total_value_cents,
+        rows=rows,
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════
