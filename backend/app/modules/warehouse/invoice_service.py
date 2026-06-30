@@ -115,6 +115,7 @@ class InvoiceService:
             supplier_name=data.supplier_name,
             expected_arrival_date=data.expected_arrival_date,
             notes=data.notes,
+            event_id=data.event_id,
         )
 
         # Local imports to keep the module-level import block stable. The

@@ -126,6 +126,11 @@ class InvoiceCreate(BaseModel):
     expected_arrival_date: date
     notes: str | None = None
     items: list[InvoiceItemBase] = Field(min_length=1)
+    # Event this invoice belongs to. Drives the per-event warehouse view:
+    # what's in stock for THIS Sundance, dispatched per bar, remaining.
+    # Optional only for back-compat with the legacy tenant-pool flow.
+    # The wizard + Warehouse modal both always set this in new code paths.
+    event_id: UUID | None = None
     # When True (default for the upload-PDF flow), the service treats this
     # invoice as ALREADY ARRIVED: it creates products for any miscellaneous
     # items, bumps warehouse_inventory.current_qty for every line by
