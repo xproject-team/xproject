@@ -134,6 +134,7 @@ export default function WarehousePage() {
       <UploadInvoiceModal
         isOpen={invoiceModalOpen}
         onClose={() => setInvoiceModalOpen(false)}
+        eventId={liveEventQ.data?.id ?? null}
       />
 
       {/* KPI strip */}

@@ -92,6 +92,10 @@ export interface InvoiceCreatePayload {
   expected_arrival_date:  string      // ISO date
   notes?:                 string | null
   items:                  InvoiceItemCreatePayload[]
+  // Event this invoice belongs to. Drives the per-event warehouse view.
+  // Optional only for back-compat with the legacy tenant-pool flow; new
+  // call sites always populate it.
+  event_id?:              string | null
 }
 
 // ─── UI-local enrichment (not sent to backend) ───────────────────────

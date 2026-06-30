@@ -33,6 +33,12 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   onSaved?: (invoiceId?: string) => void
+  /**
+   * Event this invoice belongs to. Null when the modal is opened
+   * outside an event context (legacy tenant-pool path). New call sites
+   * always populate it so the saved invoice carries event_id.
+   */
+  eventId: string | null
 }
 
 const AUTO_LINK_SCORE = 85
@@ -72,7 +78,7 @@ function computeLineTotal(
   return net.toFixed(2)
 }
 
-export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
+export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedInvoice | null>(null)
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([])
@@ -213,6 +219,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
       supplier_name: headerEdits.supplier_name.trim(),
       expected_arrival_date: headerEdits.invoice_date,
       notes: headerEdits.notes.trim() || null,
+      event_id: eventId,
       items: previewItems.map((it) => ({
         // Backend kind enum: 'catalog_product' (link to product) or
         // 'miscellaneous' (one-off, no product link).

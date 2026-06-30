@@ -117,6 +117,7 @@ export function WizardStep5Invoices(_props: Props) {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
+        eventId={null}
       />
     </div>
   )
