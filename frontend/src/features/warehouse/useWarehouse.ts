@@ -53,6 +53,31 @@ import {
 
 // ─── Types (match backend schemas.py 1:1) ────────────────────────────────────
 
+
+// ─── T9 endpoint shapes — per-event warehouse summary ────────────────
+export interface EventWarehouseRow {
+  product_id:           string | null
+  product_name:         string
+  category:             string | null
+  product_type:         string | null
+  invoiced_qty:         string        // bought
+  invoiced_value_cents: number
+  unit_count:           number
+  dispatched_qty:       string        // T10 — sent to bars
+  remaining_qty:        string        // T10 — bought − dispatched
+                                      // (CAN be negative)
+}
+
+export interface EventWarehouseSummary {
+  event_id:               string
+  total_products:         number
+  total_qty:              string      // sum of invoiced_qty across rows
+  total_value_cents:      number
+  total_dispatched_qty:   string      // T10
+  total_remaining_qty:    string      // T10
+  rows:                   EventWarehouseRow[]
+}
+
 export type InvoiceStatus =
   | 'EXPECTED'
   | 'SCANNING'
@@ -739,5 +764,24 @@ export function useVoidScan() {
       // invalidate everything warehouse-shaped so KPIs / grids refresh.
       qc.invalidateQueries({ queryKey: warehouseKeys.all })
     },
+  })
+}
+
+
+// ─── T9 — per-event warehouse summary ────────────────────────────────
+// Drives the per-event 'Invoiced for this event' section on the
+// Warehouse page. Returns null when eventId is null (so the page can
+// render an empty-state without a request).
+export function useEventWarehouseSummary(eventId: string | null | undefined) {
+  return useQuery<EventWarehouseSummary>({
+    queryKey: ['warehouse', 'event-summary', eventId ?? 'none'],
+    queryFn: async () => {
+      const { data } = await api.get<EventWarehouseSummary>(
+        `/warehouse/event/${eventId}/summary`,
+      )
+      return data
+    },
+    enabled: !!eventId,
+    staleTime: 15_000,
   })
 }

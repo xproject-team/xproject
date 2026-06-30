@@ -21,17 +21,17 @@
  *
  * Old scan-based source preserved as WarehousePage.tsx.scan-bak.
  */
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { useLiveEvent } from '@/features/dashboard/hooks'
 import { UploadInvoiceModal } from '@/features/warehouse/invoice_upload'
+import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
 import {
   useActivityFeed,
   useStorageSummary,
 } from '@/features/event_storage/hooks'
 import type {
   ActivityFeedRow,
-  StorageSummaryRow,
 } from '@/features/event_storage/types'
 
 const EUR = new Intl.NumberFormat('it-IT', {
@@ -72,6 +72,10 @@ export default function WarehousePage() {
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
 
   const liveEventQ = useLiveEvent()
+  // T9/T11 — per-event invoiced summary. Lists every product Omar has
+  // recorded an invoice for, scoped to THIS event. Falls back to an
+  // empty card when no live event is set.
+  const eventSummaryQ = useEventWarehouseSummary(liveEventQ.data?.id)
   const eventId = liveEventQ.data?.id
 
   const summaryQ = useStorageSummary(eventId)
@@ -81,16 +85,6 @@ export default function WarehousePage() {
   const activity = activityQ.data ?? []
 
   const [search, setSearch] = useState('')
-  const filteredRows: StorageSummaryRow[] = useMemo(() => {
-    const rows = summary?.rows ?? []
-    const q = search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(
-      (r) =>
-        r.item_name.toLowerCase().includes(q) ||
-        r.category.toLowerCase().includes(q),
-    )
-  }, [summary, search])
 
   if (liveEventQ.isLoading) {
     return <Shell><p className="text-slate-500">Loading…</p></Shell>
@@ -161,11 +155,20 @@ export default function WarehousePage() {
         />
       </div>
 
-      {/* Main: inventory table + activity sidebar */}
+            {/* Main: inventory table + activity sidebar */}
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+        {/* T11.5 — event-scoped warehouse table (was: 'Inventory' from
+            event_storage). One row per product: invoiced for this event,
+            dispatched to bars, remaining. Color-coded: red = negative
+            (over-dispatched), amber = low (<5 left), green = healthy. */}
         <div className="rounded-lg border border-slate-200 bg-white">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-base font-semibold text-slate-800">Inventory</h2>
+            <div>
+              <h2 className="text-base font-semibold text-slate-800">Warehouse</h2>
+              <p className="text-xs text-slate-500">
+                Everything invoiced for this Sundance, with what bars have already taken.
+              </p>
+            </div>
             <input
               type="text"
               value={search}
@@ -174,51 +177,69 @@ export default function WarehousePage() {
               className="w-72 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
-          {summaryQ.isLoading ? (
+          {eventSummaryQ.isLoading ? (
+            <p className="px-5 py-8 text-center text-sm text-slate-500">Loading…</p>
+          ) : !eventSummaryQ.data || eventSummaryQ.data.rows.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-slate-500">
-              Loading inventory…
+              No invoices yet for this event. Upload one above to get started.
             </p>
-          ) : filteredRows.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-slate-500">
-              {search
-                ? 'No items match your search.'
-                : 'No storage declared for this event yet. Open the event in the wizard → Storage tab.'}
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <th className="px-5 py-3 text-left">Product</th>
-                  <th className="px-5 py-3 text-left">Category</th>
-                  <th className="px-5 py-3 text-right">In Stock</th>
-                  <th className="px-5 py-3 text-right">Allocated</th>
-                  <th className="px-5 py-3 text-right">Available</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((r) => (
-                  <tr
-                    key={r.supplier_product_id}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                  >
-                    <td className="px-5 py-3 font-medium text-slate-800">
-                      {r.item_name}
-                    </td>
-                    <td className="px-5 py-3 text-slate-500">{r.category}</td>
-                    <td className="px-5 py-3 text-right font-mono text-slate-700">
-                      {fmtQty(r.qty_received)} {r.unit}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-slate-700">
-                      {fmtQty(r.qty_allocated)}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono font-semibold text-slate-800">
-                      {fmtQty(r.qty_available)}
-                    </td>
+          ) : (() => {
+            const q = search.trim().toLowerCase()
+            const visible = q
+              ? eventSummaryQ.data.rows.filter(
+                  (r) =>
+                    r.product_name.toLowerCase().includes(q) ||
+                    (r.category ?? '').toLowerCase().includes(q),
+                )
+              : eventSummaryQ.data.rows
+            if (visible.length === 0) {
+              return (
+                <p className="px-5 py-8 text-center text-sm text-slate-500">
+                  No items match your search.
+                </p>
+              )
+            }
+            return (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th className="px-5 py-3 text-left">Product</th>
+                    <th className="px-5 py-3 text-left">Category</th>
+                    <th className="px-5 py-3 text-right">Bought</th>
+                    <th className="px-5 py-3 text-right">Dispatched</th>
+                    <th className="px-5 py-3 text-right">Remaining</th>
+                    <th className="px-5 py-3 text-right">Value</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {visible.map((r) => {
+                    const rem = Number(r.remaining_qty)
+                    const remClass =
+                      rem < 0
+                        ? 'text-red-600'
+                        : rem < 5
+                          ? 'text-amber-600'
+                          : 'text-emerald-700'
+                    return (
+                      <tr
+                        key={r.product_id ?? r.product_name}
+                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                      >
+                        <td className="px-5 py-3 font-medium text-slate-800">{r.product_name}</td>
+                        <td className="px-5 py-3 text-slate-500">{r.category ?? '—'}</td>
+                        <td className="px-5 py-3 text-right font-mono text-slate-700">{r.invoiced_qty}</td>
+                        <td className="px-5 py-3 text-right font-mono text-slate-500">{r.dispatched_qty}</td>
+                        <td className={`px-5 py-3 text-right font-mono font-semibold ${remClass}`}>{r.remaining_qty}</td>
+                        <td className="px-5 py-3 text-right font-mono text-slate-700">
+                          € {(r.invoiced_value_cents / 100).toFixed(2)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )
+          })()}
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white">
