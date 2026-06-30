@@ -65,6 +65,12 @@ function fmtTimeAgo(iso: string): string {
 }
 
 export default function WarehousePage() {
+  // Phase invoice-upload (Jun 29 2026): modal for dropping fattura PDFs.
+  // MUST be declared above any early-return guard or React's
+  // Rules-of-Hooks gets violated when state transitions liveEvent
+  // from null to non-null between renders.
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+
   const liveEventQ = useLiveEvent()
   const eventId = liveEventQ.data?.id
 
@@ -102,11 +108,6 @@ export default function WarehousePage() {
       </Shell>
     )
   }
-
-  // Phase invoice-upload (Jun 29 2026): modal for dropping fattura PDFs.
-  // Lives on the warehouse page because invoices arrive across many days,
-  // not just at event setup. The wizard mounts the same modal too (B2b).
-  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
 
   return (
     <Shell>

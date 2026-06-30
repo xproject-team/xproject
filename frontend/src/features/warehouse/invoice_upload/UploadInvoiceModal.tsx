@@ -53,6 +53,25 @@ function eurosToCents(s: string | null | undefined): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) : null
 }
 
+function computeLineTotal(
+  qty: string | null | undefined,
+  unitPrice: string | null | undefined,
+  discountPct: string | null | undefined,
+  discountEur: string | null | undefined,
+): string {
+  const q = toNum(qty)
+  const p = toNum(unitPrice)
+  const gross = q * p
+  if (gross <= 0) return "0.00"
+  let net = gross
+  if (discountEur != null) {
+    net = gross - toNum(discountEur)
+  } else if (discountPct != null) {
+    net = gross * (1 - toNum(discountPct) / 100)
+  }
+  return net.toFixed(2)
+}
+
 export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [parsed, setParsed] = useState<ParsedInvoice | null>(null)
@@ -153,7 +172,21 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved }: Props) {
   function handleDragOver(e: React.DragEvent<HTMLDivElement>) { e.preventDefault() }
 
   function updateItem(idx: number, patch: Partial<PreviewItem>) {
-    setPreviewItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+    setPreviewItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it
+        const merged = { ...it, ...patch }
+        if ("qty" in patch || "unit_price_eur" in patch) {
+          merged.line_total_eur = computeLineTotal(
+            merged.qty,
+            merged.unit_price_eur,
+            merged.discount_pct,
+            merged.discount_eur,
+          )
+        }
+        return merged
+      }),
+    )
   }
   function removeItem(idx: number) {
     setPreviewItems((prev) => prev.filter((_, i) => i !== idx))
