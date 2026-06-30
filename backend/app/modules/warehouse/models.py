@@ -100,6 +100,21 @@ class DeliveryInvoice(TenantScopedModel):
     # deferred pending Omar's invoice sample. Future v1.1 migration may add
     # supplier_id FK and backfill from distinct values of this column.
     supplier_name = Column(String(255), nullable=False)
+
+    # Event association (added in migration aa1, late June 2026).
+    #
+    # An invoice belongs to ONE event. This is the cornerstone of the
+    # per-event architecture: when you pick an event you see the
+    # invoices Omar uploaded for that event, and only those. NULL is
+    # allowed only for backwards compatibility with rows created before
+    # this column existed; new code paths always set it.
+    event_id = Column(
+        PgUUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=True,   # nullable for back-compat; new rows always set
+        index=True,
+    )
+
     expected_arrival_date = Column(Date, nullable=False)
     status = Column(INVOICE_STATUS_ENUM, nullable=False, default="EXPECTED")
     scan_started_at = Column(DateTime(timezone=True), nullable=True)

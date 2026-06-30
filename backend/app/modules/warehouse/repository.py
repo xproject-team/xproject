@@ -132,6 +132,7 @@ class InvoiceRepository:
         supplier_name: str,
         expected_arrival_date,
         notes: str | None,
+        event_id: UUID | None = None,
     ) -> DeliveryInvoice:
         """Create a new invoice row with status=EXPECTED (server default).
 
@@ -145,6 +146,7 @@ class InvoiceRepository:
             supplier_name=supplier_name,
             expected_arrival_date=expected_arrival_date,
             notes=notes,
+            event_id=event_id,
         )
         self.db.add(invoice)
         await self.db.flush()
