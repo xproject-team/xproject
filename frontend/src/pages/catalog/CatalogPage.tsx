@@ -1,13 +1,13 @@
 import { useState } from 'react'
 
 import ProductsListPage from '@/pages/products/ProductsListPage'
-import RecipesListPage  from '@/pages/recipes/RecipesListPage'
+import { EventRecipesTab } from '@/pages/catalog/EventRecipesTab'
 
 type Tab = 'products' | 'recipes'
 
 const TABS: { key: Tab; label: string; hint: string }[] = [
   { key: 'products', label: 'Products', hint: 'Drinks, food, ingredients, and supplies' },
-  { key: 'recipes',  label: 'Recipes',  hint: 'How drinks are made — used by anomaly detection' },
+  { key: 'recipes',  label: 'Recipes',  hint: 'Which bottles each drink consumes, per event — feeds depletion alerts' },
 ]
 
 export default function CatalogPage() {
@@ -37,7 +37,7 @@ export default function CatalogPage() {
       {/* Tab content — only the active one mounts */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {active === 'products' && <ProductsListPage />}
-        {active === 'recipes'  && <RecipesListPage  />}
+        {active === 'recipes'  && <EventRecipesTab  />}
       </div>
     </div>
   )
