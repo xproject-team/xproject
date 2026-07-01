@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import ProductsListPage from '@/pages/products/ProductsListPage'
 import { EventRecipesTab } from '@/pages/catalog/EventRecipesTab'
@@ -11,7 +11,20 @@ const TABS: { key: Tab; label: string; hint: string }[] = [
 ]
 
 export default function CatalogPage() {
-  const [active, setActive] = useState<Tab>('products')
+  // Persist the active tab in the URL so a refresh — or a bookmark —
+  // returns the user to the same tab they were on. Defaults to
+  // 'products' if the query param is missing or invalid.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const active: Tab = rawTab === 'recipes' ? 'recipes' : 'products'
+  const setActive = (t: Tab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (t === 'products') next.delete('tab')
+      else next.set('tab', t)
+      return next
+    }, { replace: true })
+  }
 
   return (
     <div className="flex flex-col h-full bg-white">
