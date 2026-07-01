@@ -39,6 +39,7 @@ import type {
   FullEventBarInput,
   FullEventProductInput,
   FullEventMenuItemInput,
+  FullEventAllocationInput,
 } from "@/features/events/useCreateFullEvent"
 
 /** Map an Excel ProductSpec category string onto the backend\'s
@@ -117,6 +118,103 @@ function findBarIndexByName(bars: BarDraft[], barName: string): number {
 export interface BuildResult {
   payload: FullEventCreatePayload | null
   preErrors: string[]
+}
+
+/**
+ * Edit-mode post-processing. In create mode this is a no-op.
+ *
+ * WizardState carries only ~8 of ~15 event basics and ZERO product-
+ * editing UI. Without this merge, a PUT would null out the Slesh
+ * basics (stripe_ragione_sociale, wristband_qty_per_type, refund_*,
+ * staff_arrival_time) and wipe the entire menu + allocations,
+ * because the create-mode mapper emits products=[]/menu=[]/
+ * allocations=[] when parsed_plan is null.
+ *
+ * Bar remap: menu/allocation rows in the hydration bag reference
+ * bars by their position in the ORIGINAL hydrated bars[] array
+ * (`hydration_bar_index`). If Omar reordered or deleted bars, we
+ * remap those indices to the CURRENT bar positions and drop rows
+ * whose bar was deleted.
+ *
+ * Products pass through unchanged — the wizard has no product-
+ * editing UI, so the hydrated product array positions still match
+ * the hydrated menu/allocation product_index values.
+ *
+ * If Omar re-uploaded an Excel plan in edit mode (parsed_plan set),
+ * we take the wizard-built menu/products instead — replace-the-
+ * menu is the whole point of a re-upload.
+ */
+function applyEditModeMerges(
+  payload: FullEventCreatePayload,
+  state: WizardState,
+): FullEventCreatePayload {
+  const loaded = state._loaded_event
+  if (!loaded) return payload   // create mode — no-op
+
+  // ── Slesh basics passthrough (WizardState has no UI for these) ──
+  const event = {
+    ...payload.event,
+    stripe_ragione_sociale:   loaded.stripe_ragione_sociale,
+    staff_arrival_time:       loaded.staff_arrival_time,
+    wristband_qty_per_type:   loaded.wristband_qty_per_type,
+    refund_min_credit_cents:  loaded.refund_min_credit_cents,
+    refund_fee_cents:         loaded.refund_fee_cents,
+    refund_window_open_at:    loaded.refund_window_open_at,
+    refund_window_close_at:   loaded.refund_window_close_at,
+    // Wizard's Step 4 edits user denominations only; staff denominations
+    // have no UI. If wizard user denominations are empty we assume the
+    // user did not touch them and preserve the loaded value.
+    topup_denominations_user:
+      state.topup_denominations_user.length > 0
+        ? state.topup_denominations_user
+        : loaded.topup_denominations_user,
+    topup_denominations_staff:
+      state.topup_denominations_staff.length > 0
+        ? state.topup_denominations_staff
+        : loaded.topup_denominations_staff,
+  }
+
+  // ── Products / menu / allocations ──────────────────────────────
+  let products = payload.products
+  let menu = payload.menu
+  let allocations = payload.allocations
+
+  if (!state.parsed_plan && state._hydration) {
+    const hydration = state._hydration
+
+    // hydration_bar_index (original position) → current position.
+    // Bars added client-side have hydration_bar_index === undefined
+    // and are not in the map; menu/allocation rows pointing at
+    // deleted bars have no entry and are dropped by the filter.
+    const barRemap = new Map<number, number>()
+    state.bars.forEach((bar, currentIndex) => {
+      if (bar.hydration_bar_index !== undefined) {
+        barRemap.set(bar.hydration_bar_index, currentIndex)
+      }
+    })
+
+    products = hydration.products
+
+    menu = hydration.menu
+      .map((m): FullEventMenuItemInput | null => {
+        const newIndex = barRemap.get(m.bar_index)
+        return newIndex === undefined
+          ? null
+          : { ...m, bar_index: newIndex }
+      })
+      .filter((m): m is FullEventMenuItemInput => m !== null)
+
+    allocations = hydration.allocations
+      .map((a): FullEventAllocationInput | null => {
+        const newIndex = barRemap.get(a.bar_index)
+        return newIndex === undefined
+          ? null
+          : { ...a, bar_index: newIndex }
+      })
+      .filter((a): a is FullEventAllocationInput => a !== null)
+  }
+
+  return { event, bars: payload.bars, products, menu, allocations }
 }
 
 export function buildFullEventPayload(state: WizardState): BuildResult {
@@ -247,5 +345,5 @@ export function buildFullEventPayload(state: WizardState): BuildResult {
     allocations: [],           // /inventory/allocate handles starting stock
   }
 
-  return { payload, preErrors: [] }
+  return { payload: applyEditModeMerges(payload, state), preErrors: [] }
 }

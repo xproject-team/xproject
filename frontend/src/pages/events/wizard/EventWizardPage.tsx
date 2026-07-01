@@ -30,6 +30,7 @@ import { hydrateWizardState } from "./hydrate"
 import { useFullEvent } from "@/features/events/useFullEvent"
 import {
   useCreateFullEvent,
+  useUpdateFullEvent,
   extractFullEventErrors,
   type FullEventItemError,
 } from "@/features/events/useCreateFullEvent"
@@ -189,6 +190,7 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
   // POSTs to /events/full. On success: clear draft + redirect to the
   // newly-created event\'s detail page. On 422: surface per-item errors.
   const createFull = useCreateFullEvent()
+  const updateFull = useUpdateFullEvent()
   const [finalizeBanner, setFinalizeBanner] = useState<string | null>(null)
   const [finalizeItemErrors, setFinalizeItemErrors] = useState<FullEventItemError[]>([])
 
@@ -232,6 +234,49 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
         }
       },
     })
+  }
+
+  // Chunk 3b — Edit-mode save. Same shape as onFinalize but PUTs
+  // instead of POSTs, targeting the hydrated event id. On success we
+  // advance to Step 5 (invoice attach), matching create-mode UX.
+  function onSaveEdit() {
+    if (!hydrateEventId) return  // defensive; button is hidden otherwise
+    setFinalizeBanner(null)
+    setFinalizeItemErrors([])
+    const { payload, preErrors } = buildFullEventPayload(state)
+    if (payload === null) {
+      setFinalizeBanner(preErrors.join(" · "))
+      const stepGuess: 1 | 2 | 3 | 4 | 5 =
+        preErrors.some((e) => e.startsWith("Basics:")) ? 1 :
+        preErrors.some((e) => e.startsWith("Bars:"))   ? 3 :
+        state.current_step
+      if (stepGuess !== state.current_step) goToStep(stepGuess)
+      return
+    }
+    updateFull.mutate(
+      { eventId: hydrateEventId, payload },
+      {
+        onSuccess: () => {
+          setState((prev) => ({
+            ...prev,
+            current_step: 5,
+            is_dirty: false,
+          }))
+        },
+        onError: (err: unknown) => {
+          const items = extractFullEventErrors(err)
+          if (items && items.length > 0) {
+            setFinalizeItemErrors(items)
+            setFinalizeBanner(
+              `Server rejected ${items.length} item${items.length === 1 ? "" : "s"}. See details below.`,
+            )
+          } else {
+            const msg = (err as Error)?.message ?? "Unknown error"
+            setFinalizeBanner(`Could not save event: ${msg}`)
+          }
+        },
+      },
+    )
   }
 
   // T5 — Step 5 final navigation. Once the event has been created
@@ -285,7 +330,15 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
           <button
             onClick={
               isEditMode
-                ? () => navigate(`/events/${hydrateEventId}`)
+                ? () => {
+                    if (state.is_dirty) {
+                      const ok = window.confirm(
+                        "Discard unsaved changes and return to the event?",
+                      )
+                      if (!ok) return
+                    }
+                    navigate(`/events/${hydrateEventId}`)
+                  }
                 : onDiscard
             }
             className="text-sm text-[#718096] hover:text-[#E53E3E] px-3 py-1.5"
@@ -295,20 +348,14 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
         </div>
       </div>
 
-      {/* Edit mode preview banner (Chunk 3a) */}
-      {isEditMode && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-sm text-amber-900 font-semibold">
-            Edit mode preview · Save wiring lands next commit; changes here don't persist yet.
-          </p>
-        </div>
-      )}
 
       {/* Step tabs */}
       <div className="flex items-center gap-2 mb-6 border-b border-[#E2E8F0]">
         {TABS.map((tab) => {
           const isActive   = state.current_step === tab.num
-          const isReachable = tab.num <= state.current_step
+          // Edit mode: all tabs reachable from the start; the whole
+          // event is already loaded. Create mode: gate to reached steps.
+          const isReachable = isEditMode || tab.num <= state.current_step
           return (
             <button
               key={tab.num}
@@ -382,7 +429,9 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
             isEditMode
               ? state.current_step < 4
                 ? goForward
-                : undefined   // Save wiring lands in Chunk 3b
+                : state.current_step === 4
+                  ? onSaveEdit
+                  : onDone   // Step 5
               : state.current_step < 4
                 ? goForward
                 : state.current_step === 4
@@ -390,13 +439,13 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
                   : onDone   // Step 5
           }
           disabled={
-            (isEditMode && state.current_step === 4) ||
-            (!isEditMode && state.current_step === 4 && createFull.isPending) ||
-            (!isEditMode && state.current_step === 5 && state.event_id === null)
+            (state.current_step === 4 && createFull.isPending) ||
+            (state.current_step === 4 && updateFull.isPending) ||
+            (state.current_step === 5 && state.event_id === null)
           }
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
-            (isEditMode && state.current_step === 4) || createFull.isPending
+            createFull.isPending || updateFull.isPending
               ? "bg-[#CBD5E0] cursor-not-allowed"
               : "bg-[#1ABC9C] hover:bg-[#17a589]",
           ].join(" ")}
@@ -404,7 +453,9 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
           {isEditMode
             ? state.current_step < 4
               ? "Continue"
-              : "Save Changes (next commit)"
+              : state.current_step === 4
+                ? updateFull.isPending ? "Saving…" : "Save Changes"
+                : "Done"
             : state.current_step < 4
               ? "Save & Continue"
               : state.current_step === 4
