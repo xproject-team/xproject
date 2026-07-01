@@ -35,19 +35,21 @@ import {
   type FullEventItemError,
 } from "@/features/events/useCreateFullEvent"
 
-import { WizardStep1Basics }   from "./steps/WizardStep1Basics"
-import { WizardStep2Upload }   from "./steps/WizardStep2Upload"
-import { WizardStep3Bars }     from "./steps/WizardStep3Bars"
-import { WizardStep4Recharge } from "./steps/WizardStep4Recharge"
-import { WizardStep5Invoices } from "./steps/WizardStep5Invoices"
+import { WizardStep1Basics }    from "./steps/WizardStep1Basics"
+import { WizardStep2Upload }    from "./steps/WizardStep2Upload"
+import { WizardStep3Products }  from "./steps/WizardStep3Products"
+import { WizardStep3Bars }      from "./steps/WizardStep3Bars"
+import { WizardStep4Recharge }  from "./steps/WizardStep4Recharge"
+import { WizardStep5Invoices }  from "./steps/WizardStep5Invoices"
 
-// Tabs metadata — keep in sync with current_step (1..5).
-const TABS: { num: 1 | 2 | 3 | 4 | 5; label: string }[] = [
+// Tabs metadata — keep in sync with current_step (1..6).
+const TABS: { num: 1 | 2 | 3 | 4 | 5 | 6; label: string }[] = [
   { num: 1, label: "Basics"   },
   { num: 2, label: "Upload"   },
-  { num: 3, label: "Bars"     },
-  { num: 4, label: "Recharge" },
-  { num: 5, label: "Invoices" },
+  { num: 3, label: "Products" },
+  { num: 4, label: "Bars"     },
+  { num: 5, label: "Recharge" },
+  { num: 6, label: "Invoices" },
 
 ]
 
@@ -148,19 +150,19 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
   }
 
   // ── Navigation helpers
-  const goToStep = (num: 1 | 2 | 3 | 4 | 5) => {
+  const goToStep = (num: 1 | 2 | 3 | 4 | 5 | 6) => {
     setState((prev) => ({ ...prev, current_step: num }))
   }
 
   const goBack = () => {
     if (state.current_step > 1) {
-      goToStep((state.current_step - 1) as 1 | 2 | 3 | 4 | 5)
+      goToStep((state.current_step - 1) as 1 | 2 | 3 | 4 | 5 | 6)
     }
   }
 
   const goForward = () => {
-    if (state.current_step < 5) {
-      goToStep((state.current_step + 1) as 1 | 2 | 3 | 4 | 5)
+    if (state.current_step < 6) {
+      goToStep((state.current_step + 1) as 1 | 2 | 3 | 4 | 5 | 6)
     }
   }
 
@@ -179,9 +181,10 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
     switch (state.current_step) {
       case 1: return <WizardStep1Basics   state={state} onChange={onChange} />
       case 2: return <WizardStep2Upload   state={state} onChange={onChange} />
-      case 3: return <WizardStep3Bars     state={state} onChange={onChange} />
-      case 4: return <WizardStep4Recharge state={state} onChange={onChange} />
-      case 5: return <WizardStep5Invoices state={state} onChange={onChange} />
+      case 3: return <WizardStep3Products state={state} onChange={onChange} />
+      case 4: return <WizardStep3Bars     state={state} onChange={onChange} />
+      case 5: return <WizardStep4Recharge state={state} onChange={onChange} />
+      case 6: return <WizardStep5Invoices state={state} onChange={onChange} />
     }
   }, [state.current_step, state])
 
@@ -201,23 +204,24 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
     if (payload === null) {
       setFinalizeBanner(preErrors.join(" · "))
       // Jump back to the earliest step that has an error so Omar can fix it
-      const stepGuess: 1 | 2 | 3 | 4 | 5 =
-        preErrors.some((e) => e.startsWith("Basics:")) ? 1 :
-        preErrors.some((e) => e.startsWith("Bars:"))   ? 3 :
+      const stepGuess: 1 | 2 | 3 | 4 | 5 | 6 =
+        preErrors.some((e) => e.startsWith("Basics:"))   ? 1 :
+        preErrors.some((e) => e.startsWith("Products:")) ? 3 :
+        preErrors.some((e) => e.startsWith("Bars:"))     ? 4 :
         state.current_step
       if (stepGuess !== state.current_step) goToStep(stepGuess)
       return
     }
     createFull.mutate(payload, {
       onSuccess: (result) => {
-        // T5 change: do NOT navigate away yet. Step 5 (invoices) still
+        // T5 change: do NOT navigate away yet. Step 6 (invoices) still
         // needs the event_id we just got back. Stash it in state +
-        // advance the wizard. The "Done" button on Step 5 (added in
+        // advance the wizard. The "Done" button on Step 6 (added in
         // the JSX patch below) handles final navigation + clearDraft.
         setState((prev) => ({
           ...prev,
           event_id: result.event.id,
-          current_step: 5,
+          current_step: 6,
           is_dirty: false,
         }))
       },
@@ -246,9 +250,10 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
     const { payload, preErrors } = buildFullEventPayload(state)
     if (payload === null) {
       setFinalizeBanner(preErrors.join(" · "))
-      const stepGuess: 1 | 2 | 3 | 4 | 5 =
-        preErrors.some((e) => e.startsWith("Basics:")) ? 1 :
-        preErrors.some((e) => e.startsWith("Bars:"))   ? 3 :
+      const stepGuess: 1 | 2 | 3 | 4 | 5 | 6 =
+        preErrors.some((e) => e.startsWith("Basics:"))   ? 1 :
+        preErrors.some((e) => e.startsWith("Products:")) ? 3 :
+        preErrors.some((e) => e.startsWith("Bars:"))     ? 4 :
         state.current_step
       if (stepGuess !== state.current_step) goToStep(stepGuess)
       return
@@ -259,7 +264,7 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
         onSuccess: () => {
           setState((prev) => ({
             ...prev,
-            current_step: 5,
+            current_step: 6,
             is_dirty: false,
           }))
         },
@@ -413,7 +418,7 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
           onClick={goBack}
           disabled={
             state.current_step === 1 ||
-            (state.current_step === 5 && state.event_id !== null)
+            (state.current_step === 6 && state.event_id !== null)
           }
           className={[
             "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
@@ -427,21 +432,21 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
         <button
           onClick={
             isEditMode
-              ? state.current_step < 4
+              ? state.current_step < 5
                 ? goForward
-                : state.current_step === 4
+                : state.current_step === 5
                   ? onSaveEdit
-                  : onDone   // Step 5
-              : state.current_step < 4
+                  : onDone   // Step 6
+              : state.current_step < 5
                 ? goForward
-                : state.current_step === 4
+                : state.current_step === 5
                   ? onFinalize
-                  : onDone   // Step 5
+                  : onDone   // Step 6
           }
           disabled={
-            (state.current_step === 4 && createFull.isPending) ||
-            (state.current_step === 4 && updateFull.isPending) ||
-            (state.current_step === 5 && state.event_id === null)
+            (state.current_step === 5 && createFull.isPending) ||
+            (state.current_step === 5 && updateFull.isPending) ||
+            (state.current_step === 6 && state.event_id === null)
           }
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
@@ -451,14 +456,14 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
           ].join(" ")}
         >
           {isEditMode
-            ? state.current_step < 4
+            ? state.current_step < 5
               ? "Continue"
-              : state.current_step === 4
+              : state.current_step === 5
                 ? updateFull.isPending ? "Saving…" : "Save Changes"
                 : "Done"
-            : state.current_step < 4
+            : state.current_step < 5
               ? "Save & Continue"
-              : state.current_step === 4
+              : state.current_step === 5
                 ? createFull.isPending ? "Creating Event…" : "Create Event"
                 : "Done"}
         </button>

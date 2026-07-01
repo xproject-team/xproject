@@ -17,23 +17,30 @@
  *     wizard. Mapped explicitly so future field-rename refactors only
  *     touch this file.
  *
- *   - products come from parsed_plan.products[] (the Excel listini).
- *     If the user skipped upload, products = [] and menu = [] are sent.
- *     Backend handles empty lists fine.
+ *   - products come from state.products[] (Step 3's editable list,
+ *     itself seeded from parsed_plan.products[] on Excel upload — see
+ *     WizardStep2Upload.tsx). If Omar never uploads and never adds a
+ *     product by hand, products = [] and menu = [] are sent. Backend
+ *     handles empty lists fine.
  *
- *   - menu (event_products / listini lines) maps each parsed product
- *     to its bar by name. The lookup uses BOTH the bar\'s current name
- *     AND its from_excel.name to handle the case where Omar edited a
- *     bar\'s name in Step 3 after the upload pre-filled it.
+ *   - menu (event_products / listini lines) is a CROSS PRODUCT: every
+ *     product × every bar with bar_type in {drinks, food}. At Sundance
+ *     every drinks/food bar sells the same menu, so there is no per-row
+ *     "which bar" column in the UI — Omar edits one flat product list
+ *     and every drinks/food bar gets every product. Recharge/service
+ *     bars get no menu rows.
  *
- *   - allocations (bar_stock starting qty) is always [] from the
- *     wizard — that\'s handled by /inventory/allocate on event day.
+ *   - allocations (bar_stock starting qty) has no wizard UI. Create
+ *     mode always sends []; edit mode passes through the hydrated
+ *     allocations, remapped to current bar/product positions (see
+ *     applyEditModeMerges below). Starting stock is otherwise set via
+ *     /inventory/allocate on event day.
  *
  *   - Pre-validation produces human-readable error strings. They\'re
  *     surfaced before the API call so Omar sees \'venue is required\'
  *     instead of a 422 explaining the same thing.
  */
-import type { WizardState, BarDraft } from "./types"
+import type { WizardState } from "./types"
 import type {
   FullEventCreatePayload,
   FullEventBarInput,
@@ -41,79 +48,6 @@ import type {
   FullEventMenuItemInput,
   FullEventAllocationInput,
 } from "@/features/events/useCreateFullEvent"
-
-/** Map an Excel ProductSpec category string onto the backend\'s
- *  product_type enum. The Excel\'s category column is a free-text-ish
- *  label (e.g. "Cocktail", "Birra", "Acqua") which the backend stores
- *  as a category enum but ALSO needs a product_type. Drinks get
- *  product_type=\'drink\'; food gets \'food\'; everything else falls
- *  back to \'supply\' (catch-all for non-revenue items). */
-// Backend's ProductCategory enum — keep in sync with
-// app/modules/products/models.py ProductCategory. We map the Excel\'s
-// free-text category strings onto this when possible; otherwise we
-// store null and let Omar categorize via the Catalog page later.
-// Strict allow-list: anything not in here is dropped to null.
-const VALID_PRODUCT_CATEGORIES = new Set([
-  "beer_draft", "beer_bottle",
-  "basic_cocktail", "premium_cocktail",
-  "wine_red", "wine_white", "wine_sparkling",
-  "soft_drink",
-])
-
-function normalizeCategory(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  const norm = raw.trim().toLowerCase().replace(/[\s-]+/g, "_")
-  if (VALID_PRODUCT_CATEGORIES.has(norm)) return norm
-  // Cheap heuristics — map common Excel labels to the closest enum
-  if (norm.includes("beer") || norm.includes("birra")) {
-    return norm.includes("draft") || norm.includes("spina") ? "beer_draft" : "beer_bottle"
-  }
-  if (norm.includes("wine") || norm.includes("vino")) {
-    if (norm.includes("red") || norm.includes("rosso")) return "wine_red"
-    if (norm.includes("white") || norm.includes("bianco")) return "wine_white"
-    if (norm.includes("spark") || norm.includes("bollic")) return "wine_sparkling"
-    return "wine_red"
-  }
-  if (norm.includes("cocktail")) {
-    return norm.includes("premium") || norm.includes("signature") ? "premium_cocktail" : "basic_cocktail"
-  }
-  if (norm.includes("soft") || norm.includes("soda") || norm.includes("water") || norm.includes("acqua")) {
-    return "soft_drink"
-  }
-  return null
-}
-
-function deriveProductType(
-  category: string | null | undefined,
-  barType: BarDraft["bar_type"] | null,
-): "drink" | "food" | "ingredient" | "supply" {
-  if (barType === "food") return "food"
-  if (barType === "drinks") return "drink"
-  if (barType === "service" || barType === "recharge") return "supply"
-  // Fall back to category heuristic for products without a clear bar match
-  const c = (category ?? "").toLowerCase()
-  if (c.includes("food") || c.includes("cibo") || c.includes("pizza")) return "food"
-  return "drink"
-}
-
-
-/** Look up a bar in state.bars by ProductSpec.bar_name.
- *  Returns its index, or -1 if not found.
- *
- *  Match strategy is generous: case-insensitive, trim, AND
- *  compares against both the bar\'s current name and its
- *  from_excel.name (the original Excel name, preserved as the
- *  stable identifier when Omar edits the display name). */
-function findBarIndexByName(bars: BarDraft[], barName: string): number {
-  const target = barName.trim().toLowerCase()
-  if (target === "") return -1
-  for (let i = 0; i < bars.length; i++) {
-    const b = bars[i]
-    if (b.name.trim().toLowerCase() === target) return i
-    if (b.from_excel && b.from_excel.name.trim().toLowerCase() === target) return i
-  }
-  return -1
-}
 
 export interface BuildResult {
   payload: FullEventCreatePayload | null
@@ -123,26 +57,26 @@ export interface BuildResult {
 /**
  * Edit-mode post-processing. In create mode this is a no-op.
  *
- * WizardState carries only ~8 of ~15 event basics and ZERO product-
- * editing UI. Without this merge, a PUT would null out the Slesh
- * basics (stripe_ragione_sociale, wristband_qty_per_type, refund_*,
- * staff_arrival_time) and wipe the entire menu + allocations,
- * because the create-mode mapper emits products=[]/menu=[]/
- * allocations=[] when parsed_plan is null.
+ * WizardState carries only ~8 of ~15 event basics and no UI for
+ * allocations (starting bar_stock). Without this merge, a PUT would
+ * null out the Slesh basics (stripe_ragione_sociale,
+ * wristband_qty_per_type, refund_*, staff_arrival_time) and wipe the
+ * starting allocations, because the create-mode mapper emits
+ * allocations=[] unconditionally.
  *
- * Bar remap: menu/allocation rows in the hydration bag reference
- * bars by their position in the ORIGINAL hydrated bars[] array
- * (`hydration_bar_index`). If Omar reordered or deleted bars, we
- * remap those indices to the CURRENT bar positions and drop rows
- * whose bar was deleted.
+ * Products + menu need no special edit-mode handling any more:
+ * state.products is the source of truth in both create and edit mode
+ * (hydrateWizardState populates it from GET .../full), so
+ * buildFullEventPayload's cross-product mapper already produced the
+ * right thing.
  *
- * Products pass through unchanged — the wizard has no product-
- * editing UI, so the hydrated product array positions still match
- * the hydrated menu/allocation product_index values.
- *
- * If Omar re-uploaded an Excel plan in edit mode (parsed_plan set),
- * we take the wizard-built menu/products instead — replace-the-
- * menu is the whole point of a re-upload.
+ * Allocations remap: allocation rows in the hydration bag reference
+ * bars/products by their position in the ORIGINAL hydrated bars[]/
+ * products[] arrays (`hydration_bar_index` / `hydration_product_index`).
+ * If Omar reordered or deleted bars/products, we remap those indices
+ * to the CURRENT positions and drop rows whose bar or product was
+ * deleted (or, if Omar re-uploaded an Excel plan, whose bar/product
+ * has no hydration index at all).
  */
 function applyEditModeMerges(
   payload: FullEventCreatePayload,
@@ -161,7 +95,7 @@ function applyEditModeMerges(
     refund_fee_cents:         loaded.refund_fee_cents,
     refund_window_open_at:    loaded.refund_window_open_at,
     refund_window_close_at:   loaded.refund_window_close_at,
-    // Wizard's Step 4 edits user denominations only; staff denominations
+    // Wizard's Step 5 edits user denominations only; staff denominations
     // have no UI. If wizard user denominations are empty we assume the
     // user did not touch them and preserve the loaded value.
     topup_denominations_user:
@@ -174,18 +108,16 @@ function applyEditModeMerges(
         : loaded.topup_denominations_staff,
   }
 
-  // ── Products / menu / allocations ──────────────────────────────
-  let products = payload.products
-  let menu = payload.menu
+  // ── Allocations (bar_stock) — the only bag still not editable ──
   let allocations = payload.allocations
 
-  if (!state.parsed_plan && state._hydration) {
+  if (state._hydration) {
     const hydration = state._hydration
 
     // hydration_bar_index (original position) → current position.
-    // Bars added client-side have hydration_bar_index === undefined
-    // and are not in the map; menu/allocation rows pointing at
-    // deleted bars have no entry and are dropped by the filter.
+    // Bars added client-side (or brought in by a re-upload) have
+    // hydration_bar_index === undefined and are not in the map;
+    // allocation rows pointing at them have no entry and are dropped.
     const barRemap = new Map<number, number>()
     state.bars.forEach((bar, currentIndex) => {
       if (bar.hydration_bar_index !== undefined) {
@@ -193,28 +125,30 @@ function applyEditModeMerges(
       }
     })
 
-    products = hydration.products
-
-    menu = hydration.menu
-      .map((m): FullEventMenuItemInput | null => {
-        const newIndex = barRemap.get(m.bar_index)
-        return newIndex === undefined
-          ? null
-          : { ...m, bar_index: newIndex }
-      })
-      .filter((m): m is FullEventMenuItemInput => m !== null)
+    // Same idea for products: hydration_product_index (original
+    // position in GET .../full's products[]) → current position in
+    // the products[] we just emitted. Must apply the SAME empty-name
+    // filter buildFullEventPayload used, so positions line up.
+    const nonEmptyProducts = state.products.filter((p) => p.name.trim() !== "")
+    const productRemap = new Map<number, number>()
+    nonEmptyProducts.forEach((p, currentIndex) => {
+      if (p.hydration_product_index !== undefined) {
+        productRemap.set(p.hydration_product_index, currentIndex)
+      }
+    })
 
     allocations = hydration.allocations
       .map((a): FullEventAllocationInput | null => {
-        const newIndex = barRemap.get(a.bar_index)
-        return newIndex === undefined
+        const newBarIndex = barRemap.get(a.bar_index)
+        const newProductIndex = productRemap.get(a.product_index)
+        return newBarIndex === undefined || newProductIndex === undefined
           ? null
-          : { ...a, bar_index: newIndex }
+          : { ...a, bar_index: newBarIndex, product_index: newProductIndex }
       })
       .filter((a): a is FullEventAllocationInput => a !== null)
   }
 
-  return { event, bars: payload.bars, products, menu, allocations }
+  return { event, bars: payload.bars, products: payload.products, menu: payload.menu, allocations }
 }
 
 export function buildFullEventPayload(state: WizardState): BuildResult {
@@ -233,7 +167,9 @@ export function buildFullEventPayload(state: WizardState): BuildResult {
     preErrors.push("Basics: food share must be 0–100")
   }
 
-  // ── Step 3 Bars validation ──────────────────────────────────────
+  // ── Step 4 Bars validation ──────────────────────────────────────
+  // (Runs before Step 3 Products validation below, since the latter
+  // needs to know which bar_types are present.)
   if (state.bars.length === 0) {
     preErrors.push("Bars: add at least one bar")
   }
@@ -242,6 +178,15 @@ export function buildFullEventPayload(state: WizardState): BuildResult {
     // slesh_shop_id is not strictly required — Omar can link later;
     // the wizard already shows an amber hint for unlinked bars.
   })
+
+  // ── Step 3 Products validation ───────────────────────────────────
+  // Not a hard requirement on its own — an event with only recharge/
+  // service bars legitimately has no products. It only becomes an
+  // error once there\'s a drinks/food bar with nothing to sell.
+  const hasMenuBar = state.bars.some((b) => b.bar_type === "drinks" || b.bar_type === "food")
+  if (state.products.length === 0 && hasMenuBar) {
+    preErrors.push("Products: add at least one product")
+  }
 
   // Early exit if event-level validation fails — no point mapping the rest.
   if (preErrors.length > 0) return { payload: null, preErrors }
@@ -256,76 +201,39 @@ export function buildFullEventPayload(state: WizardState): BuildResult {
     is_active:        true,
   }))
 
-  // ── Products + menu (only if Excel was parsed) ──────────────────
-  // Products dedup by (name, product_type) since the backend reuses
-  // existing tenant-global products by that key. Menu lines reference
-  // products by INDEX into the array we\'re building here.
-  const products: FullEventProductInput[] = []
-  const productIndexByKey = new Map<string, number>()
+  // ── Products → FullEventProductInput[] ──────────────────────────
+  // Skip rows with an empty name — the UI\'s soft-delete (Omar clears
+  // the name field instead of removing the card mid-edit).
+  const products: FullEventProductInput[] = state.products
+    .filter((p) => p.name.trim() !== "")
+    .map((p) => ({
+      name:                p.name.trim(),
+      product_type:        p.product_type,
+      category:            p.category,       // backend enforces null when non-drink
+      food_type:           p.food_type,
+      unit:                p.unit,
+      default_price_cents: p.default_price_cents,
+      iva_pct:             p.iva_pct,
+      cauzione_cents:      p.cauzione_cents,
+      tier_rank:           p.tier_rank,       // backend derives when null
+    }))
+
+  // ── Menu → cross product of products × drinks-or-food bars ─────
+  // Sundance\'s actual model: every drinks/food bar sells the same
+  // menu, so there\'s no per-row "which bar" in the Products step.
+  // Recharge/service bars get no menu rows.
   const menu: FullEventMenuItemInput[] = []
-  const menuPairs = new Set<string>()           // dedup (bar_index, product_index)
-
-  if (state.parsed_plan && state.parsed_plan.products.length > 0) {
-    for (const spec of state.parsed_plan.products) {
-      // STEP 10 LEARNING: the Slesh Excel uses DIFFERENT bar names in
-      // the Device Count sheet ("MAIN BAR", "STAGE BAR") vs the Listini
-      // sheets ("Cocktail Bar", "Beer Bar"). The findBarIndexByName
-      // lookup misses most products. Rather than silently dropping them
-      // (which leaves Catalog empty after finalize), we create the
-      // product UNCONDITIONALLY and only emit a menu line when the bar
-      // lookup succeeds. Result: all products land in Catalog; price-
-      // by-bar listini lines get added later via Edit Event when Omar
-      // maps "Cocktail Bar -> MAIN BAR".
-      const bIndex = findBarIndexByName(state.bars, spec.bar_name)
-      const barTypeForType = bIndex >= 0 ? state.bars[bIndex].bar_type : null
-      // Pre-compute the category before deriving product_type so we
-      // can downgrade drink->supply when the category is unrecognized
-      // (backend\'s _validate_shape rejects category=null on drinks).
-      // Effect: products land in Catalog as supplies; Omar promotes
-      // them back to drinks once he sets a category via the Catalog UI.
-      const initialType = deriveProductType(spec.category, barTypeForType)
-      const normalizedCategory = initialType === "drink"
-        ? normalizeCategory(spec.category)
-        : null
-      const productType: "drink" | "food" | "ingredient" | "supply" =
-        initialType === "drink" && normalizedCategory === null
-          ? "supply"
-          : initialType
-      const key = `${spec.name.trim().toLowerCase()}|${productType}`
-
-      let pIndex = productIndexByKey.get(key)
-      if (pIndex === undefined) {
-        pIndex = products.length
-        productIndexByKey.set(key, pIndex)
-        // Build the product input inline so we can pass the explicit
-        // overriden product_type + already-normalized category.
-        products.push({
-          name:                spec.name.trim(),
-          product_type:        productType,
-          category:            productType === "drink" ? normalizedCategory : null,
-          food_type:           null,
-          unit:                "bottle",
-          default_price_cents: spec.price_cents ?? null,
-          iva_pct:             spec.iva_pct == null ? null : spec.iva_pct / 100,
-          cauzione_cents:      spec.cauzione_cents ?? null,
-        })
-      }
-
-      // Only add a menu line when we can resolve the bar. Products
-      // without a bar match still land in Catalog; they\'re just not
-      // pre-priced at any bar.
-      if (bIndex < 0) continue
-      const pairKey = `${bIndex}|${pIndex}`
-      if (menuPairs.has(pairKey)) continue        // dedup: same product at same bar
-      menuPairs.add(pairKey)
+  bars.forEach((bar, barIndex) => {
+    if (bar.bar_type !== "drinks" && bar.bar_type !== "food") return
+    products.forEach((product, productIndex) => {
       menu.push({
-        bar_index:     bIndex,
-        product_index: pIndex,
-        price_cents:   spec.price_cents,
+        bar_index:     barIndex,
+        product_index: productIndex,
+        price_cents:   product.default_price_cents ?? 0,
         is_available:  true,
       })
-    }
-  }
+    })
+  })
 
   // ── Event ────────────────────────────────────────────────────────
   const payload: FullEventCreatePayload = {

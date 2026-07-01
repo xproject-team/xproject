@@ -11,7 +11,7 @@
  */
 import type { WizardState } from "./types"
 
-const VERSION = "v1"
+const VERSION = "v2"
 
 function keyFor(userId: string): string {
   return `xproject:wizard:${VERSION}:${userId}`

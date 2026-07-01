@@ -17,8 +17,8 @@
 import { useRef, useState } from "react"
 
 import { useImportEventPlan } from "@/features/events/hooks"
-import type { WizardState, BarDraft } from "../types"
-import type { ParsedEventPlan, BarSpec } from "@/lib/eventPlan"
+import type { WizardState, BarDraft, ProductDraft } from "../types"
+import type { ParsedEventPlan, BarSpec, ProductSpec } from "@/lib/eventPlan"
 
 interface Props {
   state: WizardState
@@ -119,10 +119,14 @@ export function WizardStep2Upload({ state, onChange }: Props) {
     // Multi-event Excels (4 Sundance dates) require Omar to choose.
     const autoPickedDate = plan.event_dates.length === 1 ? plan.event_dates[0] : null
 
+    // Products, like bars, are fully replaced on (re-)upload.
+    const products: ProductDraft[] = plan.products.map(specToProductDraft)
+
     onChange({
       parsed_plan: parsed_plan_with_skip_cleared(plan),
       picked_date: autoPickedDate,
       bars,
+      products,
       recharge_device_count: plan.recharge_device_count,
       // Denominations are event-level (not per-bar); pre-fill from Excel
       // so Omar doesn\'t re-type the standard Sundance amounts (10/20/50/100).
@@ -163,6 +167,7 @@ export function WizardStep2Upload({ state, onChange }: Props) {
       parsed_plan: null,
       picked_date: null,
       bars: [],
+      products: [],
       recharge_device_count: 0,
     })
     if (inputRef.current) inputRef.current.value = ""
@@ -294,6 +299,72 @@ function specToDraft(spec: BarSpec): BarDraft {
     bar_type: spec.bar_type,
     slesh_shop_id: null,
     from_excel: spec,
+  }
+}
+
+// ── Product mapping helpers ──────────────────────────────────────────
+// Copied from payload.ts rather than imported: payload.ts is finalize-
+// time code, and keeping Step 2's Excel-seeding logic self-contained
+// avoids a cross-concern dependency between "parse the Excel" and
+// "build the POST body".
+
+// Backend's ProductCategory enum — keep in sync with
+// app/modules/products/models.py ProductCategory. We map the Excel's
+// free-text category strings onto this when possible; otherwise we
+// store null and let Omar categorize via the wizard's Products step.
+const VALID_PRODUCT_CATEGORIES = new Set([
+  "beer_draft", "beer_bottle",
+  "basic_cocktail", "premium_cocktail",
+  "wine_red", "wine_white", "wine_sparkling",
+  "soft_drink",
+])
+
+function normalizeCategory(raw: string | null | undefined): ProductDraft["category"] {
+  if (!raw) return null
+  const norm = raw.trim().toLowerCase().replace(/[\s-]+/g, "_")
+  if (VALID_PRODUCT_CATEGORIES.has(norm)) return norm as ProductDraft["category"]
+  // Cheap heuristics — map common Excel labels to the closest enum
+  if (norm.includes("beer") || norm.includes("birra")) {
+    return norm.includes("draft") || norm.includes("spina") ? "beer_draft" : "beer_bottle"
+  }
+  if (norm.includes("wine") || norm.includes("vino")) {
+    if (norm.includes("red") || norm.includes("rosso")) return "wine_red"
+    if (norm.includes("white") || norm.includes("bianco")) return "wine_white"
+    if (norm.includes("spark") || norm.includes("bollic")) return "wine_sparkling"
+    return "wine_red"
+  }
+  if (norm.includes("cocktail")) {
+    return norm.includes("premium") || norm.includes("signature") ? "premium_cocktail" : "basic_cocktail"
+  }
+  if (norm.includes("soft") || norm.includes("soda") || norm.includes("water") || norm.includes("acqua")) {
+    return "soft_drink"
+  }
+  return null
+}
+
+function deriveProductType(category: string | null | undefined): ProductDraft["product_type"] {
+  const c = (category ?? "").toLowerCase()
+  if (c.includes("food") || c.includes("cibo") || c.includes("pizza")) return "food"
+  return "drink"
+}
+
+function specToProductDraft(spec: ProductSpec): ProductDraft {
+  const productType = deriveProductType(spec.category)
+  return {
+    client_id: makeClientId(),
+    name: spec.name.trim(),
+    product_type: productType,
+    category: productType === "drink" ? normalizeCategory(spec.category) : null,
+    // Excel doesn't distinguish food subtypes; Omar edits in the wizard.
+    food_type: null,
+    // Excel doesn't specify a unit.
+    unit: "bottle",
+    default_price_cents: spec.price_cents,
+    // Excel is percent (10), backend wants a fraction (0.10).
+    iva_pct: spec.iva_pct / 100,
+    cauzione_cents: spec.cauzione_cents,
+    // Let derive_tier_rank compute this on save.
+    tier_rank: null,
   }
 }
 

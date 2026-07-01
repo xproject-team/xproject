@@ -15,7 +15,7 @@
  * / menu=[] / allocations=[] when parsed_plan is null.
  */
 import type { FullEventDetail } from '@/features/events/useFullEvent'
-import { buildEmptyWizardState, type BarDraft, type WizardState } from './types'
+import { buildEmptyWizardState, type BarDraft, type ProductDraft, type WizardState } from './types'
 
 /** Convert a backend ISO datetime into the value <input type="datetime-local">
  *  expects: YYYY-MM-DDTHH:mm, in the browser's local timezone. */
@@ -43,6 +43,20 @@ export function hydrateWizardState(data: FullEventDetail): WizardState {
     .filter((b) => b.bar_type === 'recharge')
     .reduce((sum, b) => sum + b.device_count, 0)
 
+  const productDrafts: ProductDraft[] = products.map((p, i) => ({
+    client_id: crypto.randomUUID(),
+    name: p.name,
+    product_type: (p.product_type as ProductDraft['product_type']),
+    category: (p.category as ProductDraft['category']) ?? null,
+    food_type: (p.food_type as ProductDraft['food_type']) ?? null,
+    unit: (p.unit as ProductDraft['unit']),
+    default_price_cents: p.default_price_cents ?? 0,
+    iva_pct: p.iva_pct ?? null,
+    cauzione_cents: p.cauzione_cents ?? null,
+    tier_rank: p.tier_rank ?? null,
+    hydration_product_index: i,
+  }))
+
   return {
     ...empty,
     name: event.name,
@@ -53,6 +67,7 @@ export function hydrateWizardState(data: FullEventDetail): WizardState {
     food_revenue_share_pct: event.food_revenue_share_pct ?? 30,
     parsed_plan: null,
     picked_date: null,
+    products: productDrafts,
     bars: barDrafts,
     recharge_device_count: rechargeDeviceCount,
     topup_denominations_user: event.topup_denominations_user ?? [],

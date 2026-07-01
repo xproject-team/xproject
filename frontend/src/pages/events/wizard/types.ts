@@ -16,6 +16,43 @@ import type {
   FullEventHydrationBag,
 } from "@/features/events/useFullEvent"
 
+/** One product on this event. Flat list — no bar column, since
+ *  Sundance bars all sell the same menu. Menu rows are generated
+ *  at payload time as products × drinks/food bars. */
+export interface ProductDraft {
+  client_id: string
+  name: string
+  product_type: "drink" | "food" | "supply" | "ingredient"
+  /** Only when product_type='drink'. NULL otherwise. */
+  category:
+    | "beer_draft" | "beer_bottle"
+    | "basic_cocktail" | "premium_cocktail"
+    | "wine_red" | "wine_white" | "wine_sparkling"
+    | "soft_drink"
+    | null
+  /** Only when product_type='food'. NULL otherwise. */
+  food_type:
+    | "burgers" | "sandwiches" | "fried" | "skewers"
+    | "pizza" | "gelato" | "other"
+    | null
+  unit: "bottle" | "glass" | "can" | "draft_glass" | "shot"
+      | "piece" | "gram" | "ml"
+  /** Default price in EUR cents. What Slesh will show. */
+  default_price_cents: number
+  /** 0-1 fractional. 0.10 = 10% IVA. NULL = not set. */
+  iva_pct: number | null
+  /** Deposit charged and refunded. Typically 0 for drinks, non-zero
+   *  for glassware/wristbands. NULL = 0. */
+  cauzione_cents: number | null
+  /** For drinks: override auto-derived tier (1=cheapest, 4=most premium). */
+  tier_rank: number | null
+  /** Position in the hydrated FullEventDetail.products[] array in
+   *  edit mode; undefined for products added client-side. Used by
+   *  the payload mapper to remap menu.product_index the same way
+   *  BarDraft.hydration_bar_index remaps menu.bar_index. */
+  hydration_product_index?: number
+}
+
 /** A single bar row in the Step 3 editable table. Mirrors the server-side
  *  BarSpec but adds wizard-only UI fields (slesh_shop_id for the picker). */
 export interface BarDraft {
@@ -48,10 +85,13 @@ export interface WizardState {
   parsed_plan: ParsedEventPlan | null
   picked_date: string | null          // "14/06" once Omar chooses from multi-event list
 
-  // ── Step 3: Bars
+  // ── Step 3: Products
+  products: ProductDraft[]
+
+  // ── Step 4: Bars
   bars: BarDraft[]
 
-  // ── Step 4: Recharge
+  // ── Step 5: Recharge
   // Recharge bars themselves live in `bars` with bar_type='recharge';
   // this step\'s editor just filters that list. The two fields below
   // are denomination preset arrays that don\'t fit the bar model and
@@ -61,7 +101,7 @@ export interface WizardState {
   topup_denominations_staff: number[]       // e.g. [5, 10, 20, 50, 100] in euros
 
   // ── Meta
-  current_step: 1 | 2 | 3 | 4 | 5
+  current_step: 1 | 2 | 3 | 4 | 5 | 6
   is_dirty: boolean
   /**
    * Set once the event has been created on the server (end of Step 4).
@@ -96,6 +136,7 @@ export function buildEmptyWizardState(): WizardState {
     food_revenue_share_pct: 30,
     parsed_plan: null,
     picked_date: null,
+    products: [],
     bars: [],
     recharge_device_count: 0,
     topup_denominations_user: [],
