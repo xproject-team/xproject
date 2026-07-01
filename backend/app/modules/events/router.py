@@ -28,6 +28,7 @@ from app.modules.events.schemas import (
     EventUpdate,
     FullEventCreate,
     FullEventCreateResponse,
+    FullEventDetail,
 )
 from app.modules.events.event_plan_excel import (
     parse_event_plan as _parse_event_plan,
@@ -497,6 +498,38 @@ async def update_full_event(
         products_reused=result["products_reused"],
         menu_items_created=result["menu_items_created"],
         allocations_created=result["allocations_created"],
+    )
+
+
+@router.get(
+    "/{event_id}/full",
+    response_model=FullEventDetail,
+)
+async def get_full_event(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> FullEventDetail:
+    """Return event in wizard-round-trippable shape (edit-mode preload).
+
+    Errors:
+      - 404 event_not_found
+    """
+    service = EventService(db)
+    try:
+        result = await service.get_full(tenant_id, event_id)
+    except EventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    event_dict = await service.build_response_dict(result["event"])
+    return FullEventDetail(
+        event=EventResponse(**event_dict),
+        bars=result["bars"],
+        products=result["products"],
+        menu=result["menu"],
+        allocations=result["allocations"],
     )
 
 

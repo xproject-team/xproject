@@ -337,6 +337,150 @@ class EventService:
         await self.db.commit()
         return {"event": event, **counts}
 
+    async def get_full(self, tenant_id: UUID, event_id: UUID) -> dict:
+        """Read event + bars + referenced products + menu + allocations.
+
+        Returns a dict matching FullEventDetail (event is the ORM Event; the
+        router calls build_response_dict to convert). Only products
+        REFERENCED by this event's menu or allocations are included.
+
+        Inverse of _create_children — SELECT only, no side effects. Ordering
+        is deterministic (bars: created_at,id; products: name,id; menu +
+        allocations: bar_index,product_index) so the wizard can round-trip
+        against stable indices.
+
+        Raises EventNotFoundError if not found or wrong tenant.
+        """
+        from sqlalchemy import select
+
+        from app.modules.bar_stock.models import BarStock
+        from app.modules.bars.models import Bar
+        from app.modules.event_products.models import EventProduct
+        from app.modules.products.models import Product
+        from app.modules.events.schemas import (
+            FullEventAllocation,
+            FullEventBar,
+            FullEventMenuItem,
+            FullEventProductInput,
+        )
+
+        # 404 (also cross-tenant) — reuse the tenant-scoped fetch.
+        event = await self.get_event(tenant_id, event_id)
+
+        # ── Bars: created_at ASC, id ASC ───────────────────────────────────
+        bar_orm = (
+            (
+                await self.db.execute(
+                    select(Bar)
+                    .where(Bar.tenant_id == tenant_id, Bar.event_id == event_id)
+                    .order_by(Bar.created_at.asc(), Bar.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        bar_index = {b.id: i for i, b in enumerate(bar_orm)}
+
+        # ── Menu + allocation rows for this event ──────────────────────────
+        menu_orm = (
+            (
+                await self.db.execute(
+                    select(EventProduct).where(
+                        EventProduct.tenant_id == tenant_id,
+                        EventProduct.event_id == event_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        alloc_orm = (
+            (
+                await self.db.execute(
+                    select(BarStock).where(
+                        BarStock.tenant_id == tenant_id,
+                        BarStock.event_id == event_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        # ── Products: union referenced by menu ∪ allocations, name/id ASC ──
+        referenced_ids = {m.product_id for m in menu_orm} | {
+            a.product_id for a in alloc_orm
+        }
+        product_orm = []
+        if referenced_ids:
+            product_orm = (
+                (
+                    await self.db.execute(
+                        select(Product)
+                        .where(
+                            Product.tenant_id == tenant_id,
+                            Product.id.in_(referenced_ids),
+                        )
+                        .order_by(Product.name.asc(), Product.id.asc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        product_index = {p.id: i for i, p in enumerate(product_orm)}
+
+        bars = [
+            FullEventBar.model_validate(b, from_attributes=True) for b in bar_orm
+        ]
+        products = [
+            FullEventProductInput.model_validate(p, from_attributes=True)
+            for p in product_orm
+        ]
+
+        # ── Menu: emit sorted by (bar_index, product_index) ────────────────
+        # Defensive: skip any row whose bar/product isn't in the ordered sets
+        # (can't happen given FK + how referenced_ids is built, but never raise).
+        menu_items = []
+        for m in menu_orm:
+            bi = bar_index.get(m.bar_id)
+            pi = product_index.get(m.product_id)
+            if bi is None or pi is None:
+                continue
+            menu_items.append(
+                FullEventMenuItem(
+                    bar_index=bi,
+                    product_index=pi,
+                    price_cents=m.price_cents,
+                    tier_rank_override=m.tier_rank_override,
+                    is_available=m.is_available,
+                )
+            )
+        menu_items.sort(key=lambda x: (x.bar_index, x.product_index))
+
+        # ── Allocations: qty ← bar_stock.allocated_qty, same ordering ──────
+        allocations = []
+        for a in alloc_orm:
+            bi = bar_index.get(a.bar_id)
+            pi = product_index.get(a.product_id)
+            if bi is None or pi is None:
+                continue
+            allocations.append(
+                FullEventAllocation(
+                    bar_index=bi,
+                    product_index=pi,
+                    qty=int(a.allocated_qty),
+                )
+            )
+        allocations.sort(key=lambda x: (x.bar_index, x.product_index))
+
+        return {
+            "event": event,
+            "bars": bars,
+            "products": products,
+            "menu": menu_items,
+            "allocations": allocations,
+        }
+
     # ─── Update ───────────────────────────────────────────────────────────────
 
     async def update_event(

@@ -197,3 +197,23 @@ class FullEventCreateResponse(BaseModel):
     products_reused: int
     menu_items_created: int
     allocations_created: int
+
+
+class FullEventDetail(BaseModel):
+    """GET /events/{event_id}/full — event in wizard-round-trippable shape.
+
+    Mirrors FullEventCreate so the frontend can populate WizardState from
+    the response and PUT the edited payload back. Indices in menu/
+    allocations refer to positions in bars[]/products[].
+
+    Ordering (contractual — do not change without frontend coordination):
+      - bars:         created_at ASC, id ASC
+      - products:     name ASC, id ASC
+      - menu:         (bar_index, product_index) ASC
+      - allocations:  (bar_index, product_index) ASC
+    """
+    event: EventResponse
+    bars: list[FullEventBar]
+    products: list[FullEventProductInput]
+    menu: list[FullEventMenuItem]
+    allocations: list[FullEventAllocation]
