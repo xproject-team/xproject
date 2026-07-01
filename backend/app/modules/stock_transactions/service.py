@@ -224,7 +224,14 @@ class StockTransactionService:
             drink_stock, product_id=data.product_id, qty=data.qty,
         )
 
-        # 4. Plan ingredient decrements if the drink has a recipe
+        # 4. Plan ingredient decrements if the drink has a recipe.
+        #    Chunk 3a note: this RecipeItem-based path feeds
+        #    RecipeDeviationDetector's over-pour anomaly detection, NOT
+        #    the live sale-depletion alerts Omar sees during an event —
+        #    those are computed separately, at read time, from
+        #    EventCategoryIngredient rows by
+        #    event_storage.bar_supplier_stock_service. See
+        #    app/modules/recipes/__init__.py for the full picture.
         recipe = await self.recipes.get_by_drink_product_id(
             tenant_id, data.product_id,
         )

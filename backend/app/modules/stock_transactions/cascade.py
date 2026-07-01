@@ -2,6 +2,20 @@
 
 Separated from service.py so the pure math is testable in isolation.
 
+Chunk 3a note (July 2026): plan_ingredient_decrement below is the
+RecipeItem-based ingredient cascade — it feeds
+RecipeDeviationDetector's over-pour anomaly detection (see
+app/modules/recipes/__init__.py), NOT the live sale-depletion alerts
+Omar sees during an event. Those are computed at READ time by
+app.modules.event_storage.bar_supplier_stock_service from
+EventCategoryIngredient rows (Catalog > Recipes tab, Chunk 2) and
+existing StockTransaction rows — no cascade write path needed, since
+EventCategoryIngredient.supplier_product_id points at the warehouse
+supplier_products table, not products.id, and there's no guaranteed
+bridge to a bar_stock row keyed by product_id. Do not extend this
+cascade to cover EventCategoryIngredient without resolving that
+FK mismatch first.
+
 The cascade for a sale:
 1. Parent row: drink consumption at the bar (carries price_cents)
 2. For each recipe_item: a child row consuming that ingredient
