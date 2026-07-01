@@ -221,7 +221,7 @@ export default function EventListPage() {
                   </td>
                   <td className={`px-5 py-4 ${textCls}`}>{event.venue.name}</td>
                   <td className="px-5 py-4">
-                    <div className="flex items-center justify-end">
+                    <div className="flex items-center justify-end gap-2">
                       {/* View only — all edit/end/dashboard actions live in Detail page (standard pattern) */}
                       <button
                         onClick={() => navigate(`/events/${event.id}`)}
@@ -234,6 +234,16 @@ export default function EventListPage() {
                       >
                         View
                       </button>
+                      {/* Chunk 3b — pre-event warehouse dispatch. Hidden once
+                          the event is completed; there's nothing left to charge. */}
+                      {!isPast && (
+                        <button
+                          onClick={() => navigate(`/events/${event.id}/charge-bars`)}
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#CBD5E0] text-[#4A5568] hover:bg-[#F7FAFC] transition-colors"
+                        >
+                          Charge Bars
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

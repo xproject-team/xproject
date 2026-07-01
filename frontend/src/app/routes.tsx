@@ -14,6 +14,7 @@ import EventCreatePage       from '@/pages/events/EventCreatePage'
 import EventWizardPage       from '@/pages/events/wizard/EventWizardPage'
 import EventDetailPage       from '@/pages/events/EventDetailPage'
 import { EventReconciliationPage } from '@/pages/events/EventReconciliationPage'
+import ChargeBarsPage        from '@/pages/events/ChargeBarsPage'
 import InventoryPage         from '@/pages/inventory/InventoryPage'
 import AllocationPage        from '@/pages/inventory/AllocationPage'
 import AlertsPage            from '@/pages/alerts/AlertsPage'
@@ -334,6 +335,20 @@ function AuthenticatedRoutes() {
         element={
           <RequirePermission flag="canGenerateReport">
             <EventReconciliationPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /events/:event_id/charge-bars — Chunk 3b. Pre-event warehouse →
+       * bar dispatch. Same permission as the wizard edit route
+       * (canCreateEvent, Owner-only) since it writes event setup data;
+       * no dedicated "charge bars" flag exists yet.
+       */}
+      <Route
+        path="/events/:event_id/charge-bars"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <ChargeBarsPage />
           </RequirePermission>
         }
       />
