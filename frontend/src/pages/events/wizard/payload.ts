@@ -39,6 +39,16 @@
  *   - Pre-validation produces human-readable error strings. They\'re
  *     surfaced before the API call so Omar sees \'venue is required\'
  *     instead of a 422 explaining the same thing.
+ *
+ *   - downgradeAndDedup (below) runs on every emitted payload, create
+ *     or edit mode. Realistic Excel data routinely produces drinks
+ *     with no matching category (backend requires category NOT NULL
+ *     when product_type=\'drink\') and repeat products across multiple
+ *     Listini sheets (backend dedups on (name.lower(), product_type)).
+ *     Rather than blocking the save on either, we downgrade uncategorized
+ *     drinks to \'supply\' (Omar reclassifies later in Catalog) and merge
+ *     duplicate rows, remapping menu/allocation product_index references
+ *     onto the surviving copy.
  */
 import type { WizardState } from "./types"
 import type {
@@ -54,8 +64,100 @@ export interface BuildResult {
   preErrors: string[]
 }
 
+interface DowngradedAndDeduped {
+  products: FullEventProductInput[]
+  menu: FullEventMenuItemInput[]
+  allocations: FullEventAllocationInput[]
+}
+
 /**
- * Edit-mode post-processing. In create mode this is a no-op.
+ * Final emit-time cleanup, applied to every payload (create AND edit
+ * mode) right before it goes out. Two backend constraints realistic
+ * Excel data routinely violates:
+ *
+ *   1. product_type='drink' requires category NOT NULL
+ *      (app/modules/products/service.py::_validate_shape). Excel
+ *      auto-classification misses plenty (Fritto/Veggie/Pulled foods
+ *      typed as drinks, Cauzione deposits, drinks with unrecognized
+ *      category strings). Rather than blocking the save, downgrade
+ *      these to product_type='supply' — Omar reclassifies later via
+ *      Catalog. This only changes what's EMITTED; state.products (and
+ *      thus the wizard UI) is untouched.
+ *
+ *   2. Products dedup by (name.lower(), product_type)
+ *      (app/modules/events/service.py::_validate_full). Multi-sheet
+ *      Listini repeats surface as duplicate rows in the wizard. The
+ *      dedup key is checked AFTER the downgrade above, so e.g. two
+ *      "GIN TONIC" rows that both downgrade to supply collapse into
+ *      one supply, not one drink + one supply.
+ *
+ * Dropping duplicate products shrinks the array, so every menu/
+ * allocation row referencing a dropped duplicate by product_index is
+ * remapped onto the surviving (first-seen) copy. If that remap makes
+ * a menu or allocation row collide with one that's already there
+ * (same bar_index + product_index), the second copy is dropped too —
+ * the backend rejects duplicate (bar_index, product_index) pairs.
+ */
+function downgradeAndDedup(
+  products: FullEventProductInput[],
+  menu: FullEventMenuItemInput[],
+  allocations: FullEventAllocationInput[],
+): DowngradedAndDeduped {
+  // ── 1. Downgrade uncategorized drinks to supply ─────────────────
+  const downgraded = products.map((p) =>
+    p.product_type === "drink" && p.category == null
+      ? { ...p, product_type: "supply" as const }
+      : p,
+  )
+
+  // ── 2. Dedup by (name.lower(), product_type); build old→new remap ──
+  const keyOf = (p: FullEventProductInput) => `${p.name.trim().toLowerCase()}|${p.product_type}`
+  const deduped: FullEventProductInput[] = []
+  const indexByKey = new Map<string, number>()
+  const productRemap = new Map<number, number>()
+
+  downgraded.forEach((p, oldIndex) => {
+    const key = keyOf(p)
+    let newIndex = indexByKey.get(key)
+    if (newIndex === undefined) {
+      newIndex = deduped.length
+      indexByKey.set(key, newIndex)
+      deduped.push(p)
+    }
+    productRemap.set(oldIndex, newIndex)
+  })
+
+  // ── 3. Remap menu.product_index; drop rows that collide post-remap ──
+  const menuPairs = new Set<string>()
+  const remappedMenu: FullEventMenuItemInput[] = []
+  for (const m of menu) {
+    const newProductIndex = productRemap.get(m.product_index)
+    if (newProductIndex === undefined) continue
+    const pairKey = `${m.bar_index}|${newProductIndex}`
+    if (menuPairs.has(pairKey)) continue
+    menuPairs.add(pairKey)
+    remappedMenu.push({ ...m, product_index: newProductIndex })
+  }
+
+  // ── 4. Same remap + collision drop for allocations ──────────────
+  const allocationPairs = new Set<string>()
+  const remappedAllocations: FullEventAllocationInput[] = []
+  for (const a of allocations) {
+    const newProductIndex = productRemap.get(a.product_index)
+    if (newProductIndex === undefined) continue
+    const pairKey = `${a.bar_index}|${newProductIndex}`
+    if (allocationPairs.has(pairKey)) continue
+    allocationPairs.add(pairKey)
+    remappedAllocations.push({ ...a, product_index: newProductIndex })
+  }
+
+  return { products: deduped, menu: remappedMenu, allocations: remappedAllocations }
+}
+
+/**
+ * Edit-mode post-processing (Slesh basics + allocations passthrough).
+ * The downgradeAndDedup cleanup above runs in BOTH branches below —
+ * create mode needs it just as much as edit mode does.
  *
  * WizardState carries only ~8 of ~15 event basics and no UI for
  * allocations (starting bar_stock). Without this merge, a PUT would
@@ -64,26 +166,32 @@ export interface BuildResult {
  * starting allocations, because the create-mode mapper emits
  * allocations=[] unconditionally.
  *
- * Products + menu need no special edit-mode handling any more:
- * state.products is the source of truth in both create and edit mode
- * (hydrateWizardState populates it from GET .../full), so
- * buildFullEventPayload's cross-product mapper already produced the
- * right thing.
+ * Products + menu need no special edit-mode handling beyond the
+ * downgrade/dedup: state.products is the source of truth in both
+ * create and edit mode (hydrateWizardState populates it from GET
+ * .../full), so buildFullEventPayload's cross-product mapper already
+ * produced the right shape.
  *
  * Allocations remap: allocation rows in the hydration bag reference
  * bars/products by their position in the ORIGINAL hydrated bars[]/
  * products[] arrays (`hydration_bar_index` / `hydration_product_index`).
  * If Omar reordered or deleted bars/products, we remap those indices
- * to the CURRENT positions and drop rows whose bar or product was
- * deleted (or, if Omar re-uploaded an Excel plan, whose bar/product
- * has no hydration index at all).
+ * to the CURRENT (pre-dedup) positions and drop rows whose bar or
+ * product was deleted (or, if Omar re-uploaded an Excel plan, whose
+ * bar/product has no hydration index at all). downgradeAndDedup then
+ * remaps a second time onto the post-dedup positions.
  */
 function applyEditModeMerges(
   payload: FullEventCreatePayload,
   state: WizardState,
 ): FullEventCreatePayload {
   const loaded = state._loaded_event
-  if (!loaded) return payload   // create mode — no-op
+
+  if (!loaded) {
+    // Create mode — no Slesh basics / allocations passthrough, but
+    // still needs the downgrade+dedup cleanup.
+    return { ...payload, ...downgradeAndDedup(payload.products, payload.menu, payload.allocations) }
+  }
 
   // ── Slesh basics passthrough (WizardState has no UI for these) ──
   const event = {
@@ -127,8 +235,10 @@ function applyEditModeMerges(
 
     // Same idea for products: hydration_product_index (original
     // position in GET .../full's products[]) → current position in
-    // the products[] we just emitted. Must apply the SAME empty-name
-    // filter buildFullEventPayload used, so positions line up.
+    // the (pre-dedup) products[] we just emitted. Must apply the SAME
+    // empty-name filter buildFullEventPayload used, so positions line
+    // up. downgradeAndDedup below remaps these once more if dedup
+    // collapses any of them.
     const nonEmptyProducts = state.products.filter((p) => p.name.trim() !== "")
     const productRemap = new Map<number, number>()
     nonEmptyProducts.forEach((p, currentIndex) => {
@@ -148,7 +258,11 @@ function applyEditModeMerges(
       .filter((a): a is FullEventAllocationInput => a !== null)
   }
 
-  return { event, bars: payload.bars, products: payload.products, menu: payload.menu, allocations }
+  return {
+    event,
+    bars: payload.bars,
+    ...downgradeAndDedup(payload.products, payload.menu, allocations),
+  }
 }
 
 export function buildFullEventPayload(state: WizardState): BuildResult {
