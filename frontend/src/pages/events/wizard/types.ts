@@ -11,6 +11,10 @@
  * import the type without circular-importing the page.
  */
 import type { ParsedEventPlan, BarSpec } from "@/lib/eventPlan"
+import type {
+  FullEventDetailEvent,
+  FullEventHydrationBag,
+} from "@/features/events/useFullEvent"
 
 /** A single bar row in the Step 3 editable table. Mirrors the server-side
  *  BarSpec but adds wizard-only UI fields (slesh_shop_id for the picker). */
@@ -24,6 +28,11 @@ export interface BarDraft {
   slesh_shop_id: string | null
   /** Original BarSpec from the Excel parse, if this row came from upload. */
   from_excel: BarSpec | null
+  /** Position of this bar in the hydrated FullEventDetail.bars[] array
+   *  in edit mode; undefined for bars added client-side. Used by the
+   *  payload mapper (Chunk 3b) to remap menu bar_index when the user
+   *  reorders or deletes bars. */
+  hydration_bar_index?: number
 }
 
 export interface WizardState {
@@ -61,6 +70,19 @@ export interface WizardState {
    * /events/{event_id}.
    */
   event_id: string | null
+
+  // ── Edit mode hydration bags ──────────────────────────────────────
+  // Populated by hydrateWizardState() when the wizard loads an existing
+  // event via GET /events/{id}/full; undefined in create mode.
+  /** Full backend EventResponse. Carries Slesh-aligned fields the
+   *  wizard UI never edits (stripe_ragione_sociale, staff_arrival_time,
+   *  wristband_qty_per_type, refund_*, etc.). Chunk 3b's payload mapper
+   *  merges these into the PUT so an edit-save does not null them. */
+  _loaded_event?: FullEventDetailEvent | null
+  /** Products + menu + allocations from the GET. Wizard has no product-
+   *  editing UI, so this passes through to the PUT unchanged (bar
+   *  indices remapped by the payload mapper). */
+  _hydration?: FullEventHydrationBag | null
 }
 
 /** Returned by buildEmptyWizardState(). Safe to mount with no prior draft. */

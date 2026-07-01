@@ -20,12 +20,14 @@
  *     validation; the page only walks them through
  */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 
 import { useAuth } from "@/features/auth/useAuth"
 import { buildEmptyWizardState, type WizardState } from "./types"
 import { clearDraft, loadDraft, saveDraft } from "./storage"
 import { buildFullEventPayload } from "./payload"
+import { hydrateWizardState } from "./hydrate"
+import { useFullEvent } from "@/features/events/useFullEvent"
 import {
   useCreateFullEvent,
   extractFullEventErrors,
@@ -59,23 +61,56 @@ const TABS: { num: 1 | 2 | 3 | 4 | 5; label: string }[] = [
  */
 export default function EventWizardPage() {
   const { user, loading } = useAuth()
+  const { id: routeEventId } = useParams<{ id?: string }>()
   if (loading) return null
   if (!user) return null   // RequireAuth already guards this, but defensive
-  return <EventWizardContent userId={user.id} />
+  // Key on hydrateEventId so A→B route-param changes force a remount;
+  // otherwise React Router v6 keeps state (including hasHydrated) across
+  // param changes and B never hydrates.
+  return (
+    <EventWizardContent
+      key={routeEventId ?? "create"}
+      userId={user.id}
+      hydrateEventId={routeEventId ?? null}
+    />
+  )
 }
 
 interface ContentProps {
   userId: string
+  /** When set, wizard mounts in EDIT mode: fetches GET /events/{id}/full,
+   *  hydrates WizardState from the response, disables draft persistence,
+   *  and (Chunk 3b, next commit) writes via PUT instead of POST. */
+  hydrateEventId: string | null
 }
 
-function EventWizardContent({ userId }: ContentProps) {
+function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
   const navigate = useNavigate()
+  const isEditMode = hydrateEventId !== null
 
-  // ── State init: restore draft if one exists, otherwise empty
+  // Edit-mode fetch (disabled when hydrateEventId === null)
+  const fullEventQuery = useFullEvent(hydrateEventId)
+  const [hasHydrated, setHasHydrated] = useState(false)
+
+  // ── State init: restore draft if one exists, otherwise empty.
+  // In edit mode we ignore any pre-existing create-mode draft — the
+  // hydration effect below fills state from GET /events/{id}/full.
   const [state, setState] = useState<WizardState>(() => {
+    if (hydrateEventId !== null) return buildEmptyWizardState()
     const draft = loadDraft(userId)
     return draft ?? buildEmptyWizardState()
   })
+
+  // ── Edit-mode hydration: on first successful fetch, populate state
+  //    from the FullEventDetail response. Guarded so re-fetches never
+  //    wipe user edits (refetchOnWindowFocus is off, but belt & braces).
+  useEffect(() => {
+    if (!isEditMode) return
+    if (hasHydrated) return
+    if (!fullEventQuery.data) return
+    setState(hydrateWizardState(fullEventQuery.data))
+    setHasHydrated(true)
+  }, [isEditMode, hasHydrated, fullEventQuery.data])
 
   // ── Draft persistence: debounced save on every state change.
   // We deliberately do NOT gate on state.is_dirty here. is_dirty is a UI
@@ -87,6 +122,9 @@ function EventWizardContent({ userId }: ContentProps) {
   const saveTimer = useRef<number | null>(null)
   const hasMounted = useRef(false)
   useEffect(() => {
+    // Edit mode: no draft persistence. Server state is the source of
+    // truth; drafting an edit would confuse "did I save?" semantics.
+    if (isEditMode) return
     // Skip the very first effect run (right after mount, when state was
     // freshly loaded from storage). Saving the just-loaded state back to
     // storage is harmless but wasteful and confuses the log.
@@ -101,7 +139,7 @@ function EventWizardContent({ userId }: ContentProps) {
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current)
     }
-  }, [state, userId])
+  }, [state, userId, isEditMode])
 
   // ── Wraps setState to auto-flag is_dirty so the draft save fires.
   const onChange = (next: Partial<WizardState>) => {
@@ -206,28 +244,65 @@ function EventWizardContent({ userId }: ContentProps) {
     navigate(`/events/${state.event_id}`, { replace: true })
   }
 
+  // ── Edit mode: gate render on hydration ready
+  if (isEditMode && !hasHydrated) {
+    if (fullEventQuery.isError) {
+      return (
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-900 font-semibold">
+              Could not load event: {(fullEventQuery.error as Error)?.message ?? "unknown error"}
+            </p>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="max-w-4xl mx-auto px-6 py-8 text-center text-[#718096]">
+        Loading event…
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1A202C]">Create Event</h1>
+          <h1 className="text-2xl font-bold text-[#1A202C]">
+            {isEditMode ? "Edit Event" : "Create Event"}
+          </h1>
           <p className="text-sm text-[#4A5568] mt-1">
-            New wizard flow · work-in-progress preview
+            {isEditMode
+              ? `${state.name || "(loading…)"} · draft`
+              : "New wizard flow · work-in-progress preview"}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {state.is_dirty && (
+          {!isEditMode && state.is_dirty && (
             <span className="text-xs text-[#A0AEC0]">Draft auto-saved</span>
           )}
           <button
-            onClick={onDiscard}
+            onClick={
+              isEditMode
+                ? () => navigate(`/events/${hydrateEventId}`)
+                : onDiscard
+            }
             className="text-sm text-[#718096] hover:text-[#E53E3E] px-3 py-1.5"
           >
-            Discard draft
+            {isEditMode ? "Cancel" : "Discard draft"}
           </button>
         </div>
       </div>
+
+      {/* Edit mode preview banner (Chunk 3a) */}
+      {isEditMode && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-sm text-amber-900 font-semibold">
+            Edit mode preview · Save wiring lands next commit; changes here don't persist yet.
+          </p>
+        </div>
+      )}
 
       {/* Step tabs */}
       <div className="flex items-center gap-2 mb-6 border-b border-[#E2E8F0]">
@@ -304,28 +379,37 @@ function EventWizardContent({ userId }: ContentProps) {
         </button>
         <button
           onClick={
-            state.current_step < 4
-              ? goForward
-              : state.current_step === 4
-                ? onFinalize
-                : onDone   // Step 5
+            isEditMode
+              ? state.current_step < 4
+                ? goForward
+                : undefined   // Save wiring lands in Chunk 3b
+              : state.current_step < 4
+                ? goForward
+                : state.current_step === 4
+                  ? onFinalize
+                  : onDone   // Step 5
           }
           disabled={
-            (state.current_step === 4 && createFull.isPending) ||
-            (state.current_step === 5 && state.event_id === null)
+            (isEditMode && state.current_step === 4) ||
+            (!isEditMode && state.current_step === 4 && createFull.isPending) ||
+            (!isEditMode && state.current_step === 5 && state.event_id === null)
           }
           className={[
             "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
-            createFull.isPending
+            (isEditMode && state.current_step === 4) || createFull.isPending
               ? "bg-[#CBD5E0] cursor-not-allowed"
               : "bg-[#1ABC9C] hover:bg-[#17a589]",
           ].join(" ")}
         >
-          {state.current_step < 4
-            ? "Save & Continue"
-            : state.current_step === 4
-              ? createFull.isPending ? "Creating Event…" : "Create Event"
-              : "Done"}
+          {isEditMode
+            ? state.current_step < 4
+              ? "Continue"
+              : "Save Changes (next commit)"
+            : state.current_step < 4
+              ? "Save & Continue"
+              : state.current_step === 4
+                ? createFull.isPending ? "Creating Event…" : "Create Event"
+                : "Done"}
         </button>
       </div>
     </div>

@@ -295,6 +295,20 @@ function AuthenticatedRoutes() {
           </RequirePermission>
         }
       />
+      {/*
+       * /events/:id/edit-v2 — Chunk 3a preview of wizard edit mode.
+       * Runs in PARALLEL with /events/:id/edit (which still mounts
+       * EventCreatePage). Save is disabled until 3b wires PUT; 3c
+       * retires this URL and redirects /events/:id/edit here.
+       */}
+      <Route
+        path="/events/:id/edit-v2"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventWizardPage />
+          </RequirePermission>
+        }
+      />
       <Route
         path="/events/:id"
         element={
