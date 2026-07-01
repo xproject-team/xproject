@@ -86,6 +86,7 @@ def create_app() -> FastAPI:
     from app.modules.reports.router import router as reports_router
     from app.modules.chat.router import router as chat_router
     from app.modules.event_storage.router import router as event_storage_router
+    from app.modules.event_recipes.router import router as event_recipes_router
     from app.realtime.websocket import router as ws_router
 
     prefix = "/api/v1"
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(reports_router, prefix=f"{prefix}/reports", tags=["reports"])
     app.include_router(chat_router, prefix=f"{prefix}/chat", tags=["chat"])
     app.include_router(event_storage_router, prefix=f"{prefix}/event-storage", tags=["event-storage"])
+    app.include_router(event_recipes_router, prefix=f"{prefix}/event-recipes", tags=["event-recipes"])
     app.include_router(recharge_router, prefix=f"{prefix}/recharge-stations", tags=["recharge-stations"])
     app.include_router(ws_router, prefix=f"{prefix}/ws", tags=["websocket"])
 

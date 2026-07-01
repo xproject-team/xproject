@@ -18,7 +18,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -262,4 +262,12 @@ class EventCategoryIngredient(TenantScopedModel):
     )
     threshold_pct_empty: Mapped[Decimal] = mapped_column(
         Numeric(5, 2), nullable=False, default=Decimal("100.00"),
+    )
+
+    # false = required alcohol base (Catalog page's "Alcohol base"
+    # section); true = optional mixer/extra ("Mixers & extras" section).
+    # The alerts/depletion engine treats both identically — this flag
+    # is FE display grouping only (Chunk 2, Sundance 15 recipe editor).
+    is_optional: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
     )
