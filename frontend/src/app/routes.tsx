@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams} from 'react-router-dom'
 import { SessionExpiredModal } from '@/shared/SessionExpiredModal'
 import { PermissionDeniedToast } from '@/shared/PermissionDeniedToast'
 import { type ReactNode } from 'react'
@@ -98,6 +98,14 @@ function RequirePermission({
 
 // ─── App router ───────────────────────────────────────────────────────────────
 
+// Tiny redirect helper for the legacy /events/:id/edit-v2 URL.
+// Reads :id via useParams and sends the browser to /events/:id/edit.
+// Written as a component (not a raw <Navigate>) so we can use hooks.
+function EditV2Redirect() {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/events/${id}/edit`} replace />
+}
+
 export function AppRoutes() {
   return (
     <BrowserRouter
@@ -167,8 +175,8 @@ function AuthenticatedRoutes() {
         }
       />
       {/* /events/create — wizard flow (Phase 4 step 10c, Jun 27 2026).
-          Previously rendered <EventCreatePage />; that page now serves
-          /events/:id/edit only until edit-via-wizard ships (Phase 5). */}
+          The old EventCreatePage is now only reachable at
+          /events/:id/edit-legacy (kept for StorageTab access). */}
       <Route
         path="/events/create"
         element={
@@ -177,6 +185,13 @@ function AuthenticatedRoutes() {
           </RequirePermission>
         }
       />
+      {/* /events/create-v2 → alias for /events/create (bookmark safety).
+          Must exist BEFORE /events/:id so "create-v2" is not parsed
+          as an event UUID. */}
+      <Route
+        path="/events/create-v2"
+        element={<Navigate to="/events/create" replace />}
+      />
       {/*
        * /events/create-v2 \u2014 new 4-step wizard (Phase 4, in development).
        * Runs in PARALLEL with /events/create until the wizard is fully
@@ -184,16 +199,6 @@ function AuthenticatedRoutes() {
        * removes the old page. No EventListPage links here yet \u2014 the
        * route is reached by typing the URL during dev/QA.
        */}
-      {/*
-       * /events/create-v2 — legacy redirect (Phase 4 development URL).
-       * The wizard now lives at /events/create. Any bookmarks made
-       * during Phase 4 will hit this redirect once and end up at the
-       * right place.
-       */}
-      <Route
-        path="/events/create-v2"
-        element={<Navigate to="/events/create" replace />}
-      />
       {/*
        * /bars — Owner (canViewAllBars) and Manager
        * Manager sees all bars for the tenant; Bartender sees only their bar
@@ -285,29 +290,36 @@ function AuthenticatedRoutes() {
         }
       />
       {/*
-       * /events/:id/edit — Create Event wizard in edit mode (DRAFT events)
+       * /events/:id/edit — Edit event via the wizard (Chunk 3c, Phase 5).
+       * Hydrates from GET /events/{id}/full and saves via PUT.
+       * Restricted to DRAFT events by the backend (422 on non-draft).
        */}
       <Route
         path="/events/:id/edit"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventWizardPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /events/:id/edit-legacy — old EventCreatePage (7-tab layout).
+       * Kept as an escape hatch because tab 7 (StorageTab) is the sole
+       * UI entry point to event storage management. Delete after
+       * StorageTab is relocated (post-Sundance backlog).
+       */}
+      <Route
+        path="/events/:id/edit-legacy"
         element={
           <RequirePermission flag="canCreateEvent">
             <EventCreatePage />
           </RequirePermission>
         }
       />
-      {/*
-       * /events/:id/edit-v2 — Chunk 3a preview of wizard edit mode.
-       * Runs in PARALLEL with /events/:id/edit (which still mounts
-       * EventCreatePage). Save is disabled until 3b wires PUT; 3c
-       * retires this URL and redirects /events/:id/edit here.
-       */}
+      {/* /events/:id/edit-v2 → alias for /events/:id/edit (bookmark safety). */}
       <Route
         path="/events/:id/edit-v2"
-        element={
-          <RequirePermission flag="canCreateEvent">
-            <EventWizardPage />
-          </RequirePermission>
-        }
+        element={<EditV2Redirect />}
       />
       <Route
         path="/events/:id"
