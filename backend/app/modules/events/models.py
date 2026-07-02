@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, Time, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, Time, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +39,12 @@ class Event(TenantScopedModel):
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # ML training-set contamination guard (Phase F follow-up). true unless
+    # backfilled/set false for simulation/test/seed events — see alembic
+    # migration aa3 and predictions/nowcast/retrain.py.
+    is_training_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true"),
+    )
     venue_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("venues.id", ondelete="RESTRICT"),

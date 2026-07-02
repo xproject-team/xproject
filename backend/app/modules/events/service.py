@@ -705,4 +705,5 @@ class EventService:
             "ended_at": event.ended_at,
             "created_at": event.created_at,
             "updated_at": event.updated_at,
+            "is_training_eligible": event.is_training_eligible,
         }

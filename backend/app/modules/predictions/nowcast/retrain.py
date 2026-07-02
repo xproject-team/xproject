@@ -90,15 +90,26 @@ def _atomic_write_parquet(df: pd.DataFrame, target: Path) -> None:
 async def retrain_from_completed_events(
     db: AsyncSession, tenant_id: UUID, data_dir: Path = DATA_DIR,
 ) -> dict:
-    """Rebuild the nowcast training set from every COMPLETED event for
-    this tenant. Returns a summary dict; raises on any hard failure
-    (missing parquet, refit failure) — the caller decides how to
-    isolate that from its own transaction.
+    """Rebuild the nowcast training set from every COMPLETED,
+    training-eligible event for this tenant. Returns a summary dict;
+    raises on any hard failure (missing parquet, refit failure) — the
+    caller decides how to isolate that from its own transaction.
+
+    is_training_eligible (events table, migration aa3) is the
+    contamination guard flagged in the Phase F report: the dev DB has
+    16+ COMPLETED events that are simulation/test/seed fixtures, not
+    real Sundance nights, and would otherwise get silently merged into
+    the production training parquet. Backfilled false for names
+    matching SIMULATION/TEST/SMOKE/EXAMPLE/TRIM (case-insensitive
+    substring) — NOTE this is a known-imperfect, literal keyword list;
+    e.g. "Sim Sundance 2025-06-15" doesn't match "SIMULATION" and is
+    still marked eligible. See the migration's docstring.
     """
     stmt = (
         select(Event)
         .where(Event.tenant_id == tenant_id)
         .where(Event.status == EventStatus.COMPLETED)
+        .where(Event.is_training_eligible.is_(True))
     )
     completed_events = (await db.execute(stmt)).scalars().all()
 

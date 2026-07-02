@@ -111,6 +111,10 @@ class EventResponse(BaseModel):
     ended_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # ML training-set contamination guard (Phase F follow-up, migration
+    # aa3). No UI reads this yet — exposed so a future wizard/edit-page
+    # toggle can display/edit it post-Sundance.
+    is_training_eligible: bool = True
 
 
 # ─── Full Event Create (Phase D — Create Event wizard composite) ─────────────

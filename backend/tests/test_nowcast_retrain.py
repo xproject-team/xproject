@@ -102,7 +102,9 @@ async def _create_venue(db: AsyncSession, tenant_id: UUID) -> Venue:
     return v
 
 
-async def _create_completed_event(db: AsyncSession, tenant_id: UUID, venue_id: UUID) -> Event:
+async def _create_completed_event(
+    db: AsyncSession, tenant_id: UUID, venue_id: UUID, *, is_training_eligible: bool = True,
+) -> Event:
     ev = Event(
         tenant_id=tenant_id,
         venue_id=venue_id,
@@ -113,6 +115,7 @@ async def _create_completed_event(db: AsyncSession, tenant_id: UUID, venue_id: U
         ended_at=datetime(2026, 5, 2, 3, 0, tzinfo=timezone.utc),
         expected_guest_count=500,
         version=1,
+        is_training_eligible=is_training_eligible,
     )
     db.add(ev)
     await db.flush()
@@ -240,3 +243,74 @@ async def test_retrain_skips_completed_event_with_no_revenue(
 
     after = pd.read_parquet(tmp_nowcast_data_dir / "training_events.parquet")
     assert len(after) == before_count  # untouched
+
+
+@pytest.mark.asyncio
+async def test_retrain_excludes_training_ineligible_completed_event(
+    db_session: AsyncSession, tmp_nowcast_data_dir: Path,
+):
+    """A COMPLETED event with real revenue but is_training_eligible=False
+    (e.g. a simulation/test fixture) must not be pulled into retraining
+    — the contamination guard flagged in the Phase F report, shipped as
+    migration aa3."""
+    before = pd.read_parquet(tmp_nowcast_data_dir / "training_events.parquet")
+    before_count = len(before)
+
+    tenant = await _make_isolated_tenant(db_session)
+    venue = await _create_venue(db_session, tenant.id)
+    ineligible_event = await _create_completed_event(
+        db_session, tenant.id, venue.id, is_training_eligible=False,
+    )
+    bar = await _create_bar(db_session, tenant.id, ineligible_event.id)
+    product = await _create_product(db_session, tenant.id)
+    await _add_sale(db_session, tenant.id, ineligible_event.id, bar.id, product.id,
+                     created_at=datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc), price_cents=999_999)
+    await db_session.flush()
+
+    result = await retrain_from_completed_events(db_session, tenant.id, data_dir=tmp_nowcast_data_dir)
+
+    # No ELIGIBLE completed events with revenue exist for this tenant —
+    # the ineligible one must be filtered out at the query level, not
+    # merely skipped-for-no-revenue (it has plenty of revenue).
+    assert result["status"] == "no_completed_events_with_revenue"
+    assert result["retrained"] is False
+    assert str(ineligible_event.id) not in result.get("skipped_no_revenue", [])
+
+    after = pd.read_parquet(tmp_nowcast_data_dir / "training_events.parquet")
+    assert len(after) == before_count
+    assert str(ineligible_event.id) not in set(after["event_id"])
+
+
+@pytest.mark.asyncio
+async def test_retrain_includes_eligible_but_excludes_ineligible_sibling(
+    db_session: AsyncSession, tmp_nowcast_data_dir: Path,
+):
+    """Mixed tenant: one eligible + one ineligible COMPLETED event, both
+    with revenue. Only the eligible one should land in the retrained
+    parquet."""
+    tenant = await _make_isolated_tenant(db_session)
+    venue = await _create_venue(db_session, tenant.id)
+
+    eligible_event = await _create_completed_event(db_session, tenant.id, venue.id, is_training_eligible=True)
+    ineligible_event = await _create_completed_event(db_session, tenant.id, venue.id, is_training_eligible=False)
+
+    eligible_bar = await _create_bar(db_session, tenant.id, eligible_event.id)
+    ineligible_bar = await _create_bar(db_session, tenant.id, ineligible_event.id)
+    product = await _create_product(db_session, tenant.id)
+
+    await _add_sale(db_session, tenant.id, eligible_event.id, eligible_bar.id, product.id,
+                     created_at=datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc), price_cents=300_000)
+    await _add_sale(db_session, tenant.id, ineligible_event.id, ineligible_bar.id, product.id,
+                     created_at=datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc), price_cents=999_999)
+    await db_session.flush()
+
+    result = await retrain_from_completed_events(db_session, tenant.id, data_dir=tmp_nowcast_data_dir)
+
+    assert result["status"] == "ok"
+    assert str(eligible_event.id) in result["events_added_or_updated"]
+    assert str(ineligible_event.id) not in result["events_added_or_updated"]
+
+    after = pd.read_parquet(tmp_nowcast_data_dir / "training_events.parquet")
+    ids = set(after["event_id"])
+    assert str(eligible_event.id) in ids
+    assert str(ineligible_event.id) not in ids
