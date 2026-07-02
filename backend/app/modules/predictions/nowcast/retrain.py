@@ -95,15 +95,16 @@ async def retrain_from_completed_events(
     raises on any hard failure (missing parquet, refit failure) — the
     caller decides how to isolate that from its own transaction.
 
-    is_training_eligible (events table, migration aa3) is the
+    is_training_eligible (events table, migrations aa3 + aa4) is the
     contamination guard flagged in the Phase F report: the dev DB has
-    16+ COMPLETED events that are simulation/test/seed fixtures, not
+    17+ COMPLETED events that are simulation/test/seed fixtures, not
     real Sundance nights, and would otherwise get silently merged into
     the production training parquet. Backfilled false for names
-    matching SIMULATION/TEST/SMOKE/EXAMPLE/TRIM (case-insensitive
-    substring) — NOTE this is a known-imperfect, literal keyword list;
-    e.g. "Sim Sundance 2025-06-15" doesn't match "SIMULATION" and is
-    still marked eligible. See the migration's docstring.
+    matching SIMULATION/TEST/SMOKE/EXAMPLE/TRIM (aa3) and "Sim " (aa4,
+    added after verifying "Sim Sundance 2025-06-15" was fabricated seed
+    data — 6,145 revenue transactions inside a 23-second window, venue
+    literally named "Sundance 2025 Simulation"). Match is a literal
+    keyword list, not exhaustive — see aa3/aa4's docstrings.
     """
     stmt = (
         select(Event)
