@@ -9,25 +9,32 @@
  * pool. Recharge/service bars (Accrediti, CASSA) hold no bottles and
  * are omitted from the grid entirely.
  *
- * Reuses three already-proven, already-wired pieces rather than
- * introducing anything new:
- *   useBarSupplierStock   same stock query the Dashboard bar-card
- *                         popup (BarDetailOverlay's StockTable) reads
- *   useChargeBarDispatch  same dispatch mutation the Charge Bars page
- *                         uses — POST /event-storage/allocations,
- *                         already invalidates bar-supplier-stock
- *   useStorageSummary     same event_stock_items-backed "declared
- *                         pool" the picker draws its available items
- *                         from (StorageSummaryRow.qty_available)
+ * Reuses already-proven, already-wired pieces rather than introducing
+ * anything new:
+ *   useBarSupplierStock    same stock query the Dashboard bar-card
+ *                          popup (BarDetailOverlay's StockTable) reads
+ *   useChargeBarDispatch   same dispatch mutation the Charge Bars page
+ *                          uses — POST /event-storage/allocations,
+ *                          already invalidates bar-supplier-stock
+ *   useEventWarehouseSummary  same query the Warehouse page's KPI
+ *                          cards + table read (warehouse_inventory-
+ *                          backed, invoice-populated) — the picker's
+ *                          "available to dispatch" source
+ *   useSupplierProducts    tenant catalog of dispatchable items
  *
- * One gap flagged, not silently worked around: on events where the
- * wizard's Storage tab was skipped (event_stock_items empty), boxes
- * still correctly show any stock that was already dispatched in the
- * past (event_stock_bar_allocations is a separate table — see the
- * Inventory/Warehouse empty-state bug report from the prior chunk),
- * but the "+ Add bottle" picker will be empty — dispatch can only
- * draw from the declared pool. The modal says so rather than
- * pretending the button works.
+ * The "+ Add bottle" picker bug fix: dispatch (POST /event-storage/
+ * allocations, unchanged) requires a supplier_product_id. Warehouse's
+ * invoice-populated rows (EventWarehouseSummary) are product_id-keyed
+ * — supplier_products has NO foreign key to products (see the
+ * Inventory/Warehouse bug report from two chunks back), only a
+ * best-effort case-insensitive name match, which is exactly what the
+ * backend's own InvoiceRepository.get_event_summary already uses to
+ * compute the Warehouse table's "Dispatched"/"Remaining" columns. This
+ * page does the SAME match client-side (product_name <-> item_name)
+ * to resolve a supplier_product_id for dispatch — anything that
+ * doesn't match a supplier_product (rare — 8 of 29 products on July 5
+ * TEST, mostly water/soda lines) is shown but not selectable, with a
+ * note, rather than silently hidden or silently broken.
  *
  * No backend changes. Charge Bars page (events/:id/charge-bars) is
  * untouched and remains a bulk-entry alternative.
@@ -37,10 +44,18 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { useBarsForEvent, useBarSupplierStock, useLiveEvent } from '@/features/dashboard/hooks'
 import type { BarSupplierStockItemDTO } from '@/features/dashboard/hooks'
-import { useStorageSummary } from '@/features/event_storage/hooks'
-import type { StorageSummaryRow } from '@/features/event_storage/types'
+import { useSupplierProducts } from '@/features/event_storage/hooks'
 import { useChargeBarDispatch } from '@/features/event_storage/useChargeBars'
+import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
 import type { BarRow } from '@/lib/mockData'
+
+interface PickerRow {
+  key:                 string   // product_name, lowercased — React key + name-match key
+  product_name:        string
+  remaining_qty:       string
+  supplier_product_id: string | null   // null = no matching supplier_product, not dispatchable
+  unit:                string
+}
 
 type StockStatus = 'healthy' | 'low' | 'critical'
 
@@ -81,7 +96,8 @@ export default function InventoryPage() {
 
   const barsQ = useBarsForEvent(eventId)
   const stockQ = useBarSupplierStock(eventId)
-  const summaryQ = useStorageSummary(eventId)
+  const warehouseQ = useEventWarehouseSummary(eventId)
+  const supplierProductsQ = useSupplierProducts()
   const dispatchMut = useChargeBarDispatch(eventId ?? '')
 
   const [addBottleBarId, setAddBottleBarId] = useState<string | null>(null)
@@ -112,18 +128,44 @@ export default function InventoryPage() {
     return m
   }, [stockQ.data])
 
-  const availableItems = useMemo(
-    () => (summaryQ.data?.rows ?? []).filter((r) => Number(r.qty_available) > 0),
-    [summaryQ.data],
-  )
+  // Name-match bridge: supplier_products has no FK to products, only a
+  // best-effort case-insensitive name match (see file header + the
+  // backend's InvoiceRepository.get_event_summary, which computes this
+  // page's warehouse data the same way).
+  const supplierIdByName = useMemo(() => {
+    const m = new Map<string, { id: string; unit: string }>()
+    for (const sp of supplierProductsQ.data ?? []) {
+      m.set(sp.item_name.trim().toLowerCase(), { id: sp.id, unit: sp.default_unit })
+    }
+    return m
+  }, [supplierProductsQ.data])
+
+  const pickerRows = useMemo<PickerRow[]>(() => {
+    return (warehouseQ.data?.rows ?? [])
+      .filter((r) => Number(r.remaining_qty) > 0)
+      .map((r) => {
+        const key = r.product_name.trim().toLowerCase()
+        const match = supplierIdByName.get(key)
+        return {
+          key,
+          product_name: r.product_name,
+          remaining_qty: r.remaining_qty,
+          supplier_product_id: match?.id ?? null,
+          unit: match?.unit ?? '',
+        }
+      })
+  }, [warehouseQ.data, supplierIdByName])
 
   const totalUnitsAtBars = useMemo(
     () => (stockQ.data?.items ?? []).reduce((sum, i) => sum + i.dispatched_units, 0),
     [stockQ.data],
   )
+  // Sum across ALL warehouse-remaining products, not just the
+  // dispatchable (name-matched) subset — matches what the Warehouse
+  // page's own REMAINING column totals to.
   const totalAvailableToDispatch = useMemo(
-    () => availableItems.reduce((sum, r) => sum + Number(r.qty_available), 0),
-    [availableItems],
+    () => pickerRows.reduce((sum, r) => sum + Number(r.remaining_qty), 0),
+    [pickerRows],
   )
 
   const showToast = (msg: string) => {
@@ -201,7 +243,7 @@ export default function InventoryPage() {
       {addBottleBar && eventId && (
         <AddBottleModal
           bar={addBottleBar}
-          availableItems={availableItems}
+          pickerRows={pickerRows}
           dispatchMut={dispatchMut}
           onClose={() => setAddBottleBarId(null)}
           onSuccess={(msg) => {
@@ -319,34 +361,34 @@ function BarBox({
 // ─── Add bottle modal ────────────────────────────────────────────────
 
 function AddBottleModal({
-  bar, availableItems, dispatchMut, onClose, onSuccess,
+  bar, pickerRows, dispatchMut, onClose, onSuccess,
 }: {
   bar: BarRow
-  availableItems: StorageSummaryRow[]
+  pickerRows: PickerRow[]
   dispatchMut: ReturnType<typeof useChargeBarDispatch>
   onClose: () => void
   onSuccess: (msg: string) => void
 }) {
-  const [selectedSpId, setSelectedSpId] = useState('')
+  const [selectedKey, setSelectedKey] = useState('')
   const [qty, setQty] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const selected = availableItems.find((r) => r.supplier_product_id === selectedSpId)
-  const maxQty = selected ? Number(selected.qty_available) : 0
+  const selected = pickerRows.find((r) => r.key === selectedKey)
+  const maxQty = selected ? Number(selected.remaining_qty) : 0
 
   const onConfirm = async () => {
     setError(null)
     const n = Number(qty)
-    if (!selectedSpId) { setError('Pick an item.'); return }
+    if (!selected || !selected.supplier_product_id) { setError('Pick an item.'); return }
     if (!Number.isFinite(n) || n <= 0) { setError('Qty must be > 0.'); return }
     if (n > maxQty) { setError(`Only ${maxQty} available.`); return }
     try {
       await dispatchMut.mutateAsync({
-        supplier_product_id: selectedSpId,
+        supplier_product_id: selected.supplier_product_id,
         bar_id: bar.id,
         qty_allocated: String(n),
       })
-      onSuccess(`Charged ${n} ${selected?.unit} of ${selected?.item_name} to ${bar.name}.`)
+      onSuccess(`Charged ${n} ${selected.unit} of ${selected.product_name} to ${bar.name}.`)
       onClose()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Dispatch failed.')
@@ -377,25 +419,39 @@ function AddBottleModal({
         </div>
 
         <div className="px-6 py-4">
-          {availableItems.length === 0 ? (
+          {pickerRows.length === 0 ? (
             <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No items available in the declared warehouse pool. Declare stock via
-              the wizard → Storage tab before charging bars.
+              No products with remaining warehouse stock for this event.
             </p>
           ) : (
             <div className="space-y-2">
               <select
-                value={selectedSpId}
-                onChange={(e) => { setSelectedSpId(e.target.value); setQty(''); setError(null) }}
+                value={selectedKey}
+                onChange={(e) => { setSelectedKey(e.target.value); setQty(''); setError(null) }}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">— pick item —</option>
-                {availableItems.map((r) => (
-                  <option key={r.supplier_product_id} value={r.supplier_product_id}>
-                    {r.item_name} ({fmtQty(r.qty_available)} {r.unit} available)
+                {pickerRows.map((r) => (
+                  <option
+                    key={r.key}
+                    value={r.key}
+                    disabled={r.supplier_product_id === null}
+                  >
+                    {r.product_name} ({fmtQty(r.remaining_qty)}{r.unit ? ` ${r.unit}` : ''} remaining)
+                    {r.supplier_product_id === null ? ' — not dispatchable' : ''}
                   </option>
                 ))}
               </select>
+              {selected && selected.supplier_product_id === null && (
+                <p className="text-xs text-amber-700">
+                  No matching warehouse dispatch item found for "{selected.product_name}" —
+                  can't be charged from here.
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400">
+                Quantities are as invoiced — verify against physical units before
+                confirming a large dispatch.
+              </p>
               <input
                 type="number"
                 min={0}
@@ -404,14 +460,14 @@ function AddBottleModal({
                 value={qty}
                 onChange={(e) => { setQty(e.target.value); setError(null) }}
                 placeholder={selected ? `qty (max ${maxQty})` : 'qty'}
-                disabled={!selected}
+                disabled={!selected || selected.supplier_product_id === null}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
               />
               {error && <p className="text-xs text-red-600">{error}</p>}
               <button
                 type="button"
                 onClick={onConfirm}
-                disabled={dispatchMut.isPending || !selectedSpId || !qty}
+                disabled={dispatchMut.isPending || !selected || selected.supplier_product_id === null || !qty}
                 className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {dispatchMut.isPending ? 'Confirming…' : 'Confirm'}
