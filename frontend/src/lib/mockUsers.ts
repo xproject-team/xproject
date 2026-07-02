@@ -62,5 +62,8 @@ export function getMockUser(id: string): MockUser | undefined {
 /** First route after login, by role. Keep /dashboard as fallback — routes.tsx depends on this. */
 export function getHomeRoute(role: UserRole): string {
   if (role === 'warehouse') return '/warehouse'
+  // Owner's home is now the event picker — every owner-facing page lives
+  // under /events/:id/* (Phase 1 of the event-scoped restructure).
+  if (role === 'owner') return '/events'
   return '/dashboard'
 }

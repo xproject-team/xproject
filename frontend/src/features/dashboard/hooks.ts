@@ -18,6 +18,7 @@
  *   in features/dashboard/selectors.ts, not here
  */
 import { useQuery } from '@tanstack/react-query'
+import { useLocation, useParams } from 'react-router-dom'
 
 import { api } from '@/lib/api'
 import type {
@@ -33,7 +34,8 @@ import type {
 
 export const dashboardKeys = {
   all:            ['dashboard'] as const,
-  liveEvent:      () => [...dashboardKeys.all, 'liveEvent'] as const,
+  liveEvent:      (urlOverride?: string) =>
+    [...dashboardKeys.all, 'liveEvent', urlOverride ?? 'auto'] as const,
   allProducts:    () => [...dashboardKeys.all, 'products'] as const,
   bars:           (eventId: string) =>
     [...dashboardKeys.all, 'bars', eventId] as const,
@@ -64,10 +66,40 @@ const LIVE_REFETCH_MS = 15_000
 // events and we filter client-side. If that ever gets slow we can add
 // ?status=live to the backend query.
 
+/**
+ * Phase 1 band-aid (event-scoped restructure, temporary — removed in
+ * Phase 3): pages under /events/:id/* still resolve "which event am
+ * I looking at" via useLiveEvent(), same as they always have. Without
+ * this override, a page mounted at /events/{sundance-15-draft}/dashboard
+ * would silently render Sundance 14's LIVE simulation instead of the
+ * event the URL actually points at — confusing and wrong.
+ *
+ * When the current route is under /events/:id/*, that URL's event
+ * wins over the "most recent LIVE event" guess. Outside that route
+ * tree (flat /dashboard, /alerts, etc. — still used by Manager/
+ * Bartender/Warehouse roles, who don't "enter" an event), behavior is
+ * completely unchanged.
+ *
+ * Phase 3 removes this hook entirely in favor of every event-scoped
+ * page reading useEvent() from EventContext directly.
+ */
+function useUrlEventOverride(): string | undefined {
+  const location = useLocation()
+  const params = useParams<{ id?: string }>()
+  if (!location.pathname.startsWith('/events/')) return undefined
+  return params.id
+}
+
 export function useLiveEvent() {
+  const urlEventId = useUrlEventOverride()
+
   return useQuery<Event | null>({
-    queryKey: dashboardKeys.liveEvent(),
+    queryKey: dashboardKeys.liveEvent(urlEventId),
     queryFn: async () => {
+      if (urlEventId) {
+        const { data } = await api.get<Event>(`/events/${urlEventId}`)
+        return data
+      }
       const { data } = await api.get<Event[]>('/events')
       const live = data.find((e) => e.status === 'live')
       return live ?? null

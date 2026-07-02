@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/useAuth'
 import type { MockUser } from '@/lib/mockUsers'
+import { EventSidebar } from './EventSidebar'
 
 // ─── Role presentation ────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function Icon({ children }: { children: ReactNode }) {
   )
 }
 
-const ICONS = {
+export const ICONS = {
   grid: (
     <Icon>
       <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -152,23 +153,25 @@ function isActive(pathname: string, item: NavItem): boolean {
 }
 
 // ─── Role nav maps ────────────────────────────────────────────────────────────
+// Settings lives in the top-right avatar menu now (TopBar.tsx), not here —
+// every role reaches it the same way, so it doesn't need a per-role entry.
+
+// Owner's GLOBAL-mode nav (outside /events/:id/*): tenant-wide concerns only.
+// Event-scoped concerns (Dashboard, Catalog, Inventory, Warehouse, Alerts,
+// Predictions, Reports, Charge Bars) moved under /events/:id/* — see
+// EventSidebar.tsx. Chat isn't event-scoped (no /events/:id/chat exists),
+// so it stays here rather than disappearing from Owner's nav entirely.
+const OWNER_GLOBAL_NAV: NavItem[] = [
+  { label: 'Events',   path: '/events',   icon: ICONS.calendar },
+  { label: 'Products', path: '/products', icon: ICONS.wineGlass },
+  { label: 'Bars',     path: '/bars',     icon: ICONS.bell },
+  { label: 'Chat',     path: '/chat',     icon: ICONS.messageCircle },
+]
 
 function getNavItems(role: MockUser['role']): NavItem[] {
   switch (role) {
     case 'owner':
-      return [
-        { label: 'Dashboard',   path: '/dashboard',   icon: ICONS.grid },
-        { label: 'Events',      path: '/events',       icon: ICONS.calendar },
-        { label: 'Bars',       path: '/bars',         icon: ICONS.bell },
-        { label: 'Catalog',    path: '/catalog',      icon: ICONS.bell },
-        { label: 'Inventory',   path: '/inventory',    icon: ICONS.package },
-        { label: 'Alerts',      path: '/alerts',       icon: ICONS.bell },
-        { label: 'Warehouse',   path: '/warehouse',    icon: ICONS.warehouse },
-        { label: 'Predictions', path: '/predictions',  icon: ICONS.trendingUp },
-        { label: 'Reports',     path: '/reports',      icon: ICONS.fileText },
-        { label: 'Chat',        path: '/chat',         icon: ICONS.messageCircle },
-        { label: 'Settings',    path: '/settings',     icon: ICONS.gear },
-      ]
+      return OWNER_GLOBAL_NAV
 
     case 'manager':
       return [
@@ -177,7 +180,6 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'Scan Arrivals',  path: '/scan/arrivals',  icon: ICONS.scan },
         { label: 'Alerts',         path: '/alerts',         icon: ICONS.bell },
         { label: 'Chat',           path: '/chat',           icon: ICONS.messageCircle },
-        { label: 'Settings',       path: '/settings',       icon: ICONS.gear },
       ]
 
     case 'bartender':
@@ -186,16 +188,19 @@ function getNavItems(role: MockUser['role']): NavItem[] {
         { label: 'Scan Empties',  path: '/scan/empties',  icon: ICONS.scan },
         { label: 'Inventory',     path: '/inventory',     icon: ICONS.package },
         { label: 'Chat',          path: '/chat',          icon: ICONS.messageCircle },
-        { label: 'Settings',      path: '/settings',      icon: ICONS.gear },
       ]
 
     case 'warehouse':
       return [
-        { label: 'Scan Goods', path: '/warehouse',           icon: ICONS.scan,          exact: true },
-        { label: 'Settings',   path: '/settings',            icon: ICONS.gear },
+        { label: 'Scan Goods', path: '/warehouse', icon: ICONS.scan, exact: true },
       ]
   }
 }
+
+// Matches /events/<uuid>(/...) — but NOT /events, /events/create, or
+// /events/create-v2 (no UUID segment to match). Only the Owner role has
+// an event-scoped sidebar; other roles don't navigate "into" an event.
+const EVENT_SCOPED_RE = /^\/events\/([0-9a-f-]{36})(\/|$)/i
 
 // ─── Component ──────────────────────────────────────────────────────
 
@@ -206,6 +211,11 @@ export function Sidebar() {
 
   const role: MockUser['role'] = user?.role ?? 'owner'
   const navItems = getNavItems(role)
+
+  // Event mode: Owner, browsing inside /events/:id/*. Every other role's
+  // nav is unaffected — Manager/Bartender/Warehouse don't "enter" an
+  // event, they work off whatever's currently live for their bar.
+  const inEventMode = role === 'owner' && EVENT_SCOPED_RE.test(pathname)
 
   function handleSwitch() {
     logout()
@@ -221,26 +231,30 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map((item) => {
-          const active = isActive(pathname, item)
-          return (
-            <Link
-              key={item.path + item.label}
-              to={item.path}
-              className={[
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                active
-                  ? 'bg-[#6C63FF] text-white shadow-sm'
-                  : 'text-blue-100 hover:bg-white/10 hover:text-white',
-              ].join(' ')}
-            >
-              {item.icon}
-              <span className="truncate">{item.label}</span>
-            </Link>
-          )
-        })}
-      </nav>
+      {inEventMode ? (
+        <EventSidebar />
+      ) : (
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+          {navItems.map((item) => {
+            const active = isActive(pathname, item)
+            return (
+              <Link
+                key={item.path + item.label}
+                to={item.path}
+                className={[
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                  active
+                    ? 'bg-[#6C63FF] text-white shadow-sm'
+                    : 'text-blue-100 hover:bg-white/10 hover:text-white',
+                ].join(' ')}
+              >
+                {item.icon}
+                <span className="truncate">{item.label}</span>
+              </Link>
+            )
+          })}
+        </nav>
+      )}
 
       {/* Footer: role identity + switch button */}
       {user && (
