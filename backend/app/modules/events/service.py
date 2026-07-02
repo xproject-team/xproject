@@ -11,9 +11,12 @@ The service layer:
   6. Translates domain concerns into typed exceptions; router translates
      those into HTTP status codes.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Sequence
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -81,6 +84,47 @@ class LiveEventConflictError(Exception):
         self.conflicting_event = conflicting_event
         super().__init__(
             f"Cannot go live: event {conflicting_event.name!r} is currently live. End it first."
+        )
+
+
+async def _enqueue_nowcast_retrain(tenant_id: UUID) -> None:
+    """Best-effort: queue a Phase F nowcast retrain (see
+    app/workers/tasks.py::retrain_predictor) after this tenant's event
+    completes.
+
+    Failure here (Redis down, transient network blip) must NEVER
+    surface to end_event()'s caller — the event has already completed
+    and that transaction has already committed by the time this runs.
+    Retraining is a background improvement, not part of the event
+    lifecycle's correctness; if this enqueue fails, the predictor just
+    keeps serving its previous training set until the next completed
+    event successfully triggers a retrain (or an operator re-runs it
+    manually).
+
+    No existing precedent in this codebase for enqueueing an arq job
+    from request-time service code (the only prior examples enqueue
+    from inside another already-running arq task, via ctx["redis"]) —
+    so this opens its own short-lived connection pool per call. Event
+    completion is a low-frequency admin action, not a hot path, so the
+    extra connection-setup latency is an acceptable, isolated cost.
+    """
+    try:
+        from arq.connections import RedisSettings, create_pool
+
+        from app.core.config import settings
+
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            await redis.enqueue_job(
+                "retrain_predictor",
+                str(tenant_id),
+                _job_id=f"nowcast-retrain:{tenant_id}",
+            )
+        finally:
+            await redis.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to enqueue nowcast retrain for tenant=%s: %s", tenant_id, e,
         )
 
 
@@ -616,6 +660,13 @@ class EventService:
             },
         )
         await self.db.commit()
+        # Phase F: queue a nowcast retrain now that this event has real,
+        # closed-book revenue data. Enqueued AFTER commit (not before) —
+        # a job for a transaction that never actually landed would be
+        # worse than no job at all. Best-effort: see
+        # _enqueue_nowcast_retrain's docstring for why a Redis hiccup
+        # here must never surface to this method's caller.
+        await _enqueue_nowcast_retrain(tenant_id)
         return event
 
     # ─── Response building ────────────────────────────────────────────────────

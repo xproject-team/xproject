@@ -88,7 +88,7 @@ async def get_revenue_forecast(
     event_id: UUID,
     as_of_time: datetime,
 ) -> RevenueForecastResponse:
-    await _get_event_or_raise(db, tenant_id, event_id)
+    event = await _get_event_or_raise(db, tenant_id, event_id)
 
     current_revenue, first_tx_time = await _revenue_and_first_tx(
         db, tenant_id, event_id, as_of_time,
@@ -101,7 +101,9 @@ async def get_revenue_forecast(
         hour_offset = max(hour_offset, 0.0)
 
     predictor = get_predictor()
-    result = predictor.predict(float(current_revenue), hour_offset)
+    result = predictor.predict(
+        float(current_revenue), hour_offset, target_year=event.scheduled_at.year,
+    )
 
     curve = [
         PredictedCurvePoint(hour_offset=hr, cumulative_revenue_eur=val)
@@ -123,4 +125,7 @@ async def get_revenue_forecast(
         ),
         historical_n=result["historical_n"],
         confidence_tier=confidence_tier(result["confidence"]),
+        training_events_count=result["training_events_count"],
+        training_last_updated_at=result["training_last_updated_at"],
+        year_weighted_prior_used=result["year_weighted_prior_used"],
     )

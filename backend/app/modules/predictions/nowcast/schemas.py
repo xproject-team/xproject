@@ -50,3 +50,8 @@ class RevenueForecastResponse(BaseModel):
     historical_range_eur: HistoricalRange
     historical_n: int
     confidence_tier: NowcastConfidenceTier
+    # Phase F — training-set metadata. Additive, backward-compatible:
+    # existing frontend fields are untouched.
+    training_events_count: int
+    training_last_updated_at: datetime
+    year_weighted_prior_used: bool

@@ -140,6 +140,41 @@ async def run_predictions(ctx: dict, event_id: str) -> dict:
     return {"event_id": event_id, "status": "ok", "predictions_generated": 0}
 
 
+# ─── Nowcast auto-retrain (Phase F) ────────────────────────────────────────────
+
+
+async def retrain_predictor(ctx: dict, tenant_id: str) -> dict:
+    """Retrain the "ML Predicted" nowcast's training set from this
+    tenant's COMPLETED events (see predictions/nowcast/retrain.py).
+
+    Enqueued by EventService.end_event() right after an event's
+    LIVE -> COMPLETED transition commits (app/modules/events/service.py).
+    Idempotent — retrain_from_completed_events upserts by event_id, so
+    re-running (retries, manual re-enqueue) never double-counts an event.
+
+    Never raises out to arq: any failure here (bad data, disk issue) is
+    logged and returned as a structured error. The predictor singleton
+    keeps serving its last-known-good parquet on failure — a bad
+    retrain must never take the /revenue-forecast endpoint down, and
+    must never roll back the event completion that triggered it (that
+    transaction has already committed by the time this task runs).
+    """
+    try:
+        tenant_uuid = UUID(tenant_id)
+    except (TypeError, ValueError) as e:
+        logger.warning("retrain_predictor: bad tenant_id %s: %s", tenant_id, e)
+        return {"status": "error", "reason": "invalid_uuid"}
+
+    from app.modules.predictions.nowcast.retrain import retrain_from_completed_events
+
+    async with async_session_factory() as session:
+        try:
+            return await retrain_from_completed_events(session, tenant_uuid)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("retrain_predictor failed: tenant=%s: %s", tenant_id, e)
+            return {"status": "error", "reason": str(e)[:200]}
+
+
 # ─── Post-event report generation ─────────────────────────────────────────────
 
 

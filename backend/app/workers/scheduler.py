@@ -42,6 +42,7 @@ from app.workers.tasks import (
     evaluate_alerts,
     generate_report,
     poll_slesh_for_event,
+    retrain_predictor,
     run_predictions,
 )
 
@@ -54,6 +55,7 @@ class WorkerSettings:
     # Functions that can be enqueued on-demand by other code.
     functions = [
         run_predictions,
+        retrain_predictor,
         evaluate_alerts,
         generate_report,
         poll_slesh_for_event,

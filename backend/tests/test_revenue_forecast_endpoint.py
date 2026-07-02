@@ -25,7 +25,7 @@ from app.modules.bars.models import Bar
 from app.modules.events.models import Event, EventStatus
 from app.modules.products.models import Product, ProductType, ProductUnit
 from app.modules.stock_transactions.models import StockTransaction, TransactionSource
-from app.modules.predictions.nowcast.predictor import get_predictor
+from app.modules.predictions.nowcast.predictor import get_predictor, year_weighted_fallback_mean
 from app.modules.venues.models import Venue
 
 
@@ -126,12 +126,16 @@ async def _login_in_isolation(client: AsyncClient) -> dict[str, str]:
 # ─── Tests ───────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_forecast_at_hour_0_returns_historical_mean(
+async def test_forecast_at_hour_0_returns_year_weighted_fallback_mean(
     db_session: AsyncSession, isolated_client: AsyncClient,
 ):
+    """Phase F: the pre-event fallback is now year_weighted_fallback_mean
+    (event.scheduled_at.year), not the flat all-time historical_mean —
+    see predictor.py's "Phase F — what shipped and what didn't" for why
+    only the fallback (not shape_curve/r2_table) was year-adjusted."""
     tenant = await _get_tenant(db_session)
     venue = await _create_venue(db_session, tenant.id)
-    event = await _create_event(db_session, tenant.id, venue.id)
+    event = await _create_event(db_session, tenant.id, venue.id)  # scheduled_at year 2026
     await db_session.flush()
 
     headers = await _login_in_isolation(isolated_client)
@@ -145,12 +149,20 @@ async def test_forecast_at_hour_0_returns_historical_mean(
     data = r.json()
 
     predictor = get_predictor()
+    expected_mean = year_weighted_fallback_mean(predictor._events_df, target_year=2026)
+    # Sanity: the year-weighted 2026 prior differs from the flat mean
+    # (2025 pulls it down) — otherwise this test can't distinguish the
+    # two implementations.
+    assert expected_mean != pytest.approx(predictor.historical_mean, abs=0.01)
+
     assert data["confidence"] == 0.0
     assert data["confidence_tier"] == "early"
     assert data["hour_offset_from_start"] == 0.0
     assert data["current_revenue_eur"] == 0.0
-    assert data["predicted_final_revenue_eur"] == pytest.approx(predictor.historical_mean, abs=0.01)
+    assert data["predicted_final_revenue_eur"] == pytest.approx(expected_mean, abs=0.01)
+    assert data["year_weighted_prior_used"] is True
     assert data["historical_n"] == predictor.historical_n
+    assert data["training_events_count"] == predictor.historical_n
     assert data["historical_range_eur"]["min"] == pytest.approx(predictor.historical_range_eur[0])
     assert data["historical_range_eur"]["max"] == pytest.approx(predictor.historical_range_eur[1])
 
@@ -208,6 +220,7 @@ async def test_forecast_at_hour_6_returns_meaningful_prediction(
     data = r.json()
 
     assert data["current_revenue_eur"] == pytest.approx(20000.0)
+    assert data["year_weighted_prior_used"] is False  # real revenue present — not the fallback path
     assert data["hour_offset_from_start"] == pytest.approx(6.0, abs=0.01)
     predictor = get_predictor()
     expected_confidence = predictor._interp_r2(6.0)
