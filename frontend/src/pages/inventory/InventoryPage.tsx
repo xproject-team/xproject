@@ -1,46 +1,75 @@
 /**
- * InventoryPage — bar tile grid + dispatch modal, LIVE event only.
+ * InventoryPage — per-bar stock "box" grid, LIVE event only.
  *
- * The page locks onto the tenant's single LIVE event. No picker —
- * there's only ever one event being executed at a time. If no event
- * is LIVE the page shows a wait state.
+ * The operations view during a live event — the missing link between
+ * Warehouse (total invoiced supply) and Dashboard (live monitoring).
+ * One box per drinks/food bar, showing that bar's CURRENT stock
+ * (same data + math as the Dashboard bar card's stock section) with
+ * an inline "+ Add bottle" action to charge it from the warehouse
+ * pool. Recharge/service bars (Accrediti, CASSA) hold no bottles and
+ * are omitted from the grid entirely.
  *
- * Layout:
- *   Header: title (event name shown for context, not selectable)
- *   Pool strip: total items / declared units / already dispatched
- *   Bar tiles: compact grid; click a tile to open the modal
- *   Modal:    items currently in the bar + "charge this bar" form
+ * Reuses three already-proven, already-wired pieces rather than
+ * introducing anything new:
+ *   useBarSupplierStock   same stock query the Dashboard bar-card
+ *                         popup (BarDetailOverlay's StockTable) reads
+ *   useChargeBarDispatch  same dispatch mutation the Charge Bars page
+ *                         uses — POST /event-storage/allocations,
+ *                         already invalidates bar-supplier-stock
+ *   useStorageSummary     same event_stock_items-backed "declared
+ *                         pool" the picker draws its available items
+ *                         from (StorageSummaryRow.qty_available)
  *
- * Modal close: × button, backdrop click, ESC key. After a successful
- * dispatch the modal stays open with the refreshed item list so the
- * owner can charge several items in a row.
+ * One gap flagged, not silently worked around: on events where the
+ * wizard's Storage tab was skipped (event_stock_items empty), boxes
+ * still correctly show any stock that was already dispatched in the
+ * past (event_stock_bar_allocations is a separate table — see the
+ * Inventory/Warehouse empty-state bug report from the prior chunk),
+ * but the "+ Add bottle" picker will be empty — dispatch can only
+ * draw from the declared pool. The modal says so rather than
+ * pretending the button works.
  *
- * Cross-page sync via TanStack Query invalidation: Warehouse KPIs +
- * activity feed update automatically; Dashboard bar cards update via
- * the storage line added in commit 7.
+ * No backend changes. Charge Bars page (events/:id/charge-bars) is
+ * untouched and remains a bulk-entry alternative.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { useBarsForEvent, useLiveEvent } from '@/features/dashboard/hooks'
-import {
-  useActivityFeed,
-  useBarAllocations,
-  useCreateDispatch,
-  useStorageSummary,
-} from '@/features/event_storage/hooks'
-import type {
-  ActivityFeedRow,
-  BarAllocationSummary,
-  StorageSummaryRow,
-} from '@/features/event_storage/types'
-import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
+import { useBarsForEvent, useBarSupplierStock, useLiveEvent } from '@/features/dashboard/hooks'
+import type { BarSupplierStockItemDTO } from '@/features/dashboard/hooks'
+import { useStorageSummary } from '@/features/event_storage/hooks'
+import type { StorageSummaryRow } from '@/features/event_storage/types'
+import { useChargeBarDispatch } from '@/features/event_storage/useChargeBars'
+import type { BarRow } from '@/lib/mockData'
 
-type Bar = { id: string; name: string; is_active?: boolean; bar_type?: string }
+type StockStatus = 'healthy' | 'low' | 'critical'
 
-function fmtQty(value: string): string {
+const BOX_BAR_TYPES = new Set(['drinks', 'food', 'mixed'])
+
+const STATUS_COLOR: Record<StockStatus, string> = {
+  healthy: '#16A34A',
+  low: '#D97706',
+  critical: '#DC2626',
+}
+const STATUS_BG: Record<StockStatus, string> = {
+  healthy: '#DCFCE7',
+  low: '#FEF3C7',
+  critical: '#FEE2E2',
+}
+const STATUS_LABEL: Record<StockStatus, string> = {
+  healthy: 'Healthy',
+  low: 'Low Stock',
+  critical: 'Critical',
+}
+
+function fmtQty(value: string | number): string {
   const n = Number(value)
-  if (!Number.isFinite(n)) return value
+  if (!Number.isFinite(n)) return String(value)
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+function isStockStatus(s: string | undefined): s is StockStatus {
+  return s === 'healthy' || s === 'low' || s === 'critical'
 }
 
 // ─── Page ────────────────────────────────────────────────────────────
@@ -48,30 +77,59 @@ function fmtQty(value: string): string {
 export default function InventoryPage() {
   const liveEventQ = useLiveEvent()
   const eventId = liveEventQ.data?.id
+  const qc = useQueryClient()
 
   const barsQ = useBarsForEvent(eventId)
+  const stockQ = useBarSupplierStock(eventId)
   const summaryQ = useStorageSummary(eventId)
-  const allocationsQ = useBarAllocations(eventId)
-  // Fallback data source for the "no storage declared" empty state — see
-  // the Inventory/Warehouse empty-state bug report. Only read when the
-  // real storage pool (summary.rows) turns out to be empty; the bar
-  // tiles + dispatch modal keep using summary/allocations exclusively,
-  // unchanged, since dispatch requires a supplier_product_id that
-  // invoice-sourced rows don't carry (see InventoryInvoicedPanel below).
-  const invoicedQ = useEventWarehouseSummary(eventId)
+  const dispatchMut = useChargeBarDispatch(eventId ?? '')
 
-  const bars = (barsQ.data ?? []) as Bar[]
-  const summary = summaryQ.data
-  const allocations = (allocationsQ.data ?? []) as BarAllocationSummary[]
+  const [addBottleBarId, setAddBottleBarId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
-  const allocByBar = useMemo(() => {
-    const m: Record<string, BarAllocationSummary> = {}
-    allocations.forEach((a) => { m[a.bar_id] = a })
+  const boxBars = useMemo(
+    () => ((barsQ.data ?? []) as BarRow[]).filter(
+      (b) => b.is_active !== false && BOX_BAR_TYPES.has(b.bar_type as string),
+    ),
+    [barsQ.data],
+  )
+
+  const itemsByBar = useMemo(() => {
+    const m = new Map<string, BarSupplierStockItemDTO[]>()
+    for (const item of stockQ.data?.items ?? []) {
+      const list = m.get(item.bar_id) ?? []
+      list.push(item)
+      m.set(item.bar_id, list)
+    }
     return m
-  }, [allocations])
+  }, [stockQ.data])
 
-  const [openBarId, setOpenBarId] = useState<string | null>(null)
-  const openBar = bars.find((b) => b.id === openBarId) ?? null
+  const statusByBar = useMemo(() => {
+    const m = new Map<string, StockStatus>()
+    for (const b of stockQ.data?.by_bar ?? []) {
+      if (isStockStatus(b.status)) m.set(b.bar_id, b.status)
+    }
+    return m
+  }, [stockQ.data])
+
+  const availableItems = useMemo(
+    () => (summaryQ.data?.rows ?? []).filter((r) => Number(r.qty_available) > 0),
+    [summaryQ.data],
+  )
+
+  const totalUnitsAtBars = useMemo(
+    () => (stockQ.data?.items ?? []).reduce((sum, i) => sum + i.dispatched_units, 0),
+    [stockQ.data],
+  )
+  const totalAvailableToDispatch = useMemo(
+    () => availableItems.reduce((sum, r) => sum + Number(r.qty_available), 0),
+    [availableItems],
+  )
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    window.setTimeout(() => setToast(null), 3000)
+  }
 
   if (liveEventQ.isLoading) {
     return <Shell><p className="text-slate-500">Loading…</p></Shell>
@@ -87,223 +145,197 @@ export default function InventoryPage() {
     )
   }
 
+  const addBottleBar = boxBars.find((b) => b.id === addBottleBarId) ?? null
+
   return (
     <Shell>
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-slate-800">Inventory</h1>
+        <h1 className="text-3xl font-bold text-slate-800">
+          Inventory — {liveEventQ.data.name}
+        </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {liveEventQ.data.name} · tap a bar to see what's in it and charge it
+          Live stock at each bar. Add bottles from the warehouse to charge a bar.
         </p>
       </div>
 
-      {/* Pool strip */}
+      {/* Summary strip — both halves stay within the same supplier_product
+          taxonomy as the boxes below (avoids re-mixing it with the
+          products-keyed warehouse_inventory numbers — see the prior
+          chunk's Inventory/Warehouse bug report for why that's a trap). */}
       <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-          Storage pool
+          Stock overview
         </p>
         <p className="mt-1 text-sm text-blue-900">
-          {summary ? (
-            <>
-              <span className="font-semibold">{summary.total_items} items</span>
-              {' · '}{fmtQty(summary.total_qty_received)} units declared
-              {' · '}{fmtQty(summary.total_qty_allocated)} already dispatched
-            </>
-          ) : 'Loading…'}
+          <span className="font-semibold">{fmtQty(totalUnitsAtBars)} units</span> currently at bars
+          {' · '}{fmtQty(totalAvailableToDispatch)} units available to dispatch
         </p>
       </div>
 
-      {/* Bar tiles */}
-      {summaryQ.isLoading ? (
+      {/* Bar boxes */}
+      {barsQ.isLoading ? (
         <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
-      ) : !summary || summary.rows.length === 0 ? (
-        <NoDeclaredStoragePanel
-          invoicedRows={invoicedQ.data?.rows}
-          invoicedLoading={invoicedQ.isLoading}
+      ) : boxBars.length === 0 ? (
+        <Empty
+          title="No drinks or food bars yet"
+          body="This event has no drinks or food bars yet. Configure bars in the wizard."
         />
-      ) : bars.length === 0 ? (
-        <Empty title="No bars in this event" body="Add bars via the wizard." />
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {bars
-            .filter(
-              (b) =>
-                b.is_active !== false &&
-                (b.bar_type === 'drinks' || b.bar_type === 'mixed'),
-            )
-            .map((bar) => (
-              <BarTile
-                key={bar.id}
-                bar={bar}
-                existing={allocByBar[bar.id]}
-                onClick={() => setOpenBarId(bar.id)}
-              />
-            ))}
+        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {boxBars.map((bar) => (
+            <BarBox
+              key={bar.id}
+              bar={bar}
+              items={itemsByBar.get(bar.id) ?? []}
+              status={statusByBar.get(bar.id)}
+              stockLoading={stockQ.isLoading}
+              stockError={stockQ.isError}
+              onAddBottle={() => setAddBottleBarId(bar.id)}
+            />
+          ))}
         </div>
       )}
 
-      {/* Modal */}
-      {openBar && summary && eventId && (
-        <DispatchModal
-          bar={openBar}
-          eventId={eventId}
-          summaryRows={summary.rows}
-          existing={allocByBar[openBar.id]}
-          onClose={() => setOpenBarId(null)}
+      {/* Add bottle modal */}
+      {addBottleBar && eventId && (
+        <AddBottleModal
+          bar={addBottleBar}
+          availableItems={availableItems}
+          dispatchMut={dispatchMut}
+          onClose={() => setAddBottleBarId(null)}
+          onSuccess={(msg) => {
+            showToast(msg)
+            // useChargeBarDispatch already invalidates event-storage
+            // summary/by-bar/activity + dashboard's bar-supplier-stock.
+            // It does NOT know about the Warehouse page's separate
+            // useEventWarehouseSummary query — invalidate that one here
+            // so the Warehouse KPI cards + table pick up the dispatch too.
+            qc.invalidateQueries({ queryKey: ['warehouse', 'event-summary', eventId] })
+          }}
         />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 left-6 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
+          {toast}
+        </div>
       )}
     </Shell>
   )
 }
 
-// ─── No declared storage — falls back to showing invoiced-but-not-
-// declared stock instead of a flatly wrong "no storage" message ──────
-//
-// event_stock_items (the "declared storage pool" that powers bar
-// dispatch) and warehouse_inventory (what invoice upload populates)
-// are two structurally separate systems — supplier_products (used by
-// dispatch) has no foreign key to products (used by invoices), only a
-// best-effort name match (see InvoiceRepository.get_event_summary on
-// the backend). So this panel is READ-ONLY: it tells Omar what's been
-// invoiced, but doesn't let him dispatch it from here — dispatch still
-// requires declaring the items via the wizard's Storage tab, which is
-// unchanged.
+// ─── Bar box ─────────────────────────────────────────────────────────
 
-function NoDeclaredStoragePanel({
-  invoicedRows, invoicedLoading,
+function BarBox({
+  bar, items, status, stockLoading, stockError, onAddBottle,
 }: {
-  invoicedRows: { product_name: string; invoiced_qty: string; invoiced_value_cents: number }[] | undefined
-  invoicedLoading: boolean
+  bar: BarRow
+  items: BarSupplierStockItemDTO[]
+  status: StockStatus | undefined
+  stockLoading: boolean
+  stockError: boolean
+  onAddBottle: () => void
 }) {
-  if (invoicedLoading) {
-    return <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
-  }
-
-  const rows = invoicedRows ?? []
-
-  if (rows.length === 0) {
-    // Genuinely nothing anywhere — the original message is accurate here.
-    return (
-      <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-6 text-center">
-        <p className="text-sm font-medium text-amber-900">
-          No storage declared for this event yet.
-        </p>
-        <p className="mt-1 text-xs text-amber-700">
-          Open the event in the wizard → Storage tab to declare items.
-        </p>
-      </div>
-    )
-  }
+  const sorted = useMemo(() => [...items].sort((a, b) => {
+    const sev = (s: string) => (s === 'critical' ? 0 : s === 'low' ? 1 : 2)
+    if (sev(a.status) !== sev(b.status)) return sev(a.status) - sev(b.status)
+    return a.remaining_pct - b.remaining_pct
+  }), [items])
 
   return (
-    <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
-      <p className="text-sm font-medium text-amber-900">
-        Not yet declared for bar dispatch — but {rows.length}{' '}
-        {rows.length === 1 ? 'product has' : 'products have'} been invoiced for this event.
-      </p>
-      <p className="mt-1 text-xs text-amber-700">
-        Open the event in the wizard → Storage tab to declare items before charging bars.
-      </p>
-      <ul className="mt-3 divide-y divide-amber-100 rounded-md border border-amber-200 bg-white/60">
-        {rows.map((r) => (
-          <li
-            key={r.product_name}
-            className="flex items-center justify-between px-3 py-2 text-sm"
+    <div className="flex flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800 truncate" title={bar.name}>
+          {bar.name}
+        </h3>
+        {status && (
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: STATUS_COLOR[status], backgroundColor: STATUS_BG[status] }}
           >
-            <span className="text-slate-700">{r.product_name}</span>
-            <span className="font-mono text-xs text-slate-500">
-              {fmtQty(r.invoiced_qty)} · €{(r.invoiced_value_cents / 100).toFixed(0)}
-            </span>
-          </li>
-        ))}
-      </ul>
+            {STATUS_LABEL[status]}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex-1 space-y-2">
+        {stockError ? (
+          <p className="rounded-md border border-dashed border-red-200 px-3 py-4 text-center text-xs text-red-500">
+            Failed to load stock.
+          </p>
+        ) : stockLoading ? (
+          <p className="py-4 text-center text-xs text-slate-400">Loading…</p>
+        ) : sorted.length === 0 ? (
+          <p className="rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+            This bar has no stock yet. Click + Add bottle to charge it.
+          </p>
+        ) : (
+          sorted.map((r) => {
+            const pct = Math.max(0, Math.min(100, r.remaining_pct))
+            return (
+              <div key={r.supplier_product_id} className="rounded-md border border-slate-100 p-2">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="truncate text-xs font-medium text-slate-700" title={r.item_name}>
+                    {r.item_name}
+                  </span>
+                  <span
+                    className="shrink-0 text-[10px] font-semibold tabular-nums"
+                    style={{ color: STATUS_COLOR[r.status] }}
+                  >
+                    {Math.round(pct)}%
+                  </span>
+                </div>
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full"
+                  style={{ backgroundColor: STATUS_BG[r.status] }}
+                >
+                  <div
+                    className="h-full transition-all duration-500"
+                    style={{ width: `${pct}%`, backgroundColor: STATUS_COLOR[r.status] }}
+                  />
+                </div>
+                <p className="mt-1 text-[10px] tabular-nums text-slate-500">
+                  {Math.round(r.remaining_ml).toLocaleString()} / {Math.round(r.dispatched_ml).toLocaleString()} ml
+                </p>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAddBottle}
+        className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+      >
+        + Add bottle
+      </button>
     </div>
   )
 }
 
-// ─── Bar tile ────────────────────────────────────────────────────────
+// ─── Add bottle modal ────────────────────────────────────────────────
 
-function BarTile({
-  bar, existing, onClick,
+function AddBottleModal({
+  bar, availableItems, dispatchMut, onClose, onSuccess,
 }: {
-  bar: Bar
-  existing: BarAllocationSummary | undefined
-  onClick: () => void
-}) {
-  const items = existing?.items ?? []
-  const totalUnits = items.reduce(
-    (sum, i) => sum + Number(i.qty_total_allocated), 0,
-  )
-  const empty = items.length === 0
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group relative flex flex-col items-start rounded-lg border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-        empty
-          ? 'border-slate-200 hover:border-slate-300'
-          : 'border-blue-200 hover:border-blue-400'
-      }`}
-    >
-      <p className="text-sm font-semibold text-slate-800 line-clamp-2">
-        {bar.name}
-      </p>
-      <div className="mt-3 flex w-full items-baseline justify-between">
-        <span className={`text-2xl font-bold ${
-          empty ? 'text-slate-300' : 'text-blue-600'
-        }`}>
-          {empty ? '—' : items.length}
-        </span>
-        <span className="text-xs text-slate-500">
-          {empty ? 'empty' : items.length === 1 ? 'item' : 'items'}
-        </span>
-      </div>
-      {!empty && (
-        <p className="mt-1 text-xs text-slate-500">
-          {fmtQty(String(totalUnits))} units total
-        </p>
-      )}
-    </button>
-  )
-}
-
-// ─── Dispatch modal ──────────────────────────────────────────────────
-
-function DispatchModal({
-  bar, eventId, summaryRows, existing, onClose,
-}: {
-  bar: Bar
-  eventId: string
-  summaryRows: StorageSummaryRow[]
-  existing: BarAllocationSummary | undefined
+  bar: BarRow
+  availableItems: StorageSummaryRow[]
+  dispatchMut: ReturnType<typeof useChargeBarDispatch>
   onClose: () => void
+  onSuccess: (msg: string) => void
 }) {
-  const [selectedSpId, setSelectedSpId] = useState<string>('')
-  const [qty, setQty] = useState<string>('')
+  const [selectedSpId, setSelectedSpId] = useState('')
+  const [qty, setQty] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [flash, setFlash] = useState<string | null>(null)
 
-  const dispatchMut = useCreateDispatch(eventId)
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  const items = existing?.items ?? []
-  const availableItems = useMemo(
-    () => summaryRows.filter((r) => Number(r.qty_available) > 0),
-    [summaryRows],
-  )
   const selected = availableItems.find((r) => r.supplier_product_id === selectedSpId)
   const maxQty = selected ? Number(selected.qty_available) : 0
 
-  const onSubmit = async () => {
-    setError(null); setFlash(null)
+  const onConfirm = async () => {
+    setError(null)
     const n = Number(qty)
     if (!selectedSpId) { setError('Pick an item.'); return }
     if (!Number.isFinite(n) || n <= 0) { setError('Qty must be > 0.'); return }
@@ -314,9 +346,8 @@ function DispatchModal({
         bar_id: bar.id,
         qty_allocated: String(n),
       })
-      setFlash(`Dispatched ${n} ${selected?.unit} of ${selected?.item_name}.`)
-      setSelectedSpId(''); setQty('')
-      setTimeout(() => setFlash(null), 2500)
+      onSuccess(`Charged ${n} ${selected?.unit} of ${selected?.item_name} to ${bar.name}.`)
+      onClose()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Dispatch failed.')
     }
@@ -329,12 +360,11 @@ function DispatchModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl">
-        {/* Header */}
+      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">{bar.name}</h2>
-            <p className="text-xs text-slate-500">Per-bar inventory</p>
+            <h2 className="text-lg font-bold text-slate-800">Add bottle — {bar.name}</h2>
+            <p className="text-xs text-slate-500">Charge from the warehouse pool</p>
           </div>
           <button
             type="button"
@@ -346,57 +376,23 @@ function DispatchModal({
           </button>
         </div>
 
-        {/* Currently dispatched */}
         <div className="px-6 py-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Currently in this bar
-          </p>
-          {items.length === 0 ? (
-            <p className="mt-2 rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-sm text-slate-400">
-              Nothing dispatched yet.
-            </p>
-          ) : (
-            <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
-              {items.map((it) => (
-                <li
-                  key={it.supplier_product_id}
-                  className="flex items-center justify-between px-3 py-2 text-sm"
-                >
-                  <span className="text-slate-700">{it.item_name}</span>
-                  <span className="font-mono font-semibold text-slate-800">
-                    {fmtQty(it.qty_total_allocated)} {it.unit}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Recent activity (this bar only) */}
-        <BarActivitySection bar={bar} eventId={eventId} />
-
-        {/* Charge form */}
-        <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Charge this bar
-          </p>
           {availableItems.length === 0 ? (
-            <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No items left in the warehouse pool.
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No items available in the declared warehouse pool. Declare stock via
+              the wizard → Storage tab before charging bars.
             </p>
           ) : (
-            <div className="mt-3 space-y-2">
+            <div className="space-y-2">
               <select
                 value={selectedSpId}
-                onChange={(e) => {
-                  setSelectedSpId(e.target.value); setQty(''); setError(null)
-                }}
+                onChange={(e) => { setSelectedSpId(e.target.value); setQty(''); setError(null) }}
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
                 <option value="">— pick item —</option>
                 {availableItems.map((r) => (
                   <option key={r.supplier_product_id} value={r.supplier_product_id}>
-                    {r.item_name} ({fmtQty(r.qty_available)} {r.unit} avail)
+                    {r.item_name} ({fmtQty(r.qty_available)} {r.unit} available)
                   </option>
                 ))}
               </select>
@@ -412,18 +408,13 @@ function DispatchModal({
                 className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
               />
               {error && <p className="text-xs text-red-600">{error}</p>}
-              {flash && (
-                <p className="rounded-md bg-green-50 px-2 py-1.5 text-xs text-green-800">
-                  {flash}
-                </p>
-              )}
               <button
                 type="button"
-                onClick={onSubmit}
+                onClick={onConfirm}
                 disabled={dispatchMut.isPending || !selectedSpId || !qty}
                 className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {dispatchMut.isPending ? 'Dispatching…' : 'Dispatch'}
+                {dispatchMut.isPending ? 'Confirming…' : 'Confirm'}
               </button>
             </div>
           )}
@@ -431,69 +422,6 @@ function DispatchModal({
       </div>
     </div>
   )
-}
-
-// ─── Per-bar activity section ────────────────────────────────────────
-
-function BarActivitySection({
-  bar, eventId,
-}: { bar: Bar; eventId: string }) {
-  const activityQ = useActivityFeed(eventId, 15, bar.id)
-  const rows = (activityQ.data ?? []) as ActivityFeedRow[]
-
-  return (
-    <div className="border-t border-slate-100 px-6 py-4">
-      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-        Recent activity (this bar)
-      </p>
-      {activityQ.isLoading ? (
-        <p className="mt-2 text-xs text-slate-400">Loading…</p>
-      ) : rows.length === 0 ? (
-        <p className="mt-2 rounded-md border border-dashed border-slate-200 px-3 py-3 text-center text-xs text-slate-400">
-          No activity yet.
-        </p>
-      ) : (
-        <ul className="mt-2 divide-y divide-slate-100 rounded-md border border-slate-200">
-          {rows.map((a) => (
-            <li key={a.id} className="px-3 py-2">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm text-slate-800">
-                  <span className="font-semibold">
-                    {Number(a.qty_allocated)}× {a.item_unit}
-                  </span>{' '}
-                  {a.item_name}
-                </span>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap">
-                  {fmtTimeAgo(a.dispatched_at)}
-                </span>
-              </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-500">
-                <span>Dispatched</span>
-                {a.user_name && (
-                  <span className="text-slate-400">· {a.user_name}</span>
-                )}
-                {a.user_role && (
-                  <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-600">
-                    {a.user_role}
-                  </span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-function fmtTimeAgo(iso: string): string {
-  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (secs < 60) return `${secs}s ago`
-  const mins = Math.floor(secs / 60)
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
 }
 
 // ─── Shell + Empty ───────────────────────────────────────────────────
@@ -504,7 +432,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Empty({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
+    <div className="mt-6 rounded-lg border border-slate-200 bg-white p-8 text-center">
       <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
       <p className="mt-2 text-sm text-slate-500">{body}</p>
     </div>
