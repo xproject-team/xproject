@@ -26,7 +26,9 @@ import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
 import { RechargeDeskCard } from '@/features/dashboard/RechargeDeskCard'
 import { useBarAllocations } from '@/features/event_storage/hooks'
 import { useEvent } from '@/features/events/hooks'
-import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart' 
+import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart'
+import { RevenueForecastPanel } from '@/features/dashboard/RevenueForecastPanel'
+import { useRevenueForecast } from '@/features/predictions/useRevenueForecast'
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
@@ -497,6 +499,12 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const nowMs = isLive
     ? Date.now()
     : lastTxMs > 0 ? lastTxMs : endedMs
+
+  // Phase E — nowcast forecast, only polled while the event is LIVE
+  // (passing null disables the query, which also stops the 30s poll).
+  const { forecast, loading: forecastLoading, error: forecastError } =
+    useRevenueForecast(isLive ? eventId : null)
+
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
   // hooks still keeps the UI correct — belt AND suspenders.
@@ -725,14 +733,31 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
               {/* Big event-total revenue chart — Actual (live) vs ML Predicted.
                   Locked May 27 2026: replaces the per-bar chart in the
                   overlay. Spans full width of the grid above so it reads
-                  as ~2 bar cards wide. ML Predicted line is null until
-                  MLPredictor lands (Phase 2 resumption). */}
-              <div className="mb-4">
-                <EventRevenueChart
-                  transactions={transactionsQuery.data ?? []}
-                  eventStartMs={eventStartMs}
-                  nowMs={nowMs}
-                />
+                  as ~2 bar cards wide.
+                  Phase E (Jul 2026): split into chart (~65%) + forecast
+                  KPI sidebar (~35%, fixed 320px min) when the event is
+                  LIVE. DRAFT/COMPLETED events show only the chart —
+                  stacks vertically below 900px. */}
+              <div className="mb-4 flex flex-col min-[900px]:flex-row gap-4 items-stretch">
+                <div className="flex-1 min-w-0">
+                  <EventRevenueChart
+                    transactions={transactionsQuery.data ?? []}
+                    eventStartMs={eventStartMs}
+                    nowMs={nowMs}
+                    predictedCurve={forecast?.predicted_curve}
+                    currentRevenueEur={forecast?.current_revenue_eur}
+                    hourOffsetFromStart={forecast?.hour_offset_from_start}
+                  />
+                </div>
+                {isLive && (
+                  <div className="w-full min-[900px]:w-[320px] min-[900px]:flex-shrink-0">
+                    <RevenueForecastPanel
+                      forecast={forecast}
+                      loading={forecastLoading}
+                      error={forecastError}
+                    />
+                  </div>
+                )}
               </div>
               {/* Recharge desk — Phase 2 (Jun 21 2026). Money-in row sits
                   between the event-total chart and the bar grid so the

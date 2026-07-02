@@ -18,6 +18,7 @@
  * because revenue should monotonically climb - easier to compare to prediction.
  */
 import type { StockTransactionRow } from '@/lib/mockData'
+import type { PredictedCurvePoint } from '@/features/predictions/useRevenueForecast'
 
 export interface ChartPoint {
   time_label:  string   // "19:00" - axis label
@@ -393,5 +394,84 @@ export function buildStackedBarPerProduct(
   }
 
   return { points, productOrder }
+}
+
+
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Phase E — merge the Phase D nowcast's predicted_curve into an
+// event-total ChartPoint[] (see buildEventRevenuePoints above).
+//
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Linear interpolation over a sorted set of (hour_offset, cumulative
+ * revenue) points. Clamps to the first/last point outside the curve's
+ * own range (mirrors the backend predictor's np.interp behavior).
+ */
+function interpolateCurveAtHour(
+  curve: PredictedCurvePoint[],
+  hourOffset: number,
+): number | null {
+  if (curve.length === 0) return null
+  if (hourOffset <= curve[0].hour_offset) return curve[0].cumulative_revenue_eur
+  const last = curve[curve.length - 1]
+  if (hourOffset >= last.hour_offset) return last.cumulative_revenue_eur
+
+  for (let i = 0; i < curve.length - 1; i++) {
+    const a = curve[i]
+    const b = curve[i + 1]
+    if (hourOffset >= a.hour_offset && hourOffset <= b.hour_offset) {
+      const t = (hourOffset - a.hour_offset) / (b.hour_offset - a.hour_offset)
+      return a.cumulative_revenue_eur + t * (b.cumulative_revenue_eur - a.cumulative_revenue_eur)
+    }
+  }
+  return null
+}
+
+/**
+ * Overlay the forecast's predicted_curve onto an event-total
+ * ChartPoint[], filling in `predicted` for buckets at or after "now"
+ * (hourOffsetFromStart). Buckets before that are left untouched — the
+ * actual line already covers the past, and predicted_curve itself only
+ * contains hours strictly after hour_offset_from_start (Phase D's
+ * schema deliberately excludes the current point — see
+ * backend/app/modules/predictions/nowcast/predictor.py's predict()).
+ *
+ * A synthetic bridge point (hourOffsetFromStart, currentRevenueEur) is
+ * prepended before interpolating so the dashed predicted line starts
+ * exactly where the solid actual line ends, instead of jumping to the
+ * next 1-hour grid point.
+ *
+ * hourOffsetFromStart / currentRevenueEur are computed by the backend
+ * relative to the event's actual first REVENUE transaction, while
+ * eventStartMs here is event.started_at (an admin timestamp that can
+ * differ from the first sale by a few minutes) — matching hour_offset
+ * against elapsed-time-since-eventStartMs is a deliberate, small
+ * approximation: the Phase D response doesn't expose the raw
+ * first-transaction timestamp, only the pre-computed offset.
+ */
+export function mergePredictedCurve(
+  points:              ChartPoint[],
+  predictedCurve:      PredictedCurvePoint[] | undefined,
+  eventStartMs:        number,
+  currentRevenueEur:   number | undefined,
+  hourOffsetFromStart: number | undefined,
+): ChartPoint[] {
+  if (!predictedCurve?.length || hourOffsetFromStart === undefined || currentRevenueEur === undefined) {
+    return points
+  }
+
+  const bridgedCurve: PredictedCurvePoint[] = [
+    { hour_offset: hourOffsetFromStart, cumulative_revenue_eur: currentRevenueEur },
+    ...predictedCurve,
+  ]
+
+  return points.map((point) => {
+    const elapsedHr = (point.time_ms - eventStartMs) / 3600_000
+    if (elapsedHr < hourOffsetFromStart) return point
+    const predicted = interpolateCurveAtHour(bridgedCurve, elapsedHr)
+    return predicted === null ? point : { ...point, predicted: Math.round(predicted) }
+  })
 }
 
