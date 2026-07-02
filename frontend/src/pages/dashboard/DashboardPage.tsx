@@ -492,7 +492,8 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   // For non-live events, prefer last-tx time over ended_at to avoid the
   // long flat tail produced when admin closes the event late.
-  const isLive  = currentEvent?.status === 'live'
+  const isLive      = currentEvent?.status === 'live'
+  const isCompleted = currentEvent?.status === 'completed'
   const endedMs = currentEvent?.ended_at
     ? new Date(currentEvent.ended_at).getTime()
     : Date.now()
@@ -500,10 +501,13 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
     ? Date.now()
     : lastTxMs > 0 ? lastTxMs : endedMs
 
-  // Phase E — nowcast forecast, only polled while the event is LIVE
-  // (passing null disables the query, which also stops the 30s poll).
+  // Phase E — nowcast forecast; polled every 30s while LIVE. Extended
+  // (this chunk) to COMPLETED events for post-mortem "we predicted €X,
+  // actual was €Y" review — fetched once (as_of_time=ended_at), no
+  // polling, since a completed event's revenue is final. DRAFT stays
+  // disabled inside the hook — nothing to predict yet.
   const { forecast, loading: forecastLoading, error: forecastError } =
-    useRevenueForecast(isLive ? eventId : null)
+    useRevenueForecast(eventId, currentEvent?.status, currentEvent?.ended_at)
 
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
@@ -736,8 +740,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   as ~2 bar cards wide.
                   Phase E (Jul 2026): split into chart (~65%) + forecast
                   KPI sidebar (~35%, fixed 320px min) when the event is
-                  LIVE. DRAFT/COMPLETED events show only the chart —
-                  stacks vertically below 900px. */}
+                  LIVE. Extended (this chunk) to COMPLETED events too —
+                  a post-mortem "we predicted €X, actual was €Y" review,
+                  fetched once rather than polled. DRAFT still shows only
+                  the chart. Stacks vertically below 900px. */}
               <div className="mb-4 flex flex-col min-[900px]:flex-row gap-4 items-stretch">
                 <div className="flex-1 min-w-0">
                   <EventRevenueChart
@@ -749,8 +755,13 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                     hourOffsetFromStart={forecast?.hour_offset_from_start}
                   />
                 </div>
-                {isLive && (
-                  <div className="w-full min-[900px]:w-[320px] min-[900px]:flex-shrink-0">
+                {(isLive || isCompleted) && (
+                  <div className="w-full min-[900px]:w-[320px] min-[900px]:flex-shrink-0 flex flex-col gap-1.5">
+                    {isCompleted && (
+                      <span className="text-[11px] font-medium text-[#A0AEC0] uppercase tracking-wide">
+                        Post-event review
+                      </span>
+                    )}
                     <RevenueForecastPanel
                       forecast={forecast}
                       loading={forecastLoading}
