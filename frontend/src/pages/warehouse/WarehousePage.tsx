@@ -28,7 +28,6 @@ import { UploadInvoiceModal } from '@/features/warehouse/invoice_upload'
 import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
 import {
   useActivityFeed,
-  useStorageSummary,
 } from '@/features/event_storage/hooks'
 import type {
   ActivityFeedRow,
@@ -78,10 +77,9 @@ export default function WarehousePage() {
   const eventSummaryQ = useEventWarehouseSummary(liveEventQ.data?.id)
   const eventId = liveEventQ.data?.id
 
-  const summaryQ = useStorageSummary(eventId)
   const activityQ = useActivityFeed(eventId, 30)
 
-  const summary = summaryQ.data
+  const eventSummary = eventSummaryQ.data
   const activity = activityQ.data ?? []
 
   const [search, setSearch] = useState('')
@@ -131,26 +129,31 @@ export default function WarehousePage() {
         eventId={liveEventQ.data?.id ?? null}
       />
 
-      {/* KPI strip */}
+      {/* KPI strip — sourced from the SAME query as the table below
+          (useEventWarehouseSummary), not the event-storage-pool summary.
+          Previously these read useStorageSummary (event_stock_items),
+          which is empty whenever the wizard's Storage tab was skipped —
+          showing 0 for everything even when the table right below had
+          real invoiced rows. See the "Warehouse KPI cards" bug report. */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile
           label="TOTAL ITEMS"
-          value={summary?.total_items ?? '—'}
+          value={eventSummary?.total_products ?? '—'}
           sub="distinct products"
         />
         <KpiTile
           label="TOTAL QUANTITY"
-          value={summary ? fmtQty(summary.total_qty_received) : '—'}
-          sub="units declared"
+          value={eventSummary ? fmtQty(eventSummary.total_qty) : '—'}
+          sub="units invoiced"
         />
         <KpiTile
           label="ACTIVE ALLOCATIONS"
-          value={summary ? fmtQty(summary.total_qty_allocated) : '—'}
+          value={eventSummary ? fmtQty(eventSummary.total_dispatched_qty) : '—'}
           sub="dispatched to bars"
         />
         <KpiTile
           label="TOTAL VALUE"
-          value={summary ? fmtEur(summary.total_line_value_eur) : '—'}
+          value={eventSummary ? fmtEur(String(eventSummary.total_value_cents / 100)) : '—'}
           sub="invoiced cost"
         />
       </div>

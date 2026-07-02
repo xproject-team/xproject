@@ -33,6 +33,7 @@ import type {
   BarAllocationSummary,
   StorageSummaryRow,
 } from '@/features/event_storage/types'
+import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
 
 type Bar = { id: string; name: string; is_active?: boolean; bar_type?: string }
 
@@ -51,6 +52,13 @@ export default function InventoryPage() {
   const barsQ = useBarsForEvent(eventId)
   const summaryQ = useStorageSummary(eventId)
   const allocationsQ = useBarAllocations(eventId)
+  // Fallback data source for the "no storage declared" empty state — see
+  // the Inventory/Warehouse empty-state bug report. Only read when the
+  // real storage pool (summary.rows) turns out to be empty; the bar
+  // tiles + dispatch modal keep using summary/allocations exclusively,
+  // unchanged, since dispatch requires a supplier_product_id that
+  // invoice-sourced rows don't carry (see InventoryInvoicedPanel below).
+  const invoicedQ = useEventWarehouseSummary(eventId)
 
   const bars = (barsQ.data ?? []) as Bar[]
   const summary = summaryQ.data
@@ -109,14 +117,10 @@ export default function InventoryPage() {
       {summaryQ.isLoading ? (
         <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
       ) : !summary || summary.rows.length === 0 ? (
-        <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-6 text-center">
-          <p className="text-sm font-medium text-amber-900">
-            No storage declared for this event yet.
-          </p>
-          <p className="mt-1 text-xs text-amber-700">
-            Open the event in the wizard → Storage tab to declare items.
-          </p>
-        </div>
+        <NoDeclaredStoragePanel
+          invoicedRows={invoicedQ.data?.rows}
+          invoicedLoading={invoicedQ.isLoading}
+        />
       ) : bars.length === 0 ? (
         <Empty title="No bars in this event" body="Add bars via the wizard." />
       ) : (
@@ -149,6 +153,71 @@ export default function InventoryPage() {
         />
       )}
     </Shell>
+  )
+}
+
+// ─── No declared storage — falls back to showing invoiced-but-not-
+// declared stock instead of a flatly wrong "no storage" message ──────
+//
+// event_stock_items (the "declared storage pool" that powers bar
+// dispatch) and warehouse_inventory (what invoice upload populates)
+// are two structurally separate systems — supplier_products (used by
+// dispatch) has no foreign key to products (used by invoices), only a
+// best-effort name match (see InvoiceRepository.get_event_summary on
+// the backend). So this panel is READ-ONLY: it tells Omar what's been
+// invoiced, but doesn't let him dispatch it from here — dispatch still
+// requires declaring the items via the wizard's Storage tab, which is
+// unchanged.
+
+function NoDeclaredStoragePanel({
+  invoicedRows, invoicedLoading,
+}: {
+  invoicedRows: { product_name: string; invoiced_qty: string; invoiced_value_cents: number }[] | undefined
+  invoicedLoading: boolean
+}) {
+  if (invoicedLoading) {
+    return <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
+  }
+
+  const rows = invoicedRows ?? []
+
+  if (rows.length === 0) {
+    // Genuinely nothing anywhere — the original message is accurate here.
+    return (
+      <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-6 text-center">
+        <p className="text-sm font-medium text-amber-900">
+          No storage declared for this event yet.
+        </p>
+        <p className="mt-1 text-xs text-amber-700">
+          Open the event in the wizard → Storage tab to declare items.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-5 py-4">
+      <p className="text-sm font-medium text-amber-900">
+        Not yet declared for bar dispatch — but {rows.length}{' '}
+        {rows.length === 1 ? 'product has' : 'products have'} been invoiced for this event.
+      </p>
+      <p className="mt-1 text-xs text-amber-700">
+        Open the event in the wizard → Storage tab to declare items before charging bars.
+      </p>
+      <ul className="mt-3 divide-y divide-amber-100 rounded-md border border-amber-200 bg-white/60">
+        {rows.map((r) => (
+          <li
+            key={r.product_name}
+            className="flex items-center justify-between px-3 py-2 text-sm"
+          >
+            <span className="text-slate-700">{r.product_name}</span>
+            <span className="font-mono text-xs text-slate-500">
+              {fmtQty(r.invoiced_qty)} · €{(r.invoiced_value_cents / 100).toFixed(0)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
