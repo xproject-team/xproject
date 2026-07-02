@@ -14,7 +14,7 @@
  */
 import { Link, useLocation, useParams } from 'react-router-dom'
 
-import { ICONS } from './Sidebar'
+import { ICONS } from './icons'
 
 interface EventNavItem {
   label: string
