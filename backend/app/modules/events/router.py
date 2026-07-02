@@ -61,6 +61,12 @@ from app.modules.events.menu_performance_service import MenuPerformanceService
 from app.modules.events.reconciliation_service import compute_report
 from app.modules.events.revenue_breakdown_schemas import RevenueBreakdown
 from app.modules.events.revenue_breakdown_service import RevenueBreakdownService
+from app.modules.predictions.nowcast.schemas import RevenueForecastResponse
+from app.modules.predictions.nowcast.service import (
+    EventNotFoundError as ForecastEventNotFoundError,
+    EventNotInTenantError as ForecastEventNotInTenantError,
+    get_revenue_forecast,
+)
 from app.modules.events.service import (
     EventNotFoundError,
     EventService,
@@ -926,4 +932,43 @@ async def get_revenue_breakdown(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
+        )
+
+
+@router.get("/{event_id}/revenue-forecast", response_model=RevenueForecastResponse)
+async def get_revenue_forecast_endpoint(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    as_of_time: datetime | None = None,
+) -> RevenueForecastResponse:
+    """The "ML Predicted" revenue nowcast (Phase D of the ML overlay —
+    see backend/app/modules/predictions/nowcast/).
+
+    Any authenticated tenant user (no owner gate, unlike the
+    guest-count-scaled predictions in predictions/router.py — this is
+    a live in-event nowcast, not a planning artifact).
+
+    as_of_time defaults to now (server time); pass an explicit ISO
+    timestamp to preview/back-test against a historical or simulated
+    moment.
+
+    404 if event_id doesn't exist at all. 403 if it exists but belongs
+    to a different tenant (an intentionally stricter distinction than
+    most endpoints in this file, which collapse both into 404 — see
+    Phase D's task brief).
+    """
+    if as_of_time is None:
+        as_of_time = datetime.now(timezone.utc)
+    try:
+        return await get_revenue_forecast(db, tenant_id, event_id, as_of_time)
+    except ForecastEventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except ForecastEventNotInTenantError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "event_not_in_tenant", "message": str(e)},
         )
