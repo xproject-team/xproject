@@ -19,4 +19,7 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Run alembic migrations before starting uvicorn.
+# Prevents "column does not exist" crashes when new migrations
+# are added but not manually applied to prod.
+CMD alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
