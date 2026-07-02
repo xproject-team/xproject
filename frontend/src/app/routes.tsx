@@ -3,7 +3,6 @@ import { SessionExpiredModal } from '@/shared/SessionExpiredModal'
 import { PermissionDeniedToast } from '@/shared/PermissionDeniedToast'
 import { type ReactNode } from 'react'
 import { AppShell } from '@/shared/layout/AppShell'
-import { EventLayout } from '@/app/EventLayout'
 import { useAuth } from '@/features/auth/useAuth'
 import { usePermissions, type Permissions } from '@/features/auth/usePermissions'
 import { getHomeRoute } from '@/lib/mockUsers'
@@ -108,21 +107,6 @@ function EditV2Redirect() {
   return <Navigate to={`/events/${id}/edit`} replace />
 }
 
-/**
- * OwnerToEvents — Phase 1 redirect for flat routes shared across roles
- * (event-scoped restructure). Owner now reaches these pages via
- * /events/:id/*, so hitting the old flat URL sends them to the event
- * picker instead. Every other role (Manager, Bartender, Warehouse)
- * keeps using the flat route exactly as before — they don't "enter"
- * an event, they work off whatever's currently live for their bar, so
- * there's nothing to redirect for them.
- */
-function OwnerToEvents({ children }: { children: ReactNode }) {
-  const perms = usePermissions()
-  if (perms.canViewAllBars) return <Navigate to="/events" replace />
-  return <>{children}</>
-}
-
 export function AppRoutes() {
   return (
     <BrowserRouter
@@ -168,19 +152,12 @@ function AuthenticatedRoutes() {
        * /dashboard
        * Owner (canViewAllBars) · Manager · Bartender (canViewOwnBar) → allowed
        * Warehouse → neither flag is true → redirects to /warehouse
-       *
-       * Phase 1 (event-scoped restructure): Owner now reaches Dashboard
-       * via /events/:id/dashboard, so the flat URL redirects Owner to
-       * /events. Manager/Bartender still land on DashboardPage here,
-       * unchanged — "My Bar" isn't part of this restructure.
        */}
       <Route
         path="/dashboard"
         element={
           <RequirePermission flag={['canViewAllBars', 'canViewOwnBar']}>
-            <OwnerToEvents>
-              <DashboardPage />
-            </OwnerToEvents>
+            <DashboardPage />
           </RequirePermission>
         }
       />
@@ -283,16 +260,17 @@ function AuthenticatedRoutes() {
         }
       />
       {/*
-       * /catalog — Owner-only, so Phase 1 turns this into an
-       * unconditional redirect: Catalog now lives at
-       * /events/:id/catalog. (Recipe detail/create below stay flat —
-       * already orphaned, unlinked from any UI — see CatalogPage.tsx.)
+       * /catalog — unified Products + Recipes admin page (Owner).
+       * Top-tabbed shell that mounts ProductsListPage and RecipesListPage.
+       * Detail/create pages for products keep their /products/* routes;
+       * recipes get their own /catalog/recipes/* segment so the user can
+       * always tell which entity they\'re editing from the URL alone.
        */}
       <Route
         path="/catalog"
         element={
           <RequirePermission flag="canViewAllBars">
-            <Navigate to="/events" replace />
+            <CatalogPage />
           </RequirePermission>
         }
       />
@@ -313,66 +291,76 @@ function AuthenticatedRoutes() {
         }
       />
       {/*
-       * /events/:id/* — Phase 1 of the event-scoped restructure.
-       * Every event-scoped page now lives under one nested route,
-       * wrapped in EventLayout (fetches the event, provides
-       * EventContext, renders the "← Back to events" top bar + the
-       * event-scoped sidebar). All children are implicitly
-       * canCreateEvent-gated (Owner-only) via the parent — every flag
-       * these pages used individually (canGenerateReport,
-       * canViewPredictions, canViewAllBars, ...) already resolves to
-       * "owner only" in usePermissions.ts, so this isn't a widening.
-       *
-       * / (index)    → redirect to overview
-       * /overview    → EventDetailPage (Phase 2 will rename/rebuild this)
-       * /edit-v2     → redirect to /edit (bookmark safety, pre-existing)
-       *
-       * Internal page logic is UNCHANGED — only the mount point moved.
-       * EventReconciliationPage and ChargeBarsPage previously read a
-       * :event_id param; since the parent route declares :id, their
-       * useParams() calls were updated to match (see those files) —
-       * a plumbing rename, not a logic change.
+       * /events/:id/edit — Edit event via the wizard (Chunk 3c, Phase 5).
+       * Hydrates from GET /events/{id}/full and saves via PUT.
+       * Restricted to DRAFT events by the backend (422 on non-draft).
        */}
+      <Route
+        path="/events/:id/edit"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventWizardPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /events/:id/edit-legacy — old EventCreatePage (7-tab layout).
+       * Kept as an escape hatch because tab 7 (StorageTab) is the sole
+       * UI entry point to event storage management. Delete after
+       * StorageTab is relocated (post-Sundance backlog).
+       */}
+      <Route
+        path="/events/:id/edit-legacy"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <EventCreatePage />
+          </RequirePermission>
+        }
+      />
+      {/* /events/:id/edit-v2 → alias for /events/:id/edit (bookmark safety). */}
+      <Route
+        path="/events/:id/edit-v2"
+        element={<EditV2Redirect />}
+      />
       <Route
         path="/events/:id"
         element={
           <RequirePermission flag="canCreateEvent">
-            <EventLayout />
+            <EventDetailPage />
           </RequirePermission>
         }
-      >
-        <Route index element={<Navigate to="overview" replace />} />
-        <Route path="overview" element={<EventDetailPage />} />
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="catalog" element={<CatalogPage />} />
-        <Route path="charge-bars" element={<ChargeBarsPage />} />
-        <Route path="inventory" element={<InventoryPage />} />
-        <Route path="warehouse" element={<WarehousePage />} />
-        <Route path="alerts" element={<AlertsPage />} />
-        <Route path="predictions" element={<PredictionPage />} />
-        <Route path="reports" element={<ReportPage />} />
-        <Route path="reconciliation" element={<EventReconciliationPage />} />
-        <Route path="edit" element={<EventWizardPage />} />
-        {/* Old EventCreatePage (7-tab layout) — kept as an escape hatch
-            because tab 7 (StorageTab) is the sole UI entry point to
-            event storage management. Delete after StorageTab is
-            relocated (post-Sundance backlog). */}
-        <Route path="edit-legacy" element={<EventCreatePage />} />
-        <Route path="edit-v2" element={<EditV2Redirect />} />
-      </Route>
+      />
+      <Route
+        path="/events/:event_id/reconciliation"
+        element={
+          <RequirePermission flag="canGenerateReport">
+            <EventReconciliationPage />
+          </RequirePermission>
+        }
+      />
+      {/*
+       * /events/:event_id/charge-bars — Chunk 3b. Pre-event warehouse →
+       * bar dispatch. Same permission as the wizard edit route
+       * (canCreateEvent, Owner-only) since it writes event setup data;
+       * no dedicated "charge bars" flag exists yet.
+       */}
+      <Route
+        path="/events/:event_id/charge-bars"
+        element={
+          <RequirePermission flag="canCreateEvent">
+            <ChargeBarsPage />
+          </RequirePermission>
+        }
+      />
 
       {/*
-       * /inventory — Owner (canViewAllBars) · Manager/Bartender (canViewOwnBar)
-       * Phase 1: Owner now reaches Inventory via /events/:id/inventory;
-       * Manager/Bartender keep this flat route unchanged.
+       * /inventory — Owner only (canViewAllBars)
        */}
       <Route
         path="/inventory"
         element={
           <RequirePermission flag={['canViewAllBars', 'canViewOwnBar']}>
-            <OwnerToEvents>
-              <InventoryPage />
-            </OwnerToEvents>
+            <InventoryPage />
           </RequirePermission>
         }
       />
@@ -393,16 +381,12 @@ function AuthenticatedRoutes() {
       {/*
        * /alerts — Owner + Manager (canSeeOperationalAlerts)
        * Bartender + Warehouse → redirect to home
-       * Phase 1: Owner now reaches Alerts via /events/:id/alerts;
-       * Manager keeps this flat route unchanged.
        */}
       <Route
         path="/alerts"
         element={
           <RequirePermission flag="canSeeOperationalAlerts">
-            <OwnerToEvents>
-              <AlertsPage />
-            </OwnerToEvents>
+            <AlertsPage />
           </RequirePermission>
         }
       />
@@ -410,20 +394,12 @@ function AuthenticatedRoutes() {
       {/*
        * /warehouse — Owner + Warehouse Staff (canViewWarehouseStock)
        * Manager + Bartender → redirect to home
-       * Phase 1: WarehousePage already keys everything off useLiveEvent()
-       * (confirmed — it's effectively event-scoped in behavior already,
-       * just not in URL), so there's no separate "tenant warehouse"
-       * concept to preserve. Owner now reaches it via
-       * /events/:id/warehouse; Warehouse staff keep this flat route
-       * unchanged (their role has no event picker).
        */}
       <Route
         path="/warehouse"
         element={
           <RequirePermission flag="canViewWarehouseStock">
-            <OwnerToEvents>
-              <WarehousePage />
-            </OwnerToEvents>
+            <WarehousePage />
           </RequirePermission>
         }
       />
@@ -459,14 +435,13 @@ function AuthenticatedRoutes() {
       />
 
       {/*
-       * /predictions — Owner only. Phase 1: unconditional redirect —
-       * Predictions now lives at /events/:id/predictions.
+       * /predictions — Owner only
        */}
       <Route
         path="/predictions"
         element={
           <RequirePermission flag="canViewPredictions">
-            <Navigate to="/events" replace />
+            <PredictionPage />
           </RequirePermission>
         }
       />

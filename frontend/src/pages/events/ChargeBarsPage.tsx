@@ -19,9 +19,7 @@ import { useSupplierProducts } from '@/features/event_storage/hooks'
 import { ChargeBarCard } from './ChargeBarCard'
 
 export default function ChargeBarsPage() {
-  // Phase 1 restructure: nested under the /events/:id/* layout route,
-  // which declares the param as :id (not :event_id).
-  const { id: event_id } = useParams<{ id: string }>()
+  const { event_id } = useParams<{ event_id: string }>()
   const eventQuery = useEvent(event_id)
   const barsQuery = useBars(event_id)
   const supplierProductsQuery = useSupplierProducts()

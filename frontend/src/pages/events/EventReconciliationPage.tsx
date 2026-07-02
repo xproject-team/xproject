@@ -526,9 +526,7 @@ function ReconciliationContent({ report }: { report: ReconciliationReport }) {
 // ─── Page wrapper (handles loading / error / not-found) ────────────────────
 
 export function EventReconciliationPage() {
-  // Phase 1 restructure: nested under the /events/:id/* layout route,
-  // which declares the param as :id (not :event_id).
-  const { id: event_id } = useParams<{ id: string }>()
+  const { event_id } = useParams<{ event_id: string }>()
   const query = useReconciliationReport(event_id)
 
   if (!event_id) {
