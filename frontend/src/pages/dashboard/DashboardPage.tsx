@@ -542,7 +542,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [breakdownOpen, setBreakdownOpen] = useState(false)
   const [revBreakdownOpen, setRevBreakdownOpen] = useState(false)
-  const revBreakdownQuery = useEventRevenueBreakdown(eventId, revBreakdownOpen)
+  const revBreakdownQuery = useEventRevenueBreakdown(eventId, true)  // 2026-07-05: always-on so food bar cards can read fiscal revenue
   const [selectedBar, setSelectedBar] = useState<BarKpi | null>(null)
   // Acknowledged set derived from server data — not local state. The source of
   // truth is alerts[i].acknowledged_at on the server; this Set is just a fast
@@ -622,7 +622,13 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const transactions = transactionsQuery.data ?? []
   const products     = productsQuery.data ?? []
 
-  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [], allocations: barAllocationsQ.data ?? [], eventFoodRevenueSharePct: currentEvent?.food_revenue_share_pct ?? null })
+  // 2026-07-05: bar_id → fiscal EUR map for food bars from revenue-breakdown.
+  // Powers per-bar revenue on FoodBarCard so Twist&Chips shows €154, not €0.
+  const foodFiscalByBar: Record<string, number> = {}
+  for (const s of revBreakdownQuery.data?.sales.food_by_bar ?? []) {
+    foodFiscalByBar[s.bar_id] = parseFloat(s.revenue_eur)
+  }
+  const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [], allocations: barAllocationsQ.data ?? [], eventFoodRevenueSharePct: currentEvent?.food_revenue_share_pct ?? null, foodFiscalRevenueByBarId: foodFiscalByBar })
 
   // Build per-bar storage lookup — used by BarCard to render the
   // 'N items / X units in warehouse' line. Sums history-preserving

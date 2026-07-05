@@ -82,10 +82,15 @@ export interface SelectorInput {
   allocations?: BarAllocationSummary[]
   /** event.food_revenue_share_pct from the live event; injected by DashboardPage */
   eventFoodRevenueSharePct?: number | null
+  /** 2026-07-05: bar_id → fiscal gross revenue (euros, not cents) from
+   *  event_orders. Food bars use this for revenue_cents display since they
+   *  have no stock_transactions. When absent (or bar not in map), falls
+   *  back to summing txAtBar as before. */
+  foodFiscalRevenueByBarId?: Record<string, number>
 }
 
 export function selectBarKpis(input: SelectorInput): BarKpi[] {
-  const { bars, barStock, transactions, products, burnRates, allocations } = input
+  const { bars, barStock, transactions, products, burnRates, allocations, foodFiscalRevenueByBarId } = input
   // Phase 2.5 dispatch totals per bar — qty_total_allocated is a Decimal string.
   const allocTotalByBar = new Map<string, number>()
   for (const summary of allocations ?? []) {
@@ -169,10 +174,18 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       : Math.round((current_stock / initial_stock) * 100)
 
     // ── Revenue: sum of parent transaction price_cents ──
-    const revenue_cents = txAtBar.reduce(
+    // 2026-07-05: food bars have no stock_transactions (no recipes),
+    // so their revenue is €0 unless we use the fiscal totals from
+    // event_orders. When a fiscal map is provided, use it for food bars.
+    // Drinks bars keep the stock-transactions rollup unchanged.
+    const stockRevenue = txAtBar.reduce(
       (sum, t) => sum + (t.price_cents ?? 0),
       0,
     )
+    const fiscalEurForBar = foodFiscalRevenueByBarId?.[bar.id]
+    const revenue_cents = bar.bar_type === 'food' && fiscalEurForBar !== undefined
+      ? Math.round(fiscalEurForBar * 100)
+      : stockRevenue
 
     // ── Drinks breakdown + total ──
     // drinks_sold counts every transaction on a DRINK product (definitive
