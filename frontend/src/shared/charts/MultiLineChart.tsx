@@ -74,7 +74,10 @@ export function MultiLineChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
         <XAxis dataKey={labelKey} tick={{ fontSize: 11, fill: '#4A5568' }} />
         {showYAxis && (
-          <YAxis tick={{ fontSize: 11, fill: '#4A5568' }} />
+          <YAxis
+            tick={{ fontSize: 11, fill: '#4A5568' }}
+            domain={[0, (dataMax: number) => Math.ceil(dataMax * 1.1)]}
+          />
         )}
         <Tooltip
           contentStyle={{ fontSize: 12 }}
