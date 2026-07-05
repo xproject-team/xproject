@@ -30,7 +30,8 @@ from app.modules.events.event_kpi_schemas import (
     FoodSummary,
     FoodTypeLine,
 )
-from app.modules.events.models import Event
+from app.modules.bars.models import Bar
+from app.modules.events.models import Event, EventOrder
 from app.modules.predictions.predictors.heuristic import (
     REVENUE_SOURCES,
     _classify_category,
@@ -138,6 +139,37 @@ class EventKpiSummaryService:
         )
         rows = (await self.db.execute(stmt)).all()
 
+        # 2b. Fiscal totals from event_orders (2026-07-05).
+        # WHY: stock_transactions only reflects drinks WITH recipes at recipe-
+        # enabled bars — it MISSES food-truck sales and drinks like acqua/
+        # bicchiere that have no recipe. event_orders is the money-of-record
+        # from Slesh (every wristband tap). Depletion tracking (stock section,
+        # alerts) still uses stock_transactions — unchanged.
+        fiscal_stmt = (
+            select(
+                Bar.bar_type.label("bar_type"),
+                func.sum(EventOrder.fiscal_gross_cents).label("gross_cents"),
+            )
+            .select_from(EventOrder)
+            .join(Bar, Bar.id == EventOrder.bar_id)
+            .where(
+                EventOrder.tenant_id == tenant_id,
+                EventOrder.event_id == event_id,
+            )
+            .group_by(Bar.bar_type)
+        )
+        fiscal_rows = (await self.db.execute(fiscal_stmt)).all()
+        fiscal_drinks_eur = Decimal(0)
+        fiscal_food_gross_eur = Decimal(0)
+        for fr in fiscal_rows:
+            eur = Decimal(fr.gross_cents or 0) / _CENTS
+            btype = fr.bar_type
+            btype_val = getattr(btype, "value", btype)
+            if btype_val == "drinks":
+                fiscal_drinks_eur = _money(eur)
+            elif btype_val == "food":
+                fiscal_food_gross_eur = _money(eur)
+
         # 3. Roll up.
         drink_units = 0
         drink_rev = Decimal(0)
@@ -175,9 +207,10 @@ class EventKpiSummaryService:
         # Header total = GROSS revenue (what customers paid at the bars).
         # This matches Slesh's dashboard exactly. Net take-home after the
         # food-truck split is exposed separately via food.net_revenue_eur.
-        food_gross = _money(food_gross)
+        # SWAPPED to fiscal source (2026-07-05).
+        food_gross = fiscal_food_gross_eur
         food_net = _money(food_gross * Decimal(share_pct) / Decimal(100))
-        drink_rev = _money(drink_rev)
+        drink_rev = fiscal_drinks_eur
         total = _money(drink_rev + food_gross)
 
         drink_lines = [
