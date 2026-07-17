@@ -2,14 +2,19 @@
  * Slesh polling freshness badge.
  *
  * One small pill-shaped tile shown at the top of the BarDashboardView.
- * Three visual states based on backend's is_live + is_stale + last_status:
+ * Day 4 (Jul-19 sprint) rewire: data source moved from GET /pos/freshness
+ * (tenant-wide) to GET /events/{event_id}/polling-health (see
+ * useFreshness.ts) — same slesh_poll_state row under the hood, but now
+ * factors in consecutive_failures via the backend's is_healthy verdict.
  *
- *   green  "Live · synced Ns ago"            (is_live && last_status=ok)
- *   yellow "Sync delayed · Nm ago"           (status=error, or stale<5m)
- *   red    "Polling stalled · Nm ago"        (is_stale or status=circuit_open)
- *   grey   "Polling not started"             (has_state=false — first ever run)
+ * Three visual states based on is_healthy + seconds_since_last_run:
  *
- * Click target: Tooltip that shows last_error + brand_id for ops debug.
+ *   green  "Polling · synced Xs ago"   (is_healthy && seconds_since < 60)
+ *   amber  "Polling · slow · Xs ago"   (is_healthy && seconds_since >= 60)
+ *   red    "Polling · stalled · Xs ago" (is_healthy === false)
+ *   grey   "Polling not started"       (no slesh_poll_state row yet — 404)
+ *
+ * Click target: Tooltip that shows last_error for ops debug.
  */
 import { useFreshness } from './useFreshness'
 
@@ -36,10 +41,12 @@ export interface FreshnessBadgeProps {
    * events, so the brand-wide freshness signal isn't meaningful.
    */
   eventEndedAt?: string | null
+  /** Which event's polling state to show — GET /events/{eventId}/polling-health. */
+  eventId: string | null | undefined
 }
 
-export function FreshnessBadge({ eventHasSleshBars, eventEndedAt }: FreshnessBadgeProps) {
-  const { data, isLoading } = useFreshness()
+export function FreshnessBadge({ eventHasSleshBars, eventEndedAt, eventId }: FreshnessBadgeProps) {
+  const { data, isLoading } = useFreshness(eventId)
 
   // No Slesh integration on this event → the polling state is not
   // meaningful here. Hide rather than confuse with "stalled" reads.
@@ -73,46 +80,45 @@ export function FreshnessBadge({ eventHasSleshBars, eventEndedAt }: FreshnessBad
       </span>
     )
   }
+  // No slesh_poll_state row yet (backend 404s -> useFreshness returns null)
   if (!data) {
-    return null
+    return (
+      <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600 ring-1 ring-zinc-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" />
+        Polling not started
+      </span>
+    )
   }
 
-  const { has_state, last_status, last_error, seconds_since, is_live, is_stale } = data
+  const { last_error, seconds_since_last_run, is_healthy } = data
 
-  // Determine visual variant
-  let variant: 'green' | 'yellow' | 'red' | 'grey' = 'grey'
-  let label = 'Polling not started'
+  // Determine visual variant — green/amber/red per Day 4 spec, keyed off
+  // the backend's is_healthy verdict (seconds_since_last_run < 180 AND
+  // consecutive_failures < 3) plus a tighter <60s "fully synced" band.
+  let variant: 'green' | 'amber' | 'red'
+  let label: string
 
-  if (!has_state) {
-    variant = 'grey'
-    label = 'Polling not started'
-  } else if (is_live) {
+  if (is_healthy && (seconds_since_last_run ?? Infinity) < 60) {
     variant = 'green'
-    label = `Live · synced ${relativeTime(seconds_since)}`
-  } else if (last_status === 'circuit_open' || is_stale) {
-    variant = 'red'
-    label = `Polling stalled · ${relativeTime(seconds_since)}`
-  } else if (last_status === 'error') {
-    variant = 'yellow'
-    label = `Sync delayed · ${relativeTime(seconds_since)}`
+    label = `Polling · synced ${relativeTime(seconds_since_last_run)}`
+  } else if (is_healthy) {
+    variant = 'amber'
+    label = `Polling · slow · ${relativeTime(seconds_since_last_run)}`
   } else {
-    // status=ok but not is_live (e.g. 60-120s window) — yellow as a hint
-    variant = 'yellow'
-    label = `Sync delayed · ${relativeTime(seconds_since)}`
+    variant = 'red'
+    label = `Polling · stalled · ${relativeTime(seconds_since_last_run)}`
   }
 
   const dotColor = {
-    green:  'bg-emerald-500',
-    yellow: 'bg-amber-500',
-    red:    'bg-red-500',
-    grey:   'bg-zinc-400',
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    red:   'bg-red-500',
   }[variant]
 
   const bgColor = {
-    green:  'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    yellow: 'bg-amber-50  text-amber-800   ring-amber-200',
-    red:    'bg-red-50    text-red-700     ring-red-200',
-    grey:   'bg-zinc-100  text-zinc-600    ring-zinc-200',
+    green: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    amber: 'bg-amber-50  text-amber-800   ring-amber-200',
+    red:   'bg-red-50    text-red-700     ring-red-200',
   }[variant]
 
   const animate = variant === 'green' ? 'animate-pulse' : ''

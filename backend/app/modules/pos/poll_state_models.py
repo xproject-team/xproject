@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -54,6 +54,15 @@ class SleshPollState(TenantScopedModel):
     last_error: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
+    )
+    # Streak of consecutive failed poll cycles. Reset to 0 by
+    # record_success(), incremented by record_failure() (poll_state.py).
+    # Distinguishes "just had one blip" from "polling has been down for a
+    # while" for GET /events/{event_id}/polling-health (migration aa7).
+    consecutive_failures: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
     )
 
     def __repr__(self) -> str:

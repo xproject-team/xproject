@@ -161,6 +161,7 @@ async def record_success(
     state.last_run_at = datetime.now(tz=timezone.utc)
     state.last_status = "ok"
     state.last_error  = None
+    state.consecutive_failures = 0
     if new_high_water_ts is not None and new_high_water_ts > state.last_seen_ts:
         state.last_seen_ts = new_high_water_ts
     await db.flush()
@@ -178,6 +179,7 @@ async def record_failure(
     state.last_status = status[:32]
     # Truncate error message — long Pydantic errors can be huge
     state.last_error  = error_msg[:2000]
+    state.consecutive_failures = (state.consecutive_failures or 0) + 1
     await db.flush()
 
 

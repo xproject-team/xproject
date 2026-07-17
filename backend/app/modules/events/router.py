@@ -56,6 +56,11 @@ from app.modules.event_storage.bar_supplier_stock_schemas import (
 )
 from app.modules.events.event_kpi_schemas import EventKpiSummary
 from app.modules.events.event_kpi_service import EventKpiSummaryService
+from app.modules.events.polling_health_schemas import PollingHealthResponse
+from app.modules.events.polling_health_service import (
+    get_event_or_none,
+    get_polling_health,
+)
 from app.modules.events.menu_performance_schemas import EventMenuPerformance
 from app.modules.events.menu_performance_service import MenuPerformanceService
 from app.modules.events.reconciliation_service import compute_report
@@ -811,6 +816,43 @@ async def get_event_bar_supplier_stock(
 # Why this query is safe to run live: single SQL roundtrip (no inter-row race during live event),
 # event-window bounded, voided scans excluded, tenant-scoped at every CTE,
 # Decimal precision preserved across the wire.
+
+
+@router.get(
+    "/{event_id}/polling-health",
+    response_model=PollingHealthResponse,
+)
+async def get_event_polling_health(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> PollingHealthResponse:
+    """Slesh polling status for this event's tenant (Day 4, Jul-19 sprint).
+
+    Lets the dashboard show whether the arq worker's polling cron is
+    keeping up, without needing an SSH session to check slesh_poll_state
+    directly. is_healthy is True iff the last poll ran under 3 minutes
+    ago AND there haven't been 3+ consecutive failures.
+
+    Note: slesh_poll_state has no event_id column (it's scoped by
+    tenant_id + brand_id + experience_id) — this reads the tenant's
+    poll state, which is accurate as long as the tenant has only one
+    live event at a time (see polling_health_service docstring).
+    """
+    event = await get_event_or_none(db, tenant_id, event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    health = await get_polling_health(db, tenant_id)
+    if health is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No polling state for this event",
+        )
+    return health
 
 
 @router.get(
