@@ -240,6 +240,19 @@ class EventCategoryIngredient(TenantScopedModel):
         String(128), nullable=False, index=True,
     )
 
+    # FK replacement for the free-text slesh_category join (migration aa5,
+    # backfilled from slesh_category ↔ product.name matches). Nullable for
+    # now — becomes NOT NULL in migration aa6 once prod backfill is done.
+    # Root cause of the Sundance Jul-5 depletion outage: slesh_category and
+    # product.name were two independently maintained string namespaces that
+    # silently drifted apart, zeroing out consumed_ml for hours.
+    product_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
     supplier_product_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("supplier_products.id", ondelete="RESTRICT"),

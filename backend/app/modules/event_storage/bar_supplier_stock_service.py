@@ -34,7 +34,6 @@ from app.modules.event_storage.models import (
     EventStockBarAllocation,
     SupplierProduct,
 )
-from app.modules.products.models import Product
 from app.modules.stock_transactions.models import StockTransaction, TransactionSource
 from datetime import datetime, timezone
 from sqlalchemy import and_
@@ -154,12 +153,19 @@ async def compute_bar_supplier_stock(
         )
     )).scalars().all()
 
-    # Index rules by (slesh_category, supplier_product_id, bar_id-or-None)
-    # Multiple rules can share (cat, sp) with different bar_id constraints.
-    # rules_by_cat_sp: cat → sp → [list of (bar_id_filter, ml_per_sale, warn, empty)]
-    rules_by_cat_sp: dict[str, dict[UUID, list]] = {}
+    # Index rules by (product_id, supplier_product_id, bar_id-or-None)
+    # Multiple rules can share (product, sp) with different bar_id constraints.
+    # rules_by_product_sp: product_id → sp → [list of (bar_id_filter, ml_per_sale, warn, empty)]
+    rules_by_product_sp: dict[UUID, dict[UUID, list]] = {}
     for rule in rules:
-        rules_by_cat_sp.setdefault(rule.slesh_category, {}).setdefault(
+        if rule.product_id is None:
+            logger.warning(
+                "EventCategoryIngredient %s (event=%s, slesh_category=%r) has "
+                "no product_id; skipping in depletion calc",
+                rule.id, event_id, rule.slesh_category,
+            )
+            continue
+        rules_by_product_sp.setdefault(rule.product_id, {}).setdefault(
             rule.supplier_product_id, []
         ).append((
             rule.bar_id,
@@ -168,14 +174,13 @@ async def compute_bar_supplier_stock(
             float(rule.threshold_pct_empty),
         ))
 
-    # 5. Fetch transaction counts per (bar, product.name)
+    # 5. Fetch transaction counts per (bar, product_id)
     # Slesh-only revenue transactions; qty=1 convention enforced in ingester.
     tx_q = (
         select(
             StockTransaction.bar_id,
-            Product.name.label("product_name"),
+            StockTransaction.product_id,
         )
-        .join(Product, Product.id == StockTransaction.product_id)
         .where(
             StockTransaction.tenant_id == tenant_id,
             StockTransaction.event_id == event_id,
@@ -186,20 +191,22 @@ async def compute_bar_supplier_stock(
         tx_q = tx_q.where(StockTransaction.bar_id == bar_id)
     tx_rows = (await session.execute(tx_q)).all()
 
-    # Count tx per (bar_id, product_name)
-    tx_count: dict[tuple[UUID, str], int] = {}
+    # Count tx per (bar_id, product_id)
+    tx_count: dict[tuple[UUID, UUID], int] = {}
     for r in tx_rows:
-        k = (r.bar_id, r.product_name)
+        k = (r.bar_id, r.product_id)
         tx_count[k] = tx_count.get(k, 0) + 1
 
     # 6. For each (bar, supplier_product) dispatched, compute consumed_ml.
     result: list[BarSupplierStockRow] = []
-    # Precompute: how many rules exist per slesh_category in this event?
-    # A supplier_product is accurately depleted only if every category it
+    # Precompute: how many rules exist per product_id in this event?
+    # A supplier_product is accurately depleted only if every product it
     # participates in has exactly 1 rule (no parallel alternatives).
-    rules_per_category: dict[str, int] = {}
+    rules_per_product: dict[UUID, int] = {}
     for rule in rules:
-        rules_per_category[rule.slesh_category] = rules_per_category.get(rule.slesh_category, 0) + 1
+        if rule.product_id is None:
+            continue
+        rules_per_product[rule.product_id] = rules_per_product.get(rule.product_id, 0) + 1
 
     for (b_id, sp_id), dispatched_qty in dispatched_units.items():
         sp = sp_by_id.get(sp_id)
@@ -218,19 +225,19 @@ async def compute_bar_supplier_stock(
         consumed_ml_uncertain = 0.0
         warn_pct = 70.0
         empty_pct = 100.0
-        for cat, sp_map in rules_by_cat_sp.items():
+        for product_id, sp_map in rules_by_product_sp.items():
             if sp_id not in sp_map:
                 continue
-            cat_is_sole = rules_per_category.get(cat, 0) == 1
+            product_is_sole = rules_per_product.get(product_id, 0) == 1
             for (rule_bar_id, ml_per_sale, w, e) in sp_map[sp_id]:
                 # If rule is restricted to a specific bar, only count tx at that bar.
                 if rule_bar_id is not None and rule_bar_id != b_id:
                     continue
-                tx_n = tx_count.get((b_id, cat), 0)
+                tx_n = tx_count.get((b_id, product_id), 0)
                 if tx_n > 0:
-                    bucket = consumed_ml_certain if cat_is_sole else consumed_ml_uncertain
+                    bucket = consumed_ml_certain if product_is_sole else consumed_ml_uncertain
                     bucket += tx_n * ml_per_sale
-                    if cat_is_sole:
+                    if product_is_sole:
                         consumed_ml_certain = bucket
                     else:
                         consumed_ml_uncertain = bucket
@@ -245,11 +252,11 @@ async def compute_bar_supplier_stock(
         status = _resolve_status(remaining_pct, warn_pct, empty_pct)
 
         # Accuracy: SP is accurate iff every rule touching it sits in a
-        # slesh_category that has only ONE rule total (no parallel options).
+        # product that has only ONE rule total (no parallel options).
         is_accurate = True
-        for cat, sp_map in rules_by_cat_sp.items():
+        for product_id, sp_map in rules_by_product_sp.items():
             if sp_id in sp_map:
-                if rules_per_category.get(cat, 0) > 1:
+                if rules_per_product.get(product_id, 0) > 1:
                     is_accurate = False
                     break
         result.append(BarSupplierStockRow(

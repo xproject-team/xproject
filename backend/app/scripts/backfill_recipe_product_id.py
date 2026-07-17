@@ -10,7 +10,11 @@ that FK on existing rows so a later migration can make it NOT NULL.
 Matching rules, in preference order, scoped to (tenant, active products):
   1. Exact byte-for-byte match: product.name == slesh_category
   2. Case-insensitive match: product.name.lower() == slesh_category.lower()
-  3. No match, or the match is ambiguous (>1 candidate product) -> leave
+  3. If step 1 or 2 finds multiple candidates, but exactly ONE of them has
+     product_type='drink' (the sellable item — supplier/warehouse "supply"
+     shadow rows with the same name are not recipe targets), prefer it.
+     Logged as PREFERRED-DRINK, not AMBIGUOUS.
+  4. No match, or still ambiguous (0 or >1 'drink' candidates) -> leave
      product_id NULL, log the row to stderr for manual triage.
 
 Idempotent — only considers rows where product_id IS NULL, so a second
@@ -35,7 +39,7 @@ from app.core.database import AsyncSessionLocal
 from app.modules.auth.models import Tenant
 from app.modules.event_storage.models import SupplierProduct
 from app.modules.events.models import Event
-from app.modules.products.models import Product
+from app.modules.products.models import Product, ProductType
 
 # Core table reference for event_category_ingredients.product_id.
 # Migration aa5 added this column to the DB; the ORM model
@@ -59,12 +63,13 @@ class BackfillSummary:
     total:               int = 0
     matched_exact:       int = 0
     matched_ci:          int = 0
+    preferred_drink:     int = 0
     unmatched:           list[dict] = field(default_factory=list)
     ambiguous:           list[dict] = field(default_factory=list)
 
     @property
     def matched(self) -> int:
-        return self.matched_exact + self.matched_ci
+        return self.matched_exact + self.matched_ci + self.preferred_drink
 
 
 async def _resolve_tenant_ids(db, tenant_slug: str | None) -> list[UUID]:
@@ -176,21 +181,35 @@ async def _backfill_tenant(
             continue
 
         if len(candidates) > 1:
-            row_ctx["candidate_product_ids"] = [str(p.id) for p in candidates]
-            summary.ambiguous.append(row_ctx)
+            drink_candidates = [p for p in candidates if p.product_type == ProductType.DRINK]
+            if len(drink_candidates) != 1:
+                row_ctx["candidate_product_ids"] = [str(p.id) for p in candidates]
+                summary.ambiguous.append(row_ctx)
+                print(
+                    f"AMBIGUOUS  row={row.id}  slesh_category={cat!r}  "
+                    f"tenant={tenant_id}  event={row_ctx['event_name']} ({row.event_id})  "
+                    f"candidates={row_ctx['candidate_product_ids']}",
+                    file=sys.stderr,
+                )
+                continue
+
+            # Exactly one 'drink' candidate among the duplicates — the rest
+            # are warehouse/inventory 'supply' shadow rows sharing the same
+            # name, not recipe targets. Prefer the sellable drink.
+            product = drink_candidates[0]
+            other_ids = [str(p.id) for p in candidates if p.id != product.id]
+            summary.preferred_drink += 1
             print(
-                f"AMBIGUOUS  row={row.id}  slesh_category={cat!r}  "
-                f"tenant={tenant_id}  event={row_ctx['event_name']} ({row.event_id})  "
-                f"candidates={row_ctx['candidate_product_ids']}",
+                f"PREFERRED-DRINK  row={row.id}  slesh_category={cat!r}  "
+                f"chosen={product.id}  skipped={other_ids}",
                 file=sys.stderr,
             )
-            continue
-
-        product = candidates[0]
-        if match_kind == "exact":
-            summary.matched_exact += 1
         else:
-            summary.matched_ci += 1
+            product = candidates[0]
+            if match_kind == "exact":
+                summary.matched_exact += 1
+            else:
+                summary.matched_ci += 1
 
         if not dry_run:
             async with db.begin():
@@ -224,6 +243,7 @@ async def _run(args: argparse.Namespace) -> int:
     print(f"  Total NULL rows examined: {summary.total}")
     print(f"  Matched (exact):          {summary.matched_exact}")
     print(f"  Matched (case-insensitive): {summary.matched_ci}")
+    print(f"  Matched (preferred drink): {summary.preferred_drink}")
     print(f"  Ambiguous (skipped):      {len(summary.ambiguous)}")
     print(f"  Unmatched (skipped):      {len(summary.unmatched)}")
     print()
