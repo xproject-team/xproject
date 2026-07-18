@@ -74,7 +74,8 @@ class AlertCreate(BaseModel):
     to prevent cross-tenant leaks.
     """
     event_id: UUID
-    bar_id: UUID
+    # Nullable (migration aa9): unmapped-shop alerts have no bar to attach to.
+    bar_id: UUID | None = None
     product_id: UUID | None = None
     alert_type: AlertType
     severity: AlertSeverity
@@ -120,7 +121,7 @@ class AlertResponse(BaseModel):
     id: UUID
     tenant_id: UUID
     event_id: UUID
-    bar_id: UUID
+    bar_id: UUID | None
     product_id: UUID | None
 
     alert_type: AlertType

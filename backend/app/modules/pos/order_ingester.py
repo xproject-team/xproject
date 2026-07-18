@@ -15,12 +15,20 @@ DESIGN CHOICES:
    Each line has its own idempotency key (slesh:{order_id}:{line_id}).
    This means a partial refund on one line doesn't invalidate the others.
 
-2. **Skip + log on missing references.**
-   If a Slesh shop has no matching `bars.slesh_negozio_id`, we skip the
-   ENTIRE order and log a warning. We never want to crash the poller.
-   Same for products without a matching `external_pos_id`.
-   The reference sync (B5) is responsible for keeping linkages fresh;
-   the ingester is just an observer.
+2. **Park + alert on an unmapped shop_id (Jul-19 sprint).**
+   If a Slesh shop has no matching `bars.slesh_negozio_id`, we do NOT
+   auto-create a bar (that silently produced phantom bars on Sundance
+   Jul-5 — see order_ingester._resolve_bar's prior history). Instead the
+   order is parked in `pending_shop_mappings`
+   (pending_shop_mappings_service.park_unmapped_order) and a WARNING
+   alert fires so the Owner can map it to a bar without SSH. Once
+   resolved, every parked order replays through this same ingest path.
+   Orders with NO shop reference at all (not even an unmapped id) are a
+   separate, unrecoverable case — those are skipped outright, logged,
+   and never parked (there's no shop_id to key the parking row on).
+   Products without a matching `external_pos_id` are skipped the same
+   way; the reference sync (B5) is responsible for keeping those
+   linkages fresh.
 
 3. **Refunded lines update the existing row's `pos_line_status`.**
    When Slesh marks a line as `status='refunded'`, we UPDATE the row
@@ -58,6 +66,7 @@ from app.modules.bars.models                  import Bar
 from app.modules.products.models              import Product, ProductType
 from app.modules.stock_transactions.schemas   import SaleIngestRequest
 from app.modules.stock_transactions.models    import TransactionSource
+from app.modules.pos.pending_shop_mappings_service import park_unmapped_order
 
 if TYPE_CHECKING:
     from app.modules.pos.schemas                       import Order
@@ -210,7 +219,28 @@ async def ingest_order(
         bar = cache.bars[shop_ref.id]
     else:
         bar = await _resolve_bar(db, tenant_id, event_id, shop_ref.id)
-        cache.bars[shop_ref.id] = bar
+        if bar is not None:
+            cache.bars[shop_ref.id] = bar
+
+    if bar is None:
+        # Unmapped shop_id — park instead of auto-creating a phantom bar
+        # (Jul-19 sprint fix). Not cached: a subsequent order in the same
+        # batch should re-check in case an earlier order in this same
+        # ingest run somehow resolved it (defensive; normally resolution
+        # only happens via the operator-facing endpoint, out of band).
+        await park_unmapped_order(
+            db=db, tenant_id=tenant_id, event_id=event_id,
+            slesh_shop_id=shop_ref.id, order=order,
+        )
+        result.lines_skipped += result.lines_total
+        result.skip_reasons.append(
+            f"order parked — unmapped shop_id {shop_ref.id}"
+        )
+        logger.info(
+            "ingest_order %s: parked — unmapped shop_id=%s",
+            order.id, shop_ref.id,
+        )
+        return result
 
     # Resolve payment type once per order — same value applies to all cart lines.
     payment_type = (
@@ -538,40 +568,20 @@ async def _find_bar_by_slesh_id(
 
 async def _resolve_bar(
     db: AsyncSession, tenant_id: UUID, event_id: UUID, slesh_id: str,
-) -> Bar:
-    """Find a bar by Slesh shop_id, or auto-create a stub if none matches.
+) -> Bar | None:
+    """Find a bar by Slesh shop_id. Returns None if no bar is mapped yet.
 
-    The no-data-loss invariant: every Slesh sale must land on some bar
-    so revenue is never silently dropped. If no XProject bar is mapped
-    to this shop_id yet, we create one immediately with the truncated
-    shop_id as its display name and auto_created=True. The owner
-    reconciles via the Map Bars UI by renaming the stub or merging it
-    into a properly-named bar (which transfers slesh_negozio_id and
-    all StockTransaction rows to the target).
+    Jul-19 sprint: this used to auto-create a phantom bar here (the
+    no-data-loss invariant — every Slesh sale must land on SOME bar).
+    That silently created unnamed bars three times during Sundance
+    Jul-5 when food trucks came online mid-event, requiring manual
+    SQL merges. The invariant now holds a different way: the caller
+    (ingest_order) parks the order in pending_shop_mappings instead of
+    dropping it, so no sale is lost — it just isn't attributed to a bar
+    until the operator resolves the mapping (see
+    pending_shop_mappings_service.py).
     """
-    bar = await _find_bar_by_slesh_id(db, tenant_id, slesh_id)
-    if bar is not None:
-        return bar
-    display = (
-        f"{slesh_id[:8]}…{slesh_id[-4:]}"
-        if len(slesh_id) > 12 else slesh_id
-    )
-    bar = Bar(
-        tenant_id=tenant_id,
-        event_id=event_id,
-        name=display,
-        slesh_negozio_id=slesh_id,
-        bar_type="drinks",
-        is_active=True,
-        auto_created=True,
-    )
-    db.add(bar)
-    await db.flush()
-    logger.info(
-        "ingester: auto-created bar %s (name=%s) for unmapped slesh_id=%s",
-        bar.id, display, slesh_id,
-    )
-    return bar
+    return await _find_bar_by_slesh_id(db, tenant_id, slesh_id)
 
 
 async def _maybe_classify_bar_as_food(

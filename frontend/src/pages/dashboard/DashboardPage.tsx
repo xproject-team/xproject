@@ -57,6 +57,7 @@ import {
 import { useAlertsForEvent, useAcknowledgeAlert, useAlertsCountByBar } from '@/features/alerts/useAlerts'
 import { useAlertsSocket } from '@/features/alerts/useAlertsSocket'
 import type { AlertRow } from '@/features/alerts/useAlerts'
+import { MapShopToBarModal } from '@/features/alerts/MapShopToBarModal'
 import type { BarKpi, Event } from '@/lib/mockData'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -212,7 +213,9 @@ const SEVERITY_CFG = {
 
 interface AlertSidebarAlert {
   id: string
-  bar_id: string
+  // Nullable (Jul-19 sprint): alert_type='system' / category='unmapped_shop'
+  // alerts have no bar by definition.
+  bar_id: string | null
   bar_name: string
   severity: 'critical' | 'warning' | 'anomaly'
   alert_type: 'depletion' | 'anomaly' | 'discrepancy' | 'system'
@@ -224,6 +227,9 @@ interface AlertSidebarAlert {
   // attention; 'resolved'/'expired' should NOT be counted as unacked.
   // Backend ships this field (see features/alerts/useAlerts.ts).
   lifecycle_state: 'active' | 'acknowledged' | 'auto_resolved' | 'expired'
+  // Raw context — used to detect the unmapped-shop 'Map to bar' action
+  // (context_json.category === 'unmapped_shop') without a dedicated field.
+  context_json: Record<string, unknown>
 }
 interface AlertSidebarProps {
   open: boolean
@@ -231,12 +237,14 @@ interface AlertSidebarProps {
   alerts: AlertSidebarAlert[]
   acknowledged: Set<string>
   onAcknowledge: (id: string) => void
+  eventId: string
 }
 
-function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: AlertSidebarProps) {
+function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eventId }: AlertSidebarProps) {
   const unackedCount = alerts.filter(
     (a) => a.lifecycle_state === 'active' && !acknowledged.has(a.id),
   ).length
+  const [mappingAlert, setMappingAlert] = useState<AlertSidebarAlert | null>(null)
 
   return (
     <div className={[
@@ -332,20 +340,45 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge }: A
                   {alert.message}
                 </p>
 
-                {!acked ? (
-                  <button
-                    onClick={() => onAcknowledge(alert.id)}
-                    className="text-[10px] font-semibold text-[#4A5568] border border-[#E2E8F0] bg-[#F7FAFC] hover:bg-[#EDF2F7] px-2.5 py-1 rounded-md transition-colors"
-                  >
-                    Acknowledge
-                  </button>
-                ) : (
-                  <span className="text-[10px] text-[#4A5568] italic">Acknowledged</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!acked ? (
+                    <button
+                      onClick={() => onAcknowledge(alert.id)}
+                      className="text-[10px] font-semibold text-[#4A5568] border border-[#E2E8F0] bg-[#F7FAFC] hover:bg-[#EDF2F7] px-2.5 py-1 rounded-md transition-colors"
+                    >
+                      Acknowledge
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-[#4A5568] italic">Acknowledged</span>
+                  )}
+
+                  {/* Phantom-bar fix (Jul-19 sprint): unmapped Slesh shop_id
+                      alerts get an inline resolve action instead of just
+                      Acknowledge. */}
+                  {alert.alert_type === 'system' &&
+                    alert.context_json?.category === 'unmapped_shop' && (
+                      <button
+                        onClick={() => setMappingAlert(alert)}
+                        className="text-[10px] font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-2.5 py-1 rounded-md transition-colors"
+                      >
+                        Map to bar
+                      </button>
+                    )}
+                </div>
               </div>
             )
           })}
         </div>
+      )}
+
+      {mappingAlert && (
+        <MapShopToBarModal
+          isOpen
+          onClose={() => setMappingAlert(null)}
+          eventId={eventId}
+          pendingMappingId={String(mappingAlert.context_json?.pending_mapping_id ?? '')}
+          sleshShopId={String(mappingAlert.context_json?.slesh_shop_id ?? '')}
+        />
       )}
     </div>
   )
@@ -532,6 +565,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
     // carry lifecycle_state so the filter can distinguish active from
     // resolved/expired alerts (prevents counting auto-resolved as unacked)
     lifecycle_state: row.lifecycle_state,
+    context_json:    row.context_json,
   }))
   // reconciliation is used by BarDetailOverlay in v1.1 — prefetched here so
   // it's warm when the overlay opens
@@ -836,6 +870,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           alerts={alerts}
           acknowledged={acknowledged}
           onAcknowledge={handleAcknowledge}
+          eventId={eventId}
         />
         {sidebarOpen && (
           <div className="border-l border-[#E2E8F0] bg-white p-3 w-80">

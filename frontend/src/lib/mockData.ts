@@ -129,7 +129,8 @@ export interface Alert {
   /** ISO time string e.g. "22:14" or full ISO datetime */
   created_at: string
   bar_name: string
-  bar_id: string
+  /** Nullable (Jul-19 sprint): unmapped-shop alerts have no bar. */
+  bar_id: string | null
   severity: AlertSeverity
   /** Matches backend column alert_type */
   alert_type: AlertType

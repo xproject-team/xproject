@@ -92,10 +92,14 @@ class Alert(Base):
         ForeignKey("events.id", ondelete="CASCADE"),
         nullable=False,
     )
+    # Nullable (migration aa9, Jul-19 sprint): "unmapped Slesh shop"
+    # alerts (alert_type='system', context_json.category='unmapped_shop')
+    # have no bar by definition — that's the whole condition being
+    # reported. Every other alert type still always sets this.
     bar_id = Column(
         UUID(as_uuid=True),
         ForeignKey("bars.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     # product_id is nullable: bar-level anomalies (e.g. revenue shortfall)
     # do not apply to a specific product. SET NULL on product delete so we

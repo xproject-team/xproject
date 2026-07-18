@@ -30,7 +30,9 @@ export interface AlertRow {
   id: string
   tenant_id: string
   event_id: string
-  bar_id: string
+  // Nullable (Jul-19 sprint, phantom-bar fix): alert_type='system' alerts
+  // with context_json.category='unmapped_shop' have no bar by definition.
+  bar_id: string | null
   product_id: string | null
   alert_type: AlertType
   severity: AlertSeverity
@@ -172,6 +174,39 @@ export function useAcknowledgeAlert() {
     },
     // On success, invalidate every alerts query — safe and simple. TanStack
     // Query refetches only the queries currently mounted by a component.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: alertsKeys.all })
+    },
+  })
+}
+
+// ─── Phantom-bar defensive fix (Jul-19 sprint) ────────────────────────────────
+// Resolves an unmapped Slesh shop_id ("Map to bar" alert action). See
+// backend app/modules/pos/pending_shop_mappings_service.py.
+
+export interface ResolvePendingShopMappingPayload {
+  eventId: string
+  pendingId: string
+  barId: string
+}
+
+export interface ResolvePendingShopMappingResponse {
+  pending_id: string
+  bar_id: string
+  orders_replayed: number
+  lines_replayed: number
+}
+
+export function useResolvePendingShopMapping() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ eventId, pendingId, barId }: ResolvePendingShopMappingPayload) => {
+      const { data } = await api.post<ResolvePendingShopMappingResponse>(
+        `/events/${eventId}/pending-shop-mappings/${pendingId}/resolve`,
+        { bar_id: barId },
+      )
+      return data
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: alertsKeys.all })
     },

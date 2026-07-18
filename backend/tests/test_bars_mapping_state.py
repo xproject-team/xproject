@@ -78,7 +78,30 @@ async def _make_named_bar(session, tenant_id, event_id, *, name, bar_type="drink
     return bar
 
 
+async def _ensure_stub_bar(session, tenant_id, event_id, shop_id: str) -> Bar:
+    """Mirrors what order_ingester._resolve_bar used to auto-create for an
+    unmapped shop_id (Jul-19 sprint removed that — see order_ingester.py).
+    These tests need a 'stub' bar (auto_created=True, no wizard name) to
+    exist BEFORE ingesting sales against it, since the ingester no longer
+    creates one on the fly."""
+    existing = (await session.execute(
+        select(Bar).where(Bar.tenant_id == tenant_id, Bar.slesh_negozio_id == shop_id)
+    )).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    display = f"{shop_id[:8]}…{shop_id[-4:]}" if len(shop_id) > 12 else shop_id
+    bar = Bar(
+        tenant_id=tenant_id, event_id=event_id, name=display,
+        slesh_negozio_id=shop_id, bar_type="drinks",
+        is_active=True, auto_created=True,
+    )
+    session.add(bar)
+    await session.flush()
+    return bar
+
+
 async def _ingest_sales(session, tenant_id, event_id, *, shop_id, prod_ext, n):
+    await _ensure_stub_bar(session, tenant_id, event_id, shop_id)
     svc = StockTransactionService(session)
     for i in range(n):
         order = _Order(

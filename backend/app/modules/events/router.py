@@ -61,6 +61,18 @@ from app.modules.events.polling_health_service import (
     get_event_or_none,
     get_polling_health,
 )
+from app.modules.events.pending_shop_mappings_schemas import (
+    PendingShopMappingListResponse,
+    PendingShopMappingResponse,
+    ResolvePendingShopMappingRequest,
+    ResolvePendingShopMappingResponse,
+)
+from app.modules.pos.pending_shop_mappings_service import (
+    BarNotFoundError as _PendingBarNotFoundError,
+    PendingMappingAlreadyResolvedError,
+    PendingMappingNotFoundError,
+)
+import app.modules.pos.pending_shop_mappings_service as pending_shop_mappings_service
 from app.modules.events.menu_performance_schemas import EventMenuPerformance
 from app.modules.events.menu_performance_service import MenuPerformanceService
 from app.modules.events.reconciliation_service import compute_report
@@ -853,6 +865,75 @@ async def get_event_polling_health(
             detail="No polling state for this event",
         )
     return health
+
+
+# ─── Phantom-bar defensive fix (Jul-19 sprint) ────────────────────────────────
+
+@router.get(
+    "/{event_id}/pending-shop-mappings",
+    response_model=PendingShopMappingListResponse,
+)
+async def list_event_pending_shop_mappings(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> PendingShopMappingListResponse:
+    """Unresolved Slesh shop_ids parked by the order ingester, oldest first.
+
+    Backs the 'Map to bar' alert action's dropdown context and any
+    dedicated pending-mappings list view. See
+    app/modules/pos/pending_shop_mappings_service.py.
+    """
+    event = await get_event_or_none(db, tenant_id, event_id)
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    rows = await pending_shop_mappings_service.list_pending(db, tenant_id, event_id)
+    items = [PendingShopMappingResponse.model_validate(r) for r in rows]
+    return PendingShopMappingListResponse(items=items, total=len(items))
+
+
+@router.post(
+    "/{event_id}/pending-shop-mappings/{pending_id}/resolve",
+    response_model=ResolvePendingShopMappingResponse,
+)
+async def resolve_event_pending_shop_mapping(
+    event_id: UUID,
+    pending_id: UUID,
+    body: ResolvePendingShopMappingRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> ResolvePendingShopMappingResponse:
+    """Map a parked Slesh shop_id to a bar and replay its parked orders.
+
+    Sets bar.slesh_negozio_id, marks the pending row resolved, and
+    replays every parked order through the normal ingest_order() path
+    (same recipe cascade, same idempotency guarantees as a live order).
+    """
+    try:
+        summary = await pending_shop_mappings_service.resolve(
+            db, tenant_id=tenant_id, event_id=event_id,
+            pending_id=pending_id, bar_id=body.bar_id,
+        )
+    except PendingMappingNotFoundError:
+        raise HTTPException(404, "Pending shop mapping not found")
+    except PendingMappingAlreadyResolvedError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This pending shop mapping has already been resolved",
+        )
+    except _PendingBarNotFoundError:
+        raise HTTPException(404, "Target bar not found in this tenant")
+
+    return ResolvePendingShopMappingResponse(
+        pending_id=pending_id,
+        bar_id=body.bar_id,
+        orders_replayed=summary["orders_replayed"],
+        lines_replayed=summary["lines_replayed"],
+    )
 
 
 @router.get(
