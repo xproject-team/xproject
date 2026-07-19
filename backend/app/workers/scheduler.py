@@ -139,4 +139,12 @@ class WorkerSettings:
     # clarity and future tuning).
     max_jobs = 10                  # Concurrent job slots per worker
     job_timeout = 60               # seconds — evaluations are ~1-3 sec each
-    keep_result = 3600             # Keep job results in Redis for 1h
+    # Must stay BELOW the shortest cron interval. arq's enqueue_job()
+    # returns None when a job's _job_id still has a result key, so a
+    # keep_result longer than the poll cadence silently blocks every
+    # subsequent enqueue. At 3600 with a 60s Slesh poll this produced
+    # one poll per hour instead of one per minute — ingestion looked
+    # "stalled" on the dashboard for the whole of Sundance 19 Jul until
+    # the key was deleted by hand. Results are only read for log
+    # counters, so a short window costs nothing.
+    keep_result = 30               # seconds
