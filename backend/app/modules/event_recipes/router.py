@@ -37,6 +37,7 @@ from app.modules.event_recipes.service import (
     EventRecipeDuplicateError,
     EventRecipeNotFoundError,
     EventRecipeService,
+    ProductNotFoundError,
     SupplierProductNotFoundError,
 )
 
@@ -102,6 +103,11 @@ async def create_event_recipe(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"error": "supplier_product_not_found", "message": str(e)},
+        )
+    except ProductNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e),
         )
     except EventRecipeDuplicateError as e:
         raise HTTPException(

@@ -44,6 +44,16 @@ class EventRecipeDuplicateError(Exception):
         )
 
 
+class ProductNotFoundError(Exception):
+    """drink_name has no matching catalog Product. product_id is
+    NOT NULL since migration aa6, so the row cannot be inserted.
+    Maps to 422."""
+
+    def __init__(self, drink_name: str) -> None:
+        self.drink_name = drink_name
+        super().__init__(f"No catalog product named '{drink_name}'")
+
+
 class BarNotFoundError(Exception):
     """bar_id does not exist, belongs to a different tenant, or a
     different event. Maps to 422 error='bar_not_found'."""
@@ -136,7 +146,12 @@ class EventRecipeService:
         ):
             raise EventRecipeDuplicateError(data.drink_name)
 
-        row = await self.repo.create(tenant_id, data)
+        # product_id is NOT NULL since migration aa6 (see bulk_create).
+        prod = await self.repo.get_product_by_name(tenant_id, data.drink_name)
+        if prod is None:
+            raise ProductNotFoundError(data.drink_name)
+
+        row = await self.repo.create(tenant_id, data, prod.id)
         await self.db.commit()
         return EventRecipeRow(
             id=row.id,
@@ -201,6 +216,7 @@ class EventRecipeService:
         errors: list[EventRecipeItemError] = []
         bars_by_id = {}
         supplier_products_by_id = {}
+        products_by_name: dict[str, UUID] = {}
 
         for i, r in enumerate(data.rows):
             if r.event_id != data.event_id:
@@ -231,6 +247,21 @@ class EventRecipeService:
                 ))
                 continue
 
+            # product_id is NOT NULL since migration aa6 — resolve the
+            # drink_name to its catalog Product before inserting, instead
+            # of relying on the free-text slesh_category join that drifted
+            # apart and caused the Jul-5 depletion outage.
+            dn = r.drink_name.strip().lower()
+            if dn not in products_by_name:
+                prod = await self.repo.get_product_by_name(tenant_id, r.drink_name)
+                if prod is None:
+                    errors.append(EventRecipeItemError(
+                        index=i,
+                        error=f"no catalog product named '{r.drink_name}'",
+                    ))
+                    continue
+                products_by_name[dn] = prod.id
+
             key = (r.drink_name.strip().lower(), r.bar_id, r.supplier_product_id)
             if key in existing_keys or key in seen_in_batch:
                 errors.append(EventRecipeItemError(
@@ -244,7 +275,9 @@ class EventRecipeService:
 
         created: list[EventRecipeRow] = []
         for r in data.rows:
-            row = await self.repo.create(tenant_id, r)
+            row = await self.repo.create(
+                tenant_id, r, products_by_name[r.drink_name.strip().lower()],
+            )
             created.append(EventRecipeRow(
                 id=row.id,
                 event_id=row.event_id,

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.bars.models import Bar
 from app.modules.event_storage.models import EventCategoryIngredient, SupplierProduct
+from app.modules.products.models import Product
 from app.modules.event_recipes.schemas import EventRecipeCreate, EventRecipePatch
 
 
@@ -42,6 +43,36 @@ class EventRecipeRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_product_by_name(
+        self, tenant_id: UUID, name: str,
+    ) -> Product | None:
+        """Resolve a recipe's drink_name to its catalog Product.
+
+        product_id (migration aa5, NOT NULL since aa6) replaces the old
+        free-text slesh_category join. Matched case-insensitively because
+        Slesh category strings and Product.name are maintained separately
+        and differ in casing.
+        """
+        stmt = (
+            select(Product)
+            .where(
+                Product.tenant_id == tenant_id,
+                func.lower(Product.name) == name.strip().lower(),
+                Product.is_archived.is_(False),
+            )
+            # 9 drink names currently have two live duplicate rows each
+            # (prod, Jul 2026). Nothing reads
+            # EventCategoryIngredient.product_id yet — the depletion path
+            # still joins on slesh_category — so either row satisfies the
+            # aa6 NOT NULL constraint. Order deterministically so repeated
+            # saves stay stable rather than alternating between the pair.
+            # Dedupe the catalog post-Sundance, then revisit.
+            .order_by(Product.created_at.asc(), Product.id.asc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
 
     async def get_supplier_product(
         self, tenant_id: UUID, supplier_product_id: UUID,
@@ -96,12 +127,14 @@ class EventRecipeRepository:
 
     async def create(
         self, tenant_id: UUID, data: EventRecipeCreate,
+        product_id: UUID | None = None,
     ) -> EventCategoryIngredient:
         """Insert a new row. Flushes to assign id; service owns commit."""
         row = EventCategoryIngredient(
             tenant_id=tenant_id,
             event_id=data.event_id,
             slesh_category=data.drink_name.strip(),
+            product_id=product_id,
             bar_id=data.bar_id,
             supplier_product_id=data.supplier_product_id,
             ml_per_sale=Decimal(str(data.ml_per_sale)),
