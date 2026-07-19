@@ -183,7 +183,13 @@ export function selectBarKpis(input: SelectorInput): BarKpi[] {
       0,
     )
     const fiscalEurForBar = foodFiscalRevenueByBarId?.[bar.id]
-    const revenue_cents = bar.bar_type === 'food' && fiscalEurForBar !== undefined
+    // 2026-07-19: use fiscal revenue for EVERY bar, not just food. The
+    // stock-transaction rollup only sees drinks that have a recipe, so a
+    // drinks bar under-reports by exactly the share of its sales with no
+    // recipe configured — Bar Main showed EUR 174 against EUR 500 actually
+    // taken at Sundance 19 Jul. event_orders is the money of record;
+    // stock transactions are for depletion, not revenue.
+    const revenue_cents = fiscalEurForBar !== undefined
       ? Math.round(fiscalEurForBar * 100)
       : stockRevenue
 

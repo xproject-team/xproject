@@ -662,6 +662,13 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   for (const s of revBreakdownQuery.data?.sales.food_by_bar ?? []) {
     foodFiscalByBar[s.bar_id] = parseFloat(s.revenue_eur)
   }
+  // 2026-07-19: drinks bars too. Their card revenue was rolled up from
+  // stock_transactions, which only exist for drinks that have a recipe —
+  // Bar Main read EUR 174 against EUR 500 actually taken. event_orders is
+  // the money of record for every bar type.
+  for (const s of revBreakdownQuery.data?.sales.drinks_by_bar ?? []) {
+    foodFiscalByBar[s.bar_id] = parseFloat(s.revenue_eur)
+  }
   const barKpis: BarKpi[] = selectBarKpis({ bars, barStock, transactions, products, burnRates: burnRatesQuery.data ?? [], allocations: barAllocationsQ.data ?? [], eventFoodRevenueSharePct: currentEvent?.food_revenue_share_pct ?? null, foodFiscalRevenueByBarId: foodFiscalByBar })
 
   // Build per-bar storage lookup — used by BarCard to render the
