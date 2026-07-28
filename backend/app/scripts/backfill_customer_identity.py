@@ -315,6 +315,17 @@ def _compute_updates(
     unit tests exercise directly, independent of Slesh network access or
     a live database.
     """
+    # Chunk-boundary overlap can hand back the same order twice (an order
+    # whose created_at lands exactly on a chunk edge). Dedupe by
+    # slesh_order_id before diffing — a duplicate would otherwise double
+    # up in matched/would_update/skipped_for_drift and queue the same
+    # UPDATE twice (harmless but sloppy; fix it, don't rely on it being
+    # a no-op).
+    deduped: dict[str, _FetchedOrder] = {}
+    for fo in fetched:
+        deduped.setdefault(fo.slesh_order_id, fo)
+    fetched = list(deduped.values())
+
     updates: list[tuple[EventOrder, dict]] = []
     for fo in fetched:
         if fo.customer_email:

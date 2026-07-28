@@ -295,6 +295,23 @@ def test_existing_raw_extras_without_user_key_skips_drift_check():
     assert updates[0][1] == {"customer_email": "jane@example.com"}
 
 
+def test_duplicate_fetched_order_id_deduped_before_diffing():
+    """Chunk-boundary overlap can hand back the same order twice. Must not
+    double-count matched/would_update or queue the same UPDATE twice."""
+    row = _FakeEventOrder(customer_email=None)
+    report = BackfillReport()
+    fetched = [
+        _fo("ord-1", customer_email="jane@example.com"),
+        _fo("ord-1", customer_email="jane@example.com"),  # same order, re-fetched
+    ]
+
+    updates = _compute_updates(fetched, existing={"ord-1": row}, report=report)
+
+    assert report.matched_existing_order == 1
+    assert report.would_update == 1
+    assert len(updates) == 1
+
+
 def test_drift_examples_capped_at_five_and_show_truncated_ids():
     report = BackfillReport()
     rows = {
