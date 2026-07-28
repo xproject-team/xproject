@@ -55,6 +55,7 @@ class _Shop:
 class _Payment:
     type: str | None
     status: str | None = None
+    payment_token: str | None = None  # physical wristband/card credential
 
 
 @dataclass
@@ -76,6 +77,7 @@ class _Order:
     status: str = "completed"
     operator: Any = None       # Phase 3: _User | str | None
     user: Any = None           # wristband holder, currently unused by tests
+    customer_email: str | None = None
     created_at: int = 0        # ms since epoch, Slesh's format
 
 
@@ -444,5 +446,177 @@ async def test_auto_created_bar_with_mixed_products_stays_drinks():
         assert bar.bar_type == "drinks", (
             f"expected bar_type='drinks' (mixed sales seen), got {bar.bar_type!r}"
         )
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# customer_email / payment_token columns (Aug-2 identity task)
+# ─────────────────────────────────────────────────────────────────────
+from app.modules.events.models import EventOrder
+
+
+async def _make_bar_with_shop(session, tenant_id, event_id, *, shop_id: str) -> Bar:
+    bar = await make_bar(session, tenant_id, event_id)
+    bar.slesh_negozio_id = shop_id
+    await session.flush()
+    return bar
+
+
+async def test_ingest_order_persists_customer_email_and_payment_token():
+    """Both new columns are populated from the order/payment payload,
+    independently of raw_extras.user (the pre-existing Mongo id)."""
+    SHOP_ID = "6650email1234def5678e2cc"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-drink-1")
+        bar = await _make_bar_with_shop(session, tenant.id, ev.id, shop_id=SHOP_ID)
+
+        order = _Order(
+            id="o-email-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-1")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="token", payment_token="wristband-token-abc"),
+            user="6650user1234def5678e2cc",
+            customer_email="Jane.Doe@Example.com",
+        )
+        svc = StockTransactionService(session)
+        await ingest_order(
+            db=session, order=order, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        row = await session.scalar(
+            select(EventOrder).where(EventOrder.slesh_order_id == "o-email-1")
+        )
+        assert row is not None
+        assert row.customer_email == "jane.doe@example.com"  # lowercased + trimmed
+        assert row.payment_token == "wristband-token-abc"
+        assert row.raw_extras["user"] == {"_id": "6650user1234def5678e2cc"}
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_ingest_order_customer_email_null_for_guest_orders():
+    """Cash guest, never registered: both new columns stay NULL — expected,
+    not an error."""
+    SHOP_ID = "6650guest1234def5678e2dd"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-drink-2")
+        await _make_bar_with_shop(session, tenant.id, ev.id, shop_id=SHOP_ID)
+
+        order = _Order(
+            id="o-guest-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-2")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="cash"),
+        )
+        svc = StockTransactionService(session)
+        await ingest_order(
+            db=session, order=order, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        row = await session.scalar(
+            select(EventOrder).where(EventOrder.slesh_order_id == "o-guest-1")
+        )
+        assert row is not None
+        assert row.customer_email is None
+        assert row.payment_token is None
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_ingest_order_reingest_does_not_clobber_identity_columns():
+    """A later poll (e.g. a refund replay) that no longer carries the email
+    must not blank out — or overwrite with a different value — what an
+    earlier poll already captured. Every other event_orders column keeps
+    the existing always-overwrite behavior; only the two identity columns
+    are coalesce-only."""
+    SHOP_ID = "6650replay1234def5678e2ee"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-drink-3")
+        await _make_bar_with_shop(session, tenant.id, ev.id, shop_id=SHOP_ID)
+        svc = StockTransactionService(session)
+
+        first = _Order(
+            id="o-replay-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-3", status="completed")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="token", payment_token="tok-original"),
+            customer_email="first@example.com",
+        )
+        await ingest_order(
+            db=session, order=first, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        # Re-poll of the same order: refund status changed on the line, and
+        # this time the payload has no email/token (Slesh sometimes omits
+        # them on a refund event) plus a DIFFERENT token, to prove coalesce
+        # protects the first-seen value either way.
+        second = _Order(
+            id="o-replay-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-3", status="refunded")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="token", payment_token="tok-different"),
+            customer_email=None,
+        )
+        await ingest_order(
+            db=session, order=second, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        row = await session.scalar(
+            select(EventOrder).where(EventOrder.slesh_order_id == "o-replay-1")
+        )
+        assert row is not None
+        assert row.customer_email == "first@example.com", "identity column was clobbered on re-ingest"
+        assert row.payment_token == "tok-original", "identity column was overwritten on re-ingest"
+        # Sanity: non-identity columns DID update, proving this is a
+        # targeted coalesce, not a stuck row.
+        assert row.refunded_line_count == 1
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_ingest_order_reingest_fills_previously_null_identity_columns():
+    """The inverse of the clobber test: if the FIRST poll had no email/token
+    and a LATER poll does, the columns must get populated (not stay NULL
+    forever just because they were once empty)."""
+    SHOP_ID = "6650fill1234def5678e2ff"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-drink-4")
+        await _make_bar_with_shop(session, tenant.id, ev.id, shop_id=SHOP_ID)
+        svc = StockTransactionService(session)
+
+        first = _Order(
+            id="o-fill-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-4")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="cash"),
+        )
+        await ingest_order(
+            db=session, order=first, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        second = _Order(
+            id="o-fill-1",
+            cart=[_CartLine(id="l-1", product="ext-drink-4")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="token", payment_token="tok-later"),
+            customer_email="later@example.com",
+        )
+        await ingest_order(
+            db=session, order=second, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        row = await session.scalar(
+            select(EventOrder).where(EventOrder.slesh_order_id == "o-fill-1")
+        )
+        assert row is not None
+        assert row.customer_email == "later@example.com"
+        assert row.payment_token == "tok-later"
 
         await delete_tenant_cascade(session, tenant.id)

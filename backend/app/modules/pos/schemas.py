@@ -192,9 +192,13 @@ class Payment(_SleshModel):
     tap-to-pay, and mixed. The Wristband Activity feature in B8 derives
     its dataset from orders where payment.type == 'token'.
     """
-    type:    str = Field(alias="_type")  # stripe | adyen | token | cash | card | tap-to-pay | mixed
-    status:  str | None = None           # successful | refunded | pending
-    amount:  int | None = None           # cents
+    type:            str = Field(alias="_type")  # stripe | adyen | token | cash | card | tap-to-pay | mixed
+    status:          str | None = None           # successful | refunded | pending
+    amount:          int | None = None           # cents
+    # The physical wristband/card credential backing a token payment.
+    # Distinct from `User.id` — comparing the two is how we learn whether
+    # one band maps to one person or a shared group wallet.
+    payment_token:   str | None = Field(alias="_paymentToken", default=None)
 
 
 class User(_SleshModel):
@@ -247,6 +251,11 @@ class Order(_SleshModel):
     created_at:   int = Field(alias="_createdAt")        # Unix ms
     payed_at:     int | None = Field(alias="_payedAt", default=None)
     status:       str = "confirmed"
+    # Top-level customer email — present on registered-account orders,
+    # absent for guest/cash orders. Stronger cross-event anchor than
+    # user.id since customers reuse an email across Slesh brands/events
+    # more reliably than they reuse a Mongo account.
+    customer_email: str | None = Field(alias="_customerEmail", default=None)
 
     # Shop is normally present but some order types may omit it
     shop:         ShopRef | str | None = Field(alias="_shop", default=None)

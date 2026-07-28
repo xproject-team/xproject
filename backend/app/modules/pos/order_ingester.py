@@ -290,6 +290,17 @@ async def ingest_order(
     elif isinstance(_u, str):
         _raw_extras["user"] = {"_id": _u}
 
+    # Customer identity columns — lifted out of the raw payload so they're
+    # queryable/joinable. NULL for guests who paid cash or never
+    # registered; that is expected, not an error.
+    _customer_email = getattr(order, "customer_email", None)
+    if _customer_email:
+        _customer_email = _customer_email.strip().lower() or None
+
+    _payment_token = None
+    if order.payment is not None:
+        _payment_token = getattr(order.payment, "payment_token", None)
+
     _eo_values = dict(
         tenant_id=tenant_id,
         event_id=event_id,
@@ -311,15 +322,29 @@ async def ingest_order(
         created_at_slesh=_dt_datetime.fromtimestamp(
             getattr(order, "created_at", 0) / 1000, tz=_dt_timezone.utc,
         ),
+        customer_email=_customer_email,
+        payment_token=_payment_token,
     )
-    _eo_stmt = (
-        _pg_insert(_EventOrder)
-        .values(**_eo_values)
-        .on_conflict_do_update(
-            index_elements=["tenant_id", "slesh_order_id"],
-            set_={k: v for k, v in _eo_values.items()
-                  if k not in ("tenant_id", "slesh_order_id", "event_id")},
-        )
+    _eo_insert = _pg_insert(_EventOrder).values(**_eo_values)
+    _eo_update_set = {
+        k: v for k, v in _eo_values.items()
+        if k not in ("tenant_id", "slesh_order_id", "event_id")
+    }
+    # Identity columns are coalesce-only: once captured, a later poll (or
+    # the backfill script) must never clobber an existing value with NULL
+    # or with a different one, since the two are the only durable customer
+    # anchors we have. Every other column keeps the existing always-
+    # overwrite behavior (they reflect current order state, e.g. refund
+    # counts, which legitimately change between polls).
+    _eo_update_set["customer_email"] = func.coalesce(
+        _EventOrder.customer_email, _eo_insert.excluded.customer_email,
+    )
+    _eo_update_set["payment_token"] = func.coalesce(
+        _EventOrder.payment_token, _eo_insert.excluded.payment_token,
+    )
+    _eo_stmt = _eo_insert.on_conflict_do_update(
+        index_elements=["tenant_id", "slesh_order_id"],
+        set_=_eo_update_set,
     )
     await db.execute(_eo_stmt)
 
