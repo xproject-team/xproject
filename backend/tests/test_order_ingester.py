@@ -588,3 +588,68 @@ async def test_ingest_order_uses_supplied_cache(patched_lookups):
 
     assert "shop_1" in cache.bars
     assert "prod_1" in cache.products
+
+
+# ─── extract_identity_fields — the shared function the backfill script
+# also calls. Exercised here against the REAL Pydantic schema (not the
+# Fake* dataclasses) so it also proves the _customerEmail / _paymentToken
+# alias wiring end-to-end. ────────────────────────────────────────────
+
+from app.modules.pos.order_ingester import extract_identity_fields
+from app.modules.pos.schemas import Order as RealOrder
+
+
+def _real_order(**overrides) -> RealOrder:
+    base = dict(
+        _id="ord_1", _type="experience", _createdAt=1700000000000,
+        cart=[],
+    )
+    base.update(overrides)
+    return RealOrder.model_validate(base)
+
+
+def test_extract_identity_fields_full_payload():
+    order = _real_order(
+        _customerEmail="  Jane.Doe@Example.COM  ",
+        payment={"_type": "token", "_paymentToken": "tok-abc"},
+        user="6650user1234def5678e2f99",
+        operator={"_id": "6650op1234def5678e2f88", "_type": "operator"},
+    )
+    identity = extract_identity_fields(order)
+
+    assert identity.customer_email == "jane.doe@example.com"
+    assert identity.payment_token == "tok-abc"
+    assert identity.raw_extras_user == {"_id": "6650user1234def5678e2f99"}
+    assert identity.raw_extras_operator["id"] == "6650op1234def5678e2f88"
+
+
+def test_extract_identity_fields_guest_order_all_none():
+    """No email, no payment object, no user/operator — every field is
+    None, and nothing raises."""
+    order = _real_order()
+    identity = extract_identity_fields(order)
+
+    assert identity.customer_email is None
+    assert identity.payment_token is None
+    assert identity.raw_extras_user is None
+    assert identity.raw_extras_operator is None
+
+
+def test_extract_identity_fields_cash_payment_no_token():
+    order = _real_order(payment={"_type": "cash"})
+    identity = extract_identity_fields(order)
+    assert identity.payment_token is None
+
+
+def test_extract_identity_fields_email_whitespace_only_becomes_none():
+    order = _real_order(_customerEmail="   ")
+    identity = extract_identity_fields(order)
+    assert identity.customer_email is None
+
+
+def test_extract_identity_fields_bare_string_user_id():
+    """user arrives as a bare Mongo id string (no populatedField requested
+    from Slesh) — the common production case."""
+    order = _real_order(user="6650bare1234def5678e2f77")
+    identity = extract_identity_fields(order)
+    assert identity.raw_extras_user == {"_id": "6650bare1234def5678e2f77"}

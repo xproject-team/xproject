@@ -149,6 +149,55 @@ class _LookupCache:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Identity field extraction — THE single source of truth
+# ─────────────────────────────────────────────────────────────────────
+# Both the live poller (ingest_order, below) and the historical identity
+# backfill (app/scripts/backfill_customer_identity.py) call this function.
+# Do not re-derive this mapping anywhere else — a backfill with its own
+# parallel copy of the extraction logic proves nothing about whether the
+# live path actually works.
+@dataclass
+class IdentityFields:
+    """Everything derivable from a parsed Slesh Order about who made it."""
+    raw_extras_user:     dict | None   # -> event_orders.raw_extras['user']
+    raw_extras_operator: dict | None   # -> event_orders.raw_extras['operator']
+    customer_email:      str  | None   # -> event_orders.customer_email (normalized)
+    payment_token:       str  | None   # -> event_orders.payment_token
+
+
+def extract_identity_fields(order: "Order") -> IdentityFields:
+    """Pull operator/user (for raw_extras) and the two identity columns
+    out of a parsed Slesh Order. user/operator may arrive as a populated
+    object or a bare string id, depending on Slesh's `populatedField`
+    query param — handle both the same way we always have.
+
+    customer_email is normalized (lowercase + trimmed) here, at the one
+    point every caller goes through — never normalize it anywhere else.
+    """
+    def _as_extras_blob(value) -> dict | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return {"_id": value}
+        return value.model_dump(mode="json", exclude_none=True)
+
+    customer_email = getattr(order, "customer_email", None)
+    if customer_email:
+        customer_email = customer_email.strip().lower() or None
+
+    payment_token = None
+    if order.payment is not None:
+        payment_token = getattr(order.payment, "payment_token", None)
+
+    return IdentityFields(
+        raw_extras_user=_as_extras_blob(getattr(order, "user", None)),
+        raw_extras_operator=_as_extras_blob(getattr(order, "operator", None)),
+        customer_email=customer_email,
+        payment_token=payment_token,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Result type
 # ─────────────────────────────────────────────────────────────────────
 @dataclass
@@ -278,28 +327,12 @@ async def ingest_order(
     # way to link a sale back to the device that made it — bar_devices
     # rows never lit up. Now stored as a small jsonb blob; full raw
     # order doc is intentionally NOT stored to keep row size manageable.
+    _identity = extract_identity_fields(order)
     _raw_extras = {}
-    _op = getattr(order, "operator", None)
-    if _op is not None and not isinstance(_op, str):
-        _raw_extras["operator"] = _op.model_dump(mode="json", exclude_none=True)
-    elif isinstance(_op, str):
-        _raw_extras["operator"] = {"_id": _op}
-    _u = getattr(order, "user", None)
-    if _u is not None and not isinstance(_u, str):
-        _raw_extras["user"] = _u.model_dump(mode="json", exclude_none=True)
-    elif isinstance(_u, str):
-        _raw_extras["user"] = {"_id": _u}
-
-    # Customer identity columns — lifted out of the raw payload so they're
-    # queryable/joinable. NULL for guests who paid cash or never
-    # registered; that is expected, not an error.
-    _customer_email = getattr(order, "customer_email", None)
-    if _customer_email:
-        _customer_email = _customer_email.strip().lower() or None
-
-    _payment_token = None
-    if order.payment is not None:
-        _payment_token = getattr(order.payment, "payment_token", None)
+    if _identity.raw_extras_operator is not None:
+        _raw_extras["operator"] = _identity.raw_extras_operator
+    if _identity.raw_extras_user is not None:
+        _raw_extras["user"] = _identity.raw_extras_user
 
     _eo_values = dict(
         tenant_id=tenant_id,
@@ -322,8 +355,8 @@ async def ingest_order(
         created_at_slesh=_dt_datetime.fromtimestamp(
             getattr(order, "created_at", 0) / 1000, tz=_dt_timezone.utc,
         ),
-        customer_email=_customer_email,
-        payment_token=_payment_token,
+        customer_email=_identity.customer_email,
+        payment_token=_identity.payment_token,
     )
     _eo_insert = _pg_insert(_EventOrder).values(**_eo_values)
     _eo_update_set = {
