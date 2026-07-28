@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum as PyEnum
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, Time, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, SmallInteger, String, Text, Time, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -186,6 +186,8 @@ class EventOrder(TenantScopedModel):
             "ix_event_orders_event_type",
             "event_id", "order_type",
         ),
+        Index("ix_event_orders_customer_email", "customer_email"),
+        Index("ix_event_orders_payment_token", "payment_token"),
     )
 
     event_id: Mapped[UUID] = mapped_column(
@@ -221,6 +223,14 @@ class EventOrder(TenantScopedModel):
 
     # Safety net — full Slesh __* dict for fields we do not model yet
     raw_extras: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # Customer identity — lifted out of raw_extras into queryable columns.
+    # customer_email is normalized (lowercase + trimmed) at write time in
+    # order_ingester.py, never here. payment_token is the physical
+    # wristband/card credential; compare it against raw_extras.user._id
+    # to learn whether a band maps 1:1 to a person or is a shared wallet.
+    customer_email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_token:  Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # When Slesh recorded the order
     created_at_slesh: Mapped[datetime] = mapped_column(
