@@ -36,6 +36,18 @@ live poller and this backfill are wrong together, and testing one tests
 both. A backfill with its own copy of the mapping logic would prove
 nothing about whether Sunday's live ingestion actually works.
 
+WHY THE FETCH WINDOW IS DERIVED FROM event_orders, NOT event.scheduled_at
+----------------------------------------------------------------------------
+A 2026-07-28 run against Jul-19 using [scheduled_at - 1h, scheduled_end_at
++ 1h] fetched 3,155 orders against an expected ~3,176 — a real gap, not
+truncation (0 truncation warnings). Root cause: event.scheduled_at
+(12:30 UTC) was LATER than the actual first order (10:37 UTC), so the
+window start cut off ~53 minutes of real orders. event.scheduled_at is
+not a reliable proxy for "when orders actually happened." The default
+window is instead [min(event_orders.created_at_slesh) - 3h,
+max(...) + 3h] for this event, queried fresh each run — this reproduced
+the full 3,176/3,176 exactly on re-test.
+
 WHY CHUNKED WINDOWS, NOT ONE BIG PULL
 --------------------------------------
 Slesh's `/order/brand-my` endpoint pages at 100 documents, and its `from`
@@ -56,13 +68,35 @@ UPDATE-only, and only on columns that are CURRENTLY NULL:
   - customer_email: set iff existing value IS NULL and Slesh has one.
   - payment_token:  set iff existing value IS NULL and Slesh has one.
   - raw_extras:     set iff existing value IS NULL (whole column), to
-                    {"user": ..., "operator": ...} — same shape
-                    order_ingester writes today. If raw_extras is
-                    already populated we never touch it, even to add a
-                    missing key; that's out of scope for this pass.
+                    {"user": ..., "operator": ..., "user_source": "backfill"}
+                    — same shape order_ingester writes today, plus a
+                    provenance marker. If raw_extras is already populated
+                    we never touch it, even to add a missing key; that's
+                    out of scope for this pass.
 Never touches fiscal_gross_cents, bar_id, or any other existing field.
 Matching is on (tenant_id, event_id, slesh_order_id) against the
 already-ingested event_orders row — this script never creates orders.
+
+DRIFT PROTECTION (2026-07-28 finding, load-bearing)
+-----------------------------------------------------
+A completeness audit found raw_extras.user._id is NOT stable under
+re-fetch: re-querying Slesh for an already-ingested order can return a
+DIFFERENT Mongo user id than what was captured live at ingestion time
+(~4-5% of matched orders on Jul-5/Jul-19). Financial fields do not do
+this — only `user` drifts.
+
+Consequence: when the existing row ALREADY has a trusted
+raw_extras.user._id (true for 100% of Jul-5/Jul-19, 2 rows on
+Sundance 14), this script will NOT write customer_email or
+payment_token unless the freshly-fetched user._id matches the stored
+one EXACTLY. A mismatch means this fetch's view of that order is
+unreliable, and nothing from it — including email/token — is trusted
+for that row. Mismatches are counted as `skipped_for_drift` and
+reported per event; they are not an error, they're expected at ~4-5%.
+When the existing row has NO stored user._id at all (Sundance 14's
+4,264 pre-Phase-3 rows), there is nothing to drift-check against, so
+this is a straight recovery: raw_extras, customer_email, and
+payment_token are all written directly.
 
 Spec: identity audit follow-up (customer_email / payment_token task).
 """
@@ -125,10 +159,12 @@ class BackfillReport:
     with_payment_token:        int = 0
     matched_existing_order:    int = 0
     would_update:              int = 0   # matched AND >=1 target column newly fillable
+    skipped_for_drift:         int = 0   # existing user_id present, fresh fetch disagrees
     updated:                   int = 0   # only non-zero in --execute
     truncation_warnings:       int = 0
     chunks_walked:             int = 0
     examples: list[dict] = field(default_factory=list)
+    drift_examples: list[dict] = field(default_factory=list)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -143,15 +179,16 @@ def _build_parser() -> argparse.ArgumentParser:
                         "silently truncated 15 of ~144 windows during peak hours "
                         "(observed up to 159 orders in a single 15-min window, "
                         "against the 100-doc page cap) and undercounted total "
-                        "orders by ~17%. 5 minutes produced 0 truncations. Re-check "
+                        "orders by ~17%%. 5 minutes produced 0 truncations. Re-check "
                         "this default against observed peak order rate for any new "
                         "event before trusting a larger value.")
     p.add_argument("--from-ts", default=None,
-                   help="Override window start (ISO 8601). Defaults to the event's "
-                        "scheduled_at minus a 1h safety buffer.")
+                   help="Override window start (ISO 8601). Defaults to this event's "
+                        "OWN min(created_at_slesh) minus a 3h safety buffer — see "
+                        "note below on why NOT event.scheduled_at.")
     p.add_argument("--to-ts", default=None,
-                   help="Override window end (ISO 8601). Defaults to the event's "
-                        "scheduled_end_at plus a 1h safety buffer.")
+                   help="Override window end (ISO 8601). Defaults to this event's "
+                        "OWN max(created_at_slesh) plus a 3h safety buffer.")
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true",
                        help="Report only. No writes to Postgres.")
@@ -217,6 +254,14 @@ async def _fetch_existing_orders(db, tenant_id: UUID, event_id: UUID) -> dict[st
     return {r.slesh_order_id: r for r in rows}
 
 
+def _existing_user_id(row: EventOrder) -> str | None:
+    if row.raw_extras and isinstance(row.raw_extras, dict):
+        u = row.raw_extras.get("user")
+        if u and u.get("_id"):
+            return u["_id"]
+    return None
+
+
 async def _fetch_from_slesh(
     *, brand_id: str, token: str, from_ts: datetime, to_ts: datetime,
     chunk: timedelta, report: BackfillReport,
@@ -264,10 +309,11 @@ def _compute_updates(
     report: BackfillReport,
 ) -> list[tuple[EventOrder, dict]]:
     """Pure diff: for each fetched order, decide what (if anything) an
-    --execute run would write. NULL-only, per-column — see module
-    docstring. Mutates `report`'s counters/examples; returns the write
-    plan. No I/O — this is the piece unit tests exercise directly,
-    independent of Slesh network access or a live database.
+    --execute run would write. NULL-only, per-column, PLUS the drift gate
+    (see module docstring "DRIFT PROTECTION"). Mutates `report`'s
+    counters/examples; returns the write plan. No I/O — this is the piece
+    unit tests exercise directly, independent of Slesh network access or
+    a live database.
     """
     updates: list[tuple[EventOrder, dict]] = []
     for fo in fetched:
@@ -281,17 +327,39 @@ def _compute_updates(
             continue
         report.matched_existing_order += 1
 
+        existing_uid = _existing_user_id(row)
+        fresh_uid = fo.raw_extras_user.get("_id") if fo.raw_extras_user else None
+
+        if existing_uid is not None and fresh_uid != existing_uid:
+            # This fetch's view of this order is unreliable (the ONE field
+            # we've proven drifts under re-fetch doesn't match what we
+            # already trust) — skip email/token/raw_extras for it entirely,
+            # don't cherry-pick "safe-looking" fields from an untrusted read.
+            report.skipped_for_drift += 1
+            if len(report.drift_examples) < 5:
+                report.drift_examples.append({
+                    "slesh_order_id": fo.slesh_order_id,
+                    "existing_user_id": existing_uid[:6] + "...",
+                    "fresh_user_id": (fresh_uid[:6] + "...") if fresh_uid else None,
+                })
+            continue
+
         values: dict = {}
         if row.customer_email is None and fo.customer_email:
             values["customer_email"] = fo.customer_email
         if row.payment_token is None and fo.payment_token:
             values["payment_token"] = fo.payment_token
         if row.raw_extras is None and (fo.raw_extras_user or fo.raw_extras_operator):
+            # existing_uid was None to reach here (no stored user._id to
+            # drift-check against) — this is a straight recovery, not a
+            # verified-match write. Mark provenance so it's distinguishable
+            # from live-captured raw_extras downstream.
             blob = {}
             if fo.raw_extras_operator is not None:
                 blob["operator"] = fo.raw_extras_operator
             if fo.raw_extras_user is not None:
                 blob["user"] = fo.raw_extras_user
+            blob["user_source"] = "backfill"
             values["raw_extras"] = blob
 
         if values:
@@ -330,8 +398,16 @@ async def _run(args) -> int:
         existing = await _fetch_existing_orders(db, tenant_id, event.id)
     print(f"  existing event_orders rows for this event: {len(existing)}")
 
-    from_ts = _parse_iso(args.from_ts, "from-ts") if args.from_ts else event.scheduled_at - timedelta(hours=1)
-    to_ts   = _parse_iso(args.to_ts,   "to-ts")   if args.to_ts   else event.scheduled_end_at + timedelta(hours=1)
+    db_min_ts = min((r.created_at_slesh for r in existing.values()), default=None)
+    db_max_ts = max((r.created_at_slesh for r in existing.values()), default=None)
+    if db_min_ts is None:
+        raise SystemExit("❌ no existing event_orders rows for this event — nothing to backfill against")
+
+    # Window derived from THIS event's own observed order range, not
+    # event.scheduled_at — see module docstring, that field proved
+    # unreliable (later than real first orders) on Jul-19.
+    from_ts = _parse_iso(args.from_ts, "from-ts") if args.from_ts else db_min_ts - timedelta(hours=3)
+    to_ts   = _parse_iso(args.to_ts,   "to-ts")   if args.to_ts   else db_max_ts + timedelta(hours=3)
     if from_ts >= to_ts:
         raise SystemExit("❌ window start must be before window end")
 
@@ -347,6 +423,25 @@ async def _run(args) -> int:
     report.orders_fetched = len(fetched)
     updates = _compute_updates(fetched, existing, report)
 
+    # Registered vs placeholder split, over the emails this run would
+    # actually write (not all fetched — only ones surviving the drift gate
+    # and NULL-only rule). 'slesh.it' is the confirmed guest-placeholder
+    # domain from the 2026-07-28 email forensics pass.
+    written_emails = [v["customer_email"] for _, v in updates if "customer_email" in v]
+    placeholder_count = sum(1 for e in written_emails if e.endswith("@slesh.it"))
+    registered_count = len(written_emails) - placeholder_count
+
+    # Distinct users: what's already durably in the DB (the trustworthy,
+    # live-captured figure — see the drift-protection note above; a fresh
+    # re-fetch is NOT more authoritative for this field) plus, for events
+    # with no prior user._id at all, what this run's recovery would add.
+    db_distinct_users = {_existing_user_id(r) for r in existing.values() if _existing_user_id(r) is not None}
+    recovered_user_ids = {
+        v["raw_extras"]["user"]["_id"] for _, v in updates
+        if "raw_extras" in v and "user" in v["raw_extras"] and "_id" in v["raw_extras"]["user"]
+    }
+    post_write_distinct_users = db_distinct_users | recovered_user_ids
+
     print()
     print("=" * 70)
     print("REPORT")
@@ -358,10 +453,23 @@ async def _run(args) -> int:
     print(f"  carrying payment._paymentToken:         {report.with_payment_token}")
     print(f"  matched an existing event_orders row:   {report.matched_existing_order}")
     print(f"  rows that WOULD be updated:              {report.would_update}")
+    print(f"  rows SKIPPED for user_id drift:          {report.skipped_for_drift}")
+    print()
+    print(f"  distinct users already in DB (trusted, live-captured): {len(db_distinct_users)}")
+    print(f"  distinct users this run would newly recover:            {len(recovered_user_ids)}")
+    print(f"  distinct users after this run (union):                  {len(post_write_distinct_users)}")
+    print()
+    print(f"  registered (real-domain) emails this run would write: {registered_count}")
+    print(f"  placeholder (@slesh.it) emails this run would write:  {placeholder_count}")
     print()
     print("  5 example rows (masked):")
     for ex in report.examples:
         print(f"    {ex}")
+    if report.drift_examples:
+        print()
+        print("  5 example DRIFT SKIPS (existing vs fresh user_id disagree):")
+        for ex in report.drift_examples:
+            print(f"    {ex}")
     print("=" * 70)
 
     if args.dry_run:
@@ -378,7 +486,7 @@ async def _run(args) -> int:
             )
             report.updated += 1
         await db.commit()
-    print(f"EXECUTED — {report.updated} rows updated.")
+    print(f"EXECUTED — {report.updated} rows updated, {report.skipped_for_drift} skipped for drift.")
     return 0
 
 
