@@ -15,6 +15,17 @@ Usage:
 
 --tenant-slug also accepted as an alternative to --tenant-id.
 
+KNOWN FINDING — payment_token is NOT a per-wristband credential
+------------------------------------------------------------------
+A 2026-07-28 dry-run against the Jul-19 event found payment._paymentToken
+holds exactly ONE distinct value across all 3,155 orders that carried it.
+It is some kind of static payment-gateway/session token, not the physical
+band. Whatever question this column was meant to help answer ("does one
+band = one person or a shared wallet") cannot be answered from it. It is
+still backfilled here because it's harmless and matches the deployed
+schema, but do not build anything downstream that assumes it varies
+per-band. raw_extras.user._id remains the only per-customer handle.
+
 WHY THIS SCRIPT SHARES CODE WITH THE LIVE POLLER
 -------------------------------------------------
 Every field this script extracts from a raw Slesh order goes through
@@ -32,7 +43,7 @@ offset is unreliable past the first page for a given call — see the
 detailed note in `adapters/slesh.py::_iter_paginated` ("chunk truncated").
 A single query spanning an entire event risks silently returning only
 the first ~100 orders. We walk the event's active window in fixed-size
-time chunks (default 15 min) instead, so no single call is likely to
+time chunks (default 5 min) instead, so no single call is likely to
 exceed the page cap. `_iter_paginated` still logs a WARNING if any one
 chunk truncates anyway; this script counts those warnings and surfaces
 the count front and center in the report — a chunk-truncation count of
@@ -126,9 +137,15 @@ def _build_parser() -> argparse.ArgumentParser:
     tenant.add_argument("--tenant-slug")
     tenant.add_argument("--tenant-id")
     p.add_argument("--event-id",    required=True)
-    p.add_argument("--chunk-minutes", type=int, default=15,
-                   help="Width of each Slesh query window in minutes (default 15 — "
-                        "see module docstring on why not larger).")
+    p.add_argument("--chunk-minutes", type=int, default=5,
+                   help="Width of each Slesh query window in minutes (default 5). "
+                        "A 2026-07-28 dry-run against Jul-19 with 15-minute chunks "
+                        "silently truncated 15 of ~144 windows during peak hours "
+                        "(observed up to 159 orders in a single 15-min window, "
+                        "against the 100-doc page cap) and undercounted total "
+                        "orders by ~17%. 5 minutes produced 0 truncations. Re-check "
+                        "this default against observed peak order rate for any new "
+                        "event before trusting a larger value.")
     p.add_argument("--from-ts", default=None,
                    help="Override window start (ISO 8601). Defaults to the event's "
                         "scheduled_at minus a 1h safety buffer.")
