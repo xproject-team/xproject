@@ -264,8 +264,11 @@ async def delete_tenant_cascade(session: AsyncSession, tenant_id: uuid.UUID) -> 
     """Delete all rows created under a test tenant, in safe FK order."""
     from app.modules.alerts.models import Alert
     from app.modules.event_products.models import EventProduct
+    from app.modules.customer_analytics.models import CustomerPurchase, CustomerSession
     for model in [
         Alert,
+        CustomerPurchase,
+        CustomerSession,
         StockTransaction,
         EventProduct,
         RecipeItem,
