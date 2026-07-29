@@ -56,3 +56,18 @@ CLAUDE.md
 # By default exclude .joblib; once a trained model is verified,
 # `git add -f` the specific file to commit it.
 *.joblib
+
+# ML training data extracted from historical Slesh exports (Phase A,
+# revenue-prediction feature). Derived from raw exports outside this
+# repo (~/Desktop) — reproducible via
+# backend/scripts/extract_historical_sundance.py. Not PII (no names/
+# emails/user ids), but still local-only / not version controlled.
+backend/scripts/ml_data/
+cbw_audit/
+
+# Day 3 demand model — raw per-line purchase rows fetched read-only
+# from production (customer_key, product_name, bar_id, timestamps) for
+# fast local iteration on the shape-curve fit. Same rationale as the
+# ml_data/ rule above: reproducible via build_demand_training_data.py
+# + a read-only prod fetch, not version controlled.
+backend/app/scripts/ml_data/
