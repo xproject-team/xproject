@@ -42,6 +42,7 @@ from app.workers.tasks import (
     evaluate_alerts,
     generate_report,
     poll_slesh_for_event,
+    retrain_demand_predictor,
     retrain_predictor,
     run_predictions,
 )
@@ -56,6 +57,7 @@ class WorkerSettings:
     functions = [
         run_predictions,
         retrain_predictor,
+        retrain_demand_predictor,
         evaluate_alerts,
         generate_report,
         poll_slesh_for_event,

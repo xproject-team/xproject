@@ -128,6 +128,34 @@ async def _enqueue_nowcast_retrain(tenant_id: UUID) -> None:
         )
 
 
+async def _enqueue_demand_retrain(tenant_id: UUID, event_id: UUID) -> None:
+    """Best-effort: queue a drinks-demand model retrain (see
+    app/workers/tasks.py::retrain_demand_predictor) after this tenant's
+    event completes. Same contract as _enqueue_nowcast_retrain, above —
+    read that one's docstring for the full isolation rationale; this is
+    a second, independent enqueue for a different model, not a
+    replacement for the nowcast one.
+    """
+    try:
+        from arq.connections import RedisSettings, create_pool
+
+        from app.core.config import settings
+
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            await redis.enqueue_job(
+                "retrain_demand_predictor",
+                str(tenant_id), str(event_id),
+                _job_id=f"demand-retrain:{tenant_id}",
+            )
+        finally:
+            await redis.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to enqueue demand retrain for tenant=%s: %s", tenant_id, e,
+        )
+
+
 # ─── Service ──────────────────────────────────────────────────────────────────
 
 class EventService:
@@ -667,6 +695,9 @@ class EventService:
         # _enqueue_nowcast_retrain's docstring for why a Redis hiccup
         # here must never surface to this method's caller.
         await _enqueue_nowcast_retrain(tenant_id)
+        # Day 3: same trigger, second independent model (drinks demand
+        # per bar/hour/category — see predictions/demand/retrain.py).
+        await _enqueue_demand_retrain(tenant_id, event_id)
         return event
 
     # ─── Response building ────────────────────────────────────────────────────

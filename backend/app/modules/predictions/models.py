@@ -22,6 +22,8 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -30,10 +32,12 @@ from sqlalchemy import (
     Integer,
     Text,
     Enum as SqlEnum,
+    text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PgUUID
 from sqlalchemy.orm import relationship
 
+from app.core.database import Base
 from app.core.tenancy import TenantScopedModel
 
 
@@ -174,3 +178,63 @@ class Prediction(TenantScopedModel):
             f"<Prediction {self.id} event={self.event_id} "
             f"v{self.version} {self.predictor_type} {self.status}>"
         )
+
+
+class ModelArtifact(Base):
+    """One trained, versioned model file's metadata row.
+
+    First real consumer of this table (2026-07-29) — see migration
+    t1_add_model_artifacts.py's locked architecture doc for the
+    contract this must follow: one row per (tenant_id, model_name,
+    version), at most one is_active=TRUE per (tenant_id, model_name)
+    (enforced by a partial unique index, not app code), audit fields
+    for what triggered training.
+
+    NOT a TenantScopedModel — the migration's table has no
+    created_at/updated_at columns (trained_at fills that role), and id
+    defaults server-side (gen_random_uuid()) rather than the
+    TenantScopedModel convention's Python-side uuid4(). Every column
+    here must mirror the migration exactly; there is no created_at/
+    updated_at to inherit.
+
+    See app/modules/predictions/demand/retrain.py for the only current
+    writer.
+    """
+
+    __tablename__ = "model_artifacts"
+
+    id = Column(PgUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    tenant_id = Column(PgUUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+
+    model_name = Column(Text, nullable=False)
+    version = Column(Integer, nullable=False)
+
+    file_path = Column(Text, nullable=False)
+    file_size_bytes = Column(BigInteger, nullable=False)
+    file_sha256 = Column(Text, nullable=False)
+
+    trained_at = Column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
+    training_event_ids = Column(ARRAY(PgUUID(as_uuid=True)), nullable=False, server_default=text("ARRAY[]::UUID[]"))
+    n_training_events = Column(Integer, nullable=False)
+    n_training_rows = Column(Integer, nullable=False)
+    feature_names = Column(ARRAY(Text), nullable=False, server_default=text("ARRAY[]::TEXT[]"))
+    algorithm = Column(Text, nullable=False)
+    metrics_json = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    is_active = Column(Boolean, nullable=False, server_default=text("FALSE"))
+    promoted_at = Column(DateTime(timezone=True), nullable=True)
+    deprecated_at = Column(DateTime(timezone=True), nullable=True)
+
+    triggered_by = Column(Text, nullable=False)
+    triggered_by_event_id = Column(PgUUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        Index(
+            "uq_model_artifacts_tenant_model_version",
+            "tenant_id", "model_name", "version",
+            unique=True,
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ModelArtifact {self.model_name} v{self.version} tenant={self.tenant_id} active={self.is_active}>"

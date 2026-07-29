@@ -175,6 +175,44 @@ async def retrain_predictor(ctx: dict, tenant_id: str) -> dict:
             return {"status": "error", "reason": str(e)[:200]}
 
 
+async def retrain_demand_predictor(ctx: dict, tenant_id: str, event_id: str | None = None) -> dict:
+    """Retrain the drinks-demand forecaster (bar/hour/category) from
+    this tenant's COMPLETED events (see predictions/demand/retrain.py).
+
+    Same trigger and isolation contract as retrain_predictor, above —
+    enqueued by EventService.end_event() right after an event's
+    LIVE -> COMPLETED transition commits, never raises out to arq, and
+    a failure here must never roll back the event completion that
+    triggered it. Versioned (model_artifacts), not a parquet overwrite
+    like the nowcast — see retrain.py's module docstring for why.
+    """
+    try:
+        tenant_uuid = UUID(tenant_id)
+    except (TypeError, ValueError) as e:
+        logger.warning("retrain_demand_predictor: bad tenant_id %s: %s", tenant_id, e)
+        return {"status": "error", "reason": "invalid_uuid"}
+
+    event_uuid: UUID | None = None
+    if event_id:
+        try:
+            event_uuid = UUID(event_id)
+        except (TypeError, ValueError):
+            event_uuid = None
+
+    from app.modules.predictions.demand.retrain import retrain_demand_model
+
+    async with async_session_factory() as session:
+        try:
+            return await retrain_demand_model(
+                session, tenant_uuid,
+                triggered_by="event_completed",
+                triggered_by_event_id=event_uuid,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("retrain_demand_predictor failed: tenant=%s: %s", tenant_id, e)
+            return {"status": "error", "reason": str(e)[:200]}
+
+
 # ─── Post-event report generation ─────────────────────────────────────────────
 
 
