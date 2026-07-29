@@ -55,15 +55,38 @@ BAR_RANKS = tuple(range(1, MAX_BAR_RANK + 1))
 
 
 def fit_demand_curves(
-    events_df: pd.DataFrame, grid_df: pd.DataFrame,
+    events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
+    shape_only: pd.DataFrame | None = None,
 ) -> tuple[pd.Series, pd.Series, pd.DataFrame, pd.DataFrame]:
     """Fit shape_curve, r2_table (both indexed by HOUR_GRID, exactly
     like nowcast), category_share (DataFrame: rows=HOUR_GRID,
     cols=DRINK_CATEGORIES), bar_share (DataFrame: rows=HOUR_GRID,
     cols=BAR_RANKS). A free function, not a method, for the same
     leave-one-out back-testing reason as nowcast's fit_shape_and_r2.
+
+    weights: optional Series indexed by event_id, defaulting to 1.0 for
+    every event when omitted (the original unweighted behavior). Lets a
+    caller up-weight events closer to the target configuration (e.g.
+    current-season vs. 2024/2025 historical) in all three pooled
+    averages. Only apply a non-uniform scheme after confirming via
+    leave-one-out back-testing that it actually reduces error — see
+    retrain.py's module docstring for the Day-3-closeout finding.
+
+    shape_only: optional DataFrame with columns [event_id, hour_of_event,
+    count] — per-hour proxy counts for events whose PER-LINE category/bar
+    detail is not trustworthy enough to enter category_share/bar_share,
+    but whose per-ORDER counts are complete enough to inform the overall
+    shape_curve/r2 (section 1 only). Built for Jul-5: its per-line data
+    has non-random per-bar gaps (2 bars at 0% coverage — see the Day 3
+    exclusion decision), but event_orders.confirmed_line_count is
+    populated for all 4,133 orders including the 880 with no matching
+    customer_purchases line, so the cumulative-shape signal survives even
+    though the category/bar breakdown doesn't. These events never appear
+    in events_df/grid_df — they are pure shape-curve contributors.
     """
     totals = events_df.set_index("event_id")["total_drinks"]
+    if weights is None:
+        weights = pd.Series(1.0, index=totals.index)
 
     # ── 1. Overall shape curve + r² (exact nowcast pattern) ──────────
     per_event_hourly = (
@@ -75,11 +98,22 @@ def fit_demand_curves(
         x = g["hour_of_event"].to_numpy(dtype=float)
         y = g["drinks_count"].cumsum().to_numpy(dtype=float)
         matrix[eid] = np.interp(HOUR_GRID, x, y, left=0.0, right=totals[eid])
+
+    if shape_only is not None and not shape_only.empty:
+        shape_only_totals = shape_only.groupby("event_id")["count"].sum()
+        for eid, g in shape_only.groupby("event_id"):
+            g = g.sort_values("hour_of_event")
+            x = g["hour_of_event"].to_numpy(dtype=float)
+            y = g["count"].cumsum().to_numpy(dtype=float)
+            matrix[eid] = np.interp(HOUR_GRID, x, y, left=0.0, right=shape_only_totals[eid])
+        totals = pd.concat([totals, shape_only_totals])
+
     matrix_df = pd.DataFrame(matrix, index=HOUR_GRID).T
 
     finals = totals.reindex(matrix_df.index)
+    w = weights.reindex(finals.index).fillna(1.0)
     normalized = matrix_df.div(finals, axis=0)
-    shape_curve = normalized.mean(axis=0)
+    shape_curve = normalized.mul(w, axis=0).sum(axis=0) / w.sum()
 
     r2_values = {}
     for hr in HOUR_GRID:
@@ -87,8 +121,7 @@ def fit_demand_curves(
         if col.std() == 0 or finals.std() == 0:
             r2_values[hr] = 0.0
         else:
-            r = np.corrcoef(col, finals)[0, 1]
-            r2_values[hr] = float(r ** 2)
+            r2_values[hr] = float(_weighted_r2(col.to_numpy(), finals.to_numpy(), w.to_numpy()))
     r2_table = pd.Series(r2_values)
 
     # ── 2. Category share by hour (hour-local, not cumulative) ───────
@@ -102,12 +135,9 @@ def fit_demand_curves(
         for cat in DRINK_CATEGORIES:
             cnt = cat_hourly.get((eid, h, cat), 0)
             cat_share_rows.append({"event_id": eid, "hour_of_event": h, "category": cat,
-                                    "share": cnt / total_h})
+                                    "share": cnt / total_h, "weight": weights.get(eid, 1.0)})
     cat_share_df = pd.DataFrame(cat_share_rows)
-    category_share = (
-        cat_share_df.groupby(["hour_of_event", "category"])["share"].mean().unstack("category")
-        .reindex(index=HOUR_GRID, columns=DRINK_CATEGORIES)
-    )
+    category_share = _weighted_share_table(cat_share_df, "category", DRINK_CATEGORIES)
     # Interpolate/ffill small gaps (an hour with zero events reporting
     # any drinks at all) rather than leaving NaN, then fall back to a
     # flat equal split only where truly nothing was ever observed.
@@ -123,16 +153,39 @@ def fit_demand_curves(
         for rank in BAR_RANKS:
             cnt = bar_hourly.get((eid, h, rank), 0)
             bar_share_rows.append({"event_id": eid, "hour_of_event": h, "bar_rank": rank,
-                                    "share": cnt / total_h})
+                                    "share": cnt / total_h, "weight": weights.get(eid, 1.0)})
     bar_share_df = pd.DataFrame(bar_share_rows)
-    bar_share = (
-        bar_share_df.groupby(["hour_of_event", "bar_rank"])["share"].mean().unstack("bar_rank")
-        .reindex(index=HOUR_GRID, columns=list(BAR_RANKS))
-    )
+    bar_share = _weighted_share_table(bar_share_df, "bar_rank", list(BAR_RANKS))
     bar_share = bar_share.interpolate(limit_direction="both")
     bar_share = bar_share.fillna(1.0 / len(BAR_RANKS))
 
     return shape_curve, r2_table, category_share, bar_share
+
+
+def _weighted_r2(x: np.ndarray, y: np.ndarray, w: np.ndarray) -> float:
+    """Weighted Pearson r², reducing to np.corrcoef(x, y)[0,1]**2 when
+    every weight is equal (the unweighted call site's original math)."""
+    wx = np.average(x, weights=w)
+    wy = np.average(y, weights=w)
+    cov = np.average((x - wx) * (y - wy), weights=w)
+    varx = np.average((x - wx) ** 2, weights=w)
+    vary = np.average((y - wy) ** 2, weights=w)
+    if varx <= 0 or vary <= 0:
+        return 0.0
+    r = cov / np.sqrt(varx * vary)
+    return float(r ** 2)
+
+
+def _weighted_share_table(share_rows_df: pd.DataFrame, col_key: str, columns: list) -> pd.DataFrame:
+    """Weighted mean of `share` grouped by (hour_of_event, col_key), using
+    the per-row `weight` column. Reduces to a plain mean when all weights
+    are equal — same shape/index contract as the original .mean() call."""
+    if share_rows_df.empty:
+        return pd.DataFrame(index=HOUR_GRID, columns=columns, dtype=float)
+    share_rows_df = share_rows_df.assign(_wshare=share_rows_df["share"] * share_rows_df["weight"])
+    grouped = share_rows_df.groupby(["hour_of_event", col_key])
+    weighted_mean = grouped["_wshare"].sum() / grouped["weight"].sum()
+    return weighted_mean.unstack(col_key).reindex(index=HOUR_GRID, columns=columns)
 
 
 class DemandPredictor:
@@ -152,15 +205,21 @@ class DemandPredictor:
         return events_df, grid_df
 
     @classmethod
-    def from_dataframes(cls, events_df: pd.DataFrame, grid_df: pd.DataFrame) -> "DemandPredictor":
+    def from_dataframes(
+        cls, events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
+        shape_only: pd.DataFrame | None = None,
+    ) -> "DemandPredictor":
         self = cls.__new__(cls)
         self.data_dir = None
-        self._fit_from(events_df, grid_df)
+        self._fit_from(events_df, grid_df, weights, shape_only)
         return self
 
-    def _fit_from(self, events_df: pd.DataFrame, grid_df: pd.DataFrame) -> None:
+    def _fit_from(
+        self, events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
+        shape_only: pd.DataFrame | None = None,
+    ) -> None:
         self.shape_curve, self.r2_table, self.category_share, self.bar_share = \
-            fit_demand_curves(events_df, grid_df)
+            fit_demand_curves(events_df, grid_df, weights, shape_only)
         self.historical_mean_total = float(events_df["total_drinks"].mean())
         self.historical_n = int(len(events_df))
         self._events_df = events_df

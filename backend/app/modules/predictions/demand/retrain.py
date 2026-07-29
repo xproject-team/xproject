@@ -16,12 +16,35 @@ Versioning: this table + .joblib files on disk... at most one
 is_active=TRUE per (tenant_id, model_name)") as the intended
 architecture for any new model, and this is the first one to use it.
 
-HOLDOUT GUARD: Jul-19 (9ae0dc52-8a01-4998-b430-3814bd8cdabe) must NEVER
-enter training while it is this model's validation holdout. Enforced
-here by hard-coded exclusion, not by is_training_eligible (that flag
-is the simulation/test-data contamination guard nowcast uses — a
-different concern; Jul-19 is real, legitimate data, just deliberately
-held back). Remove _HOLDOUT_EVENT_IDS once the holdout period ends.
+HOLDOUT: Jul-19 (9ae0dc52-8a01-4998-b430-3814bd8cdabe) was excluded from
+training for the Day 3 validation gate (train blind, predict Jul-19,
+beat baseline) and only that gate — not a permanent exclusion. That
+validation passed (67.1% vs 96.5% MAPE overall; see the Day 3 report).
+Per the Day 3 closeout instruction, Jul-19 now trains normally: it is
+the closest available analog to the next live event (same venue, bars,
+menu, season) and holding it back forever would throw away exactly the
+data most relevant to what comes next.
+
+JUL-5 SHAPE-ONLY: Jul-5's per-LINE data has non-random per-bar gaps (2
+bars at 0% stock_transaction coverage — the reason it was excluded from
+training entirely in the original Day 3 pass), so it still cannot
+contribute to category_share or bar_share. But event_orders.
+confirmed_line_count is populated for all 4,133 of its orders,
+including the 880 with no matching customer_purchases line — the gap is
+in the line-to-product join, not in order capture. Its cumulative-count
+shape was checked against Sundance 14's known-good shape (max ~4
+percentage points of drift at the mid-event peak) and judged close
+enough to use as a shape_curve-only contributor via fit_demand_curves'
+`shape_only` param — see training_data.build_shape_only_grid.
+
+WEIGHTING: a leave-one-out back-test (app/scripts/demand_loo_experiment.py)
+compared uniform event weighting against up-weighting current-season
+events (x2/x3/x5) at the venue-total-per-hour grain. Uniform won
+outright — up-weighting monotonically INCREASED mean LOO MAPE (37.1% ->
+45.3% -> 51.0% -> 58.7%), because with only 2-3 current-season events,
+up-weighting them shrinks the effective pool this small-n approach
+depends on. No weighting is applied here; fit_demand_curves is called
+with weights=None (uniform, its default).
 """
 from __future__ import annotations
 
@@ -40,6 +63,7 @@ from app.modules.predictions.demand.training_data import (
     DRINK_CATEGORIES,
     build_current_grid,
     build_historical_grid,
+    build_shape_only_grid,
     combine_grids,
 )
 from app.modules.predictions.models import ModelArtifact
@@ -49,7 +73,10 @@ ALGORITHM = "shape_curve_v1"  # matches nowcast's fit_shape_and_r2 method, exten
 ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts" / "demand"
 HISTORICAL_TX_PATH = Path(__file__).parent.parent / "nowcast" / "data" / "training_transactions.parquet"
 
-_HOLDOUT_EVENT_IDS = {UUID("9ae0dc52-8a01-4998-b430-3814bd8cdabe")}
+# Jul-5 — see module docstring's JUL-5 SHAPE-ONLY section. Hard-coded like
+# the former Jul-19 holdout was: a one-off, deliberate special case, not a
+# general mechanism, so it should be a reviewed diff if it ever changes.
+_JUL5_SHAPE_ONLY_EVENT_ID = UUID("0888f4b7-7030-426b-815c-938e6ca447a6")
 
 _PURCHASE_ROWS_SQL = text("""
     select customer_key, product_name, category, bar_id, qty, ordered_at
@@ -57,6 +84,12 @@ _PURCHASE_ROWS_SQL = text("""
     where event_id = :event_id and tenant_id = :tenant_id
       and is_deposit = false
       and category = any(:drink_categories)
+""")
+
+_JUL5_ORDER_ROWS_SQL = text("""
+    select created_at_slesh as ordered_at, confirmed_line_count as count
+    from event_orders
+    where event_id = :event_id and tenant_id = :tenant_id
 """)
 
 
@@ -78,6 +111,20 @@ async def _event_purchase_rows(db: AsyncSession, tenant_id: UUID, event: Event) 
     ]
 
 
+async def _jul5_shape_only_grid(db: AsyncSession, tenant_id: UUID) -> pd.DataFrame:
+    res = await db.execute(_JUL5_ORDER_ROWS_SQL, {
+        "event_id": _JUL5_SHAPE_ONLY_EVENT_ID, "tenant_id": tenant_id,
+    })
+    rows = res.mappings().all()
+    if not rows:
+        return pd.DataFrame(columns=["event_id", "hour_of_event", "count"])
+    order_rows = [
+        {"event_id": "jul5", "ordered_at": pd.Timestamp(r["ordered_at"]), "count": float(r["count"])}
+        for r in rows
+    ]
+    return build_shape_only_grid(order_rows)
+
+
 def _next_version(db_versions: list[int]) -> int:
     return (max(db_versions) + 1) if db_versions else 1
 
@@ -86,10 +133,10 @@ async def retrain_demand_model(
     db: AsyncSession, tenant_id: UUID, *, triggered_by: str, triggered_by_event_id: UUID | None = None,
     artifacts_dir: Path | None = None,
 ) -> dict:
-    """Rebuild the demand model from every COMPLETED, training-eligible,
-    non-holdout event for this tenant, plus the fixed historical
-    (2024/2025) grid. Returns a summary dict; raises on any hard
-    failure — the caller (the arq task) decides how to isolate that
+    """Rebuild the demand model from every COMPLETED, training-eligible
+    event for this tenant, plus the fixed historical (2024/2025) grid and
+    Jul-5's shape-only contribution. Returns a summary dict; raises on any
+    hard failure — the caller (the arq task) decides how to isolate that
     from its own transaction, same contract as retrain_predictor.
     """
     stmt = (
@@ -97,7 +144,6 @@ async def retrain_demand_model(
         .where(Event.tenant_id == tenant_id)
         .where(Event.status == EventStatus.COMPLETED)
         .where(Event.is_training_eligible.is_(True))
-        .where(Event.id.not_in(_HOLDOUT_EVENT_IDS))
     )
     completed_events = (await db.execute(stmt)).scalars().all()
 
@@ -117,9 +163,14 @@ async def retrain_demand_model(
     if combined.events.empty:
         return {"status": "no_training_data", "retrained": False}
 
+    shape_only = await _jul5_shape_only_grid(db, tenant_id)
+
     # Sanity-fit BEFORE writing anything — same discipline as
     # nowcast/retrain.py: a fit that can't be computed must not reach disk.
-    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(combined.events, combined.grid)
+    # weights=None: uniform, per the LOO finding in the module docstring.
+    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(
+        combined.events, combined.grid, None, shape_only,
+    )
 
     bundle = {
         "shape_curve": shape_curve,

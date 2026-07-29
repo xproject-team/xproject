@@ -171,6 +171,37 @@ def _finalize_grid(exploded: pd.DataFrame, *, source: str) -> TrainingGrid:
     return TrainingGrid(events=events_df, grid=grid_df)
 
 
+def build_shape_only_grid(order_rows: list[dict]) -> pd.DataFrame:
+    """Build the [event_id, hour_of_event, count] table fit_demand_curves'
+    `shape_only` param expects, from per-ORDER rows (not per-line).
+
+    order_rows: dicts with event_id (str), ordered_at (tz-aware datetime —
+    Slesh's created_at_slesh), count (numeric — event_orders.
+    confirmed_line_count, a per-order item-count field populated
+    independently of whether the order's LINES matched a product/
+    stock_transaction). Built for Jul-5: see fit_demand_curves' shape_only
+    docstring for why line-level exclusion doesn't block this.
+
+    NOTE: confirmed_line_count includes food/deposit items alongside
+    drinks, so this proxy's cumulative SHAPE is a close-but-imperfect
+    stand-in for a drinks-only cumulative shape — validated against
+    Sundance 14 (max ~4 percentage points of cumulative-fraction drift
+    at the mid-event peak) before being judged usable. See retrain.py.
+    """
+    df = pd.DataFrame(order_rows)
+    if df.empty:
+        return pd.DataFrame(columns=["event_id", "hour_of_event", "count"])
+    rows = []
+    for event_id, g in df.groupby("event_id"):
+        first_order_at = g["ordered_at"].min()
+        elapsed = (g["ordered_at"] - first_order_at)
+        g = g.assign(hour_of_event=(elapsed.dt.total_seconds() // 3600).astype(int))
+        hourly = g.groupby("hour_of_event")["count"].sum().reset_index()
+        hourly.insert(0, "event_id", event_id)
+        rows.append(hourly)
+    return pd.concat(rows, ignore_index=True)
+
+
 def combine_grids(*grids: TrainingGrid) -> TrainingGrid:
     non_empty = [g for g in grids if not g.events.empty]
     if not non_empty:

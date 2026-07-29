@@ -22,7 +22,7 @@ from sqlalchemy import select
 from app.modules.events.models import Event, EventStatus
 from app.modules.predictions.demand.retrain import (
     MODEL_NAME,
-    _HOLDOUT_EVENT_IDS,
+    _JUL5_SHAPE_ONLY_EVENT_ID,
     _looks_like_uuid,
     retrain_demand_model,
 )
@@ -46,11 +46,11 @@ def test_looks_like_uuid():
     assert _looks_like_uuid(None) is False
 
 
-def test_holdout_event_id_is_jul19():
-    """A basic guardrail against silently editing away the holdout —
-    if this ever needs to change, it should be a deliberate,
-    reviewed diff, not an accidental one."""
-    assert UUID("9ae0dc52-8a01-4998-b430-3814bd8cdabe") in _HOLDOUT_EVENT_IDS
+def test_jul5_shape_only_event_id_is_stable():
+    """A basic guardrail against silently editing away the Jul-5
+    shape-only special case — if this ever needs to change, it should
+    be a deliberate, reviewed diff, not an accidental one."""
+    assert _JUL5_SHAPE_ONLY_EVENT_ID == UUID("0888f4b7-7030-426b-815c-938e6ca447a6")
 
 
 async def _seed_completed_event_with_purchases(session, tenant, *, n_orders: int = 3):

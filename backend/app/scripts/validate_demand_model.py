@@ -50,6 +50,16 @@ def _mape(pairs: list[tuple[float, float]]) -> tuple[float, int, int]:
     return 100.0 * float(np.mean(errs)), len(used), excluded
 
 
+def _mae(pairs: list[tuple[float, float]]) -> tuple[float, int]:
+    """pairs: list of (actual, predicted). Returns (mae_drinks, n). Unlike
+    _mape, zero-actual cells are NOT excluded — MAE is well-defined there
+    and dropping them would understate error at low-volume cells/hours."""
+    if not pairs:
+        return float("nan"), 0
+    errs = [abs(a - p) for a, p in pairs]
+    return float(np.mean(errs)), len(pairs)
+
+
 def run_validation(predictor: DemandPredictor, jul19_grid: pd.DataFrame,
                     sundance14_grid: pd.DataFrame) -> dict:
     checkpoints = range(0, 9)  # "h hours in" -> predict hour h+1
@@ -103,7 +113,109 @@ def run_validation(predictor: DemandPredictor, jul19_grid: pd.DataFrame,
         "model_by_hour": _breakdown(all_pairs, "hour"),
         "baseline_by_hour": _breakdown(all_baseline_pairs, "hour"),
         "n_checkpoints": len(list(checkpoints)),
+        # Raw cell-level (hour, bar_rank, category) triples — the aggregate
+        # report sums these UP to coarser grains before scoring, rather than
+        # averaging cell-level errors, so the aggregation matches what the
+        # panel will actually display (a single number per hour/category/bar,
+        # not an average of many noisy per-cell percentages).
+        "raw_pairs": all_pairs,
+        "raw_baseline_pairs": all_baseline_pairs,
     }
+
+
+def _aggregate_sum(pairs: list[tuple[float, float, dict]], group_keys: tuple[str, ...]) -> dict:
+    """Sum actual and predicted within each group (e.g. group_keys=('hour',)
+    sums every bar_rank/category cell sharing an hour into one venue-wide
+    total for that hour), returning {group_key_tuple: (actual_sum, predicted_sum)}."""
+    sums: dict = defaultdict(lambda: [0.0, 0.0])
+    for a, p, meta in pairs:
+        key = tuple(meta[k] for k in group_keys)
+        sums[key][0] += a
+        sums[key][1] += p
+    return {k: (v[0], v[1]) for k, v in sums.items()}
+
+
+def aggregate_validation(results: dict) -> dict:
+    """Re-score the same Jul-19 checkpoints at the three grains the panel
+    will actually display, per the Day 3 closeout request: cell-level MAPE
+    (bar_rank x category x hour) is dominated by small-count noise — 174/270
+    cells had zero actuals — so it doesn't tell us what's safe to show."""
+    pairs, baseline_pairs = results["raw_pairs"], results["raw_baseline_pairs"]
+
+    def _score(agg_model: dict, agg_baseline: dict) -> dict:
+        keys = sorted(set(agg_model) | set(agg_baseline))
+        m_vals = [agg_model[k] for k in keys]
+        b_vals = [agg_baseline[k] for k in keys]
+        return {
+            "model_mape": _mape(m_vals), "baseline_mape": _mape(b_vals),
+            "model_mae": _mae(m_vals), "baseline_mae": _mae(b_vals),
+            "n": len(keys),
+        }
+
+    # (a) venue-wide total drinks per hour
+    venue_hour = _score(_aggregate_sum(pairs, ("hour",)), _aggregate_sum(baseline_pairs, ("hour",)))
+
+    # (b) venue-wide per category per hour — overall across all 6 x 9, plus per-category rows
+    cat_hour_model = _aggregate_sum(pairs, ("hour", "category"))
+    cat_hour_baseline = _aggregate_sum(baseline_pairs, ("hour", "category"))
+    category_overall = _score(cat_hour_model, cat_hour_baseline)
+    category_by_cat = {}
+    for cat in DRINK_CATEGORIES:
+        m = {k: v for k, v in cat_hour_model.items() if k[1] == cat}
+        b = {k: v for k, v in cat_hour_baseline.items() if k[1] == cat}
+        category_by_cat[cat] = _score(m, b)
+
+    # (c) per-bar total drinks per hour, top 3 bars only
+    TOP_BARS = (1, 2, 3)
+    bar_hour_model = {k: v for k, v in _aggregate_sum(pairs, ("hour", "bar_rank")).items() if k[1] in TOP_BARS}
+    bar_hour_baseline = {k: v for k, v in _aggregate_sum(baseline_pairs, ("hour", "bar_rank")).items() if k[1] in TOP_BARS}
+    bar_overall = _score(bar_hour_model, bar_hour_baseline)
+    bar_by_rank = {}
+    for rank in TOP_BARS:
+        m = {k: v for k, v in bar_hour_model.items() if k[1] == rank}
+        b = {k: v for k, v in bar_hour_baseline.items() if k[1] == rank}
+        bar_by_rank[rank] = _score(m, b)
+
+    return {
+        "venue_hour": venue_hour,
+        "category_overall": category_overall,
+        "category_by_cat": category_by_cat,
+        "bar_overall": bar_overall,
+        "bar_by_rank": bar_by_rank,
+    }
+
+
+def _print_agg_row(label, s: dict) -> None:
+    m_mape = s["model_mape"][0]
+    b_mape = s["baseline_mape"][0]
+    m_mae = s["model_mae"][0]
+    b_mae = s["baseline_mae"][0]
+    def _verdict(m, b):
+        if np.isnan(m) or np.isnan(b):
+            return "n/a"
+        return "YES" if m < b else "NO"
+    beats_mape = _verdict(m_mape, b_mape)
+    beats_mae = _verdict(m_mae, b_mae)
+    print(f"    {str(label):>12s}  MAPE: {m_mape:6.1f}% vs {b_mape:6.1f}%  ({beats_mape:>3s})"
+          f"   MAE: {m_mae:6.2f} vs {b_mae:6.2f} drinks  ({beats_mae:>3s})   n={s['n']}")
+
+
+def print_aggregate_report(agg: dict) -> None:
+    print("\n" + "=" * 78)
+    print("AGGREGATE-LEVEL VALIDATION (Jul-19 holdout) — panel display grains")
+    print("=" * 78)
+    print("\n  (a) venue-wide total drinks per hour")
+    _print_agg_row("all hours", agg["venue_hour"])
+
+    print("\n  (b) venue-wide per category per hour")
+    _print_agg_row("overall", agg["category_overall"])
+    for cat, s in agg["category_by_cat"].items():
+        _print_agg_row(cat, s)
+
+    print("\n  (c) per-bar total drinks per hour (top 3 bars by volume)")
+    _print_agg_row("overall", agg["bar_overall"])
+    for rank, s in agg["bar_by_rank"].items():
+        _print_agg_row(f"rank {rank}", s)
 
 
 def _print_mape_table(title: str, model_dict: dict, baseline_dict: dict) -> None:
@@ -163,6 +275,8 @@ def main() -> None:
     _print_mape_table("By category", results["model_by_category"], results["baseline_by_category"])
     _print_mape_table("By bar rank", results["model_by_bar_rank"], results["baseline_by_bar_rank"])
     _print_mape_table("By hour-of-event (predicting that hour)", results["model_by_hour"], results["baseline_by_hour"])
+
+    print_aggregate_report(aggregate_validation(results))
 
 
 if __name__ == "__main__":
