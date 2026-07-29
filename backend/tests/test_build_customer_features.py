@@ -31,6 +31,7 @@ from app.scripts.build_customer_features import (
     bucket_category,
     fetch_identified_orders,
     fetch_purchase_lines,
+    fetch_total_deposit_cents,
     fetch_zero_line_order_stats,
     is_deposit_product,
     normalize_product_name,
@@ -368,9 +369,32 @@ async def test_fetch_identified_orders_and_zero_line_stats():
         zero_count, zero_revenue = await fetch_zero_line_order_stats(session, tenant.id, event.id)
         assert zero_count == 1
         assert zero_revenue == 2500
+        # Regression: asyncpg returns sum()/count() as Decimal; a bare
+        # `100.0 * Decimal` crashed the production report. Must be plain int.
+        assert type(zero_count) is int
+        assert type(zero_revenue) is int
 
         lines = await fetch_purchase_lines(session, tenant.id, event.id)
         assert {ln["slesh_order_id"] for ln in lines} == {"o-1"}
+
+        await delete_tenant_cascade(session, tenant.id)
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_fetch_total_deposit_cents_returns_plain_int():
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event = await make_event(session, tenant.id)
+        order = await _make_identified_order(
+            session, tenant_id=tenant.id, event_id=event.id, slesh_order_id="o-1", user_id="user-a",
+        )
+        order.deposit_cents = 1500
+        await session.commit()
+
+        total = await fetch_total_deposit_cents(session, tenant.id, event.id)
+        assert total == 1500
+        assert type(total) is int
 
         await delete_tenant_cascade(session, tenant.id)
         await session.commit()

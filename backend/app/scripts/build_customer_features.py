@@ -348,12 +348,15 @@ async def fetch_purchase_lines(db, tenant_id: UUID, event_id: UUID) -> list[dict
 async def fetch_zero_line_order_stats(db, tenant_id: UUID, event_id: UUID) -> tuple[int, int]:
     res = await db.execute(_ZERO_LINE_ORDERS_SQL, {"tenant_id": tenant_id, "event_id": event_id})
     count, revenue_cents = res.one()
-    return count, revenue_cents
+    return int(count), int(revenue_cents)
 
 
 async def fetch_total_deposit_cents(db, tenant_id: UUID, event_id: UUID) -> int:
     res = await db.execute(_EVENT_TOTALS_SQL, {"tenant_id": tenant_id, "event_id": event_id})
-    return res.scalar_one()
+    # asyncpg returns sum() as Decimal; coerce now so downstream float
+    # arithmetic (the coverage % properties) doesn't blow up on
+    # float * Decimal.
+    return int(res.scalar_one())
 
 
 @dataclass
