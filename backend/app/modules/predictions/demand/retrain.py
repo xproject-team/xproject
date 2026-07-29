@@ -148,6 +148,16 @@ async def retrain_demand_model(
         .where(Event.tenant_id == tenant_id)
         .where(Event.status == EventStatus.COMPLETED)
         .where(Event.is_training_eligible.is_(True))
+        # Jul-5 must NEVER enter through this per-line path — its
+        # per-bar coverage gaps are exactly what its shape-only-only
+        # treatment exists to avoid (see module docstring). Excluding it
+        # by hard-coded id here, not by is_training_eligible, for the
+        # same reason the former Jul-19 holdout was: eligibility is a
+        # different concern (the simulation/test-data guard), and relying
+        # on it alone let Jul-5 silently re-enter the regular grid once
+        # its eligibility flag happened to be true — caught when a
+        # retrain's n_training_events jumped 11 -> 12 unexpectedly.
+        .where(Event.id != _JUL5_SHAPE_ONLY_EVENT_ID)
     )
     completed_events = (await db.execute(stmt)).scalars().all()
 

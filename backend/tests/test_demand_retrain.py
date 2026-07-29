@@ -159,3 +159,47 @@ async def test_retrain_excludes_non_training_eligible_events(tmp_path):
         assert result["n_training_events"] == 10
 
         await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_retrain_excludes_jul5_from_per_line_path_even_if_eligible(tmp_path):
+    """Regression test: a real retrain against production data showed
+    n_training_events jump 11 -> 12 because Jul-5's is_training_eligible
+    flag was (unexpectedly) true, letting it re-enter through the
+    regular per-line query despite its per-bar coverage gaps -- exactly
+    what its shape-only-only treatment exists to prevent. The exclusion
+    must hold by hard-coded event id, independent of the eligibility
+    flag's value."""
+    from app.modules.customer_analytics.models import CustomerPurchase
+    from app.modules.predictions.demand.retrain import _JUL5_SHAPE_ONLY_EVENT_ID
+
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        eligible = await _seed_completed_event_with_purchases(session, tenant)
+
+        jul5_lookalike = Event(
+            id=_JUL5_SHAPE_ONLY_EVENT_ID, tenant_id=tenant.id, venue_id=eligible.venue_id,
+            name="Sundence Jul-5", status=EventStatus.COMPLETED, is_training_eligible=True,
+            expected_guest_count=100, scheduled_at=datetime(2026, 7, 5, tzinfo=timezone.utc),
+            scheduled_end_at=datetime(2026, 7, 5, 23, tzinfo=timezone.utc), version=1,
+        )
+        session.add(jul5_lookalike)
+        await session.flush()
+        bar = await make_bar(session, tenant.id, jul5_lookalike.id)
+        product = await make_product(session, tenant.id, product_type=ProductType.DRINK)
+        session.add(CustomerPurchase(
+            tenant_id=tenant.id, event_id=jul5_lookalike.id, customer_key="cust-jul5",
+            slesh_order_id="o-jul5", product_id=product.id, product_name="Gin Tonic",
+            category="cocktail", bar_id=bar.id, qty=Decimal("1"), price_cents=1000,
+            is_deposit=False, ordered_at=datetime(2026, 7, 5, 12, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+        result = await retrain_demand_model(
+            session, tenant.id, triggered_by="test", artifacts_dir=tmp_path,
+        )
+        # 9 historical + only the non-Jul5 eligible event -- Jul-5 excluded
+        # from the per-line grid regardless of its eligibility flag.
+        assert result["n_training_events"] == 10
+
+        await delete_tenant_cascade(session, tenant.id)
