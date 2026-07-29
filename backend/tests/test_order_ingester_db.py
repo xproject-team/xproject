@@ -620,3 +620,69 @@ async def test_ingest_order_reingest_fills_previously_null_identity_columns():
         assert row.payment_token == "tok-later"
 
         await delete_tenant_cascade(session, tenant.id)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Durable per-line ingestion error trace (2026-07-29 hardening)
+# ─────────────────────────────────────────────────────────────────────
+from app.modules.pos.models import IngestionLineError
+
+
+async def test_ingest_order_line_failure_persists_durable_error_row(monkeypatch):
+    """A per-line exception must not crash ingest_order (unchanged
+    behavior) AND must now leave a queryable row in
+    ingestion_line_errors — the Jul-5 hardening. Before this, the only
+    trace was an in-memory IngestResult.error_messages entry, discarded
+    after the poller logged it."""
+    SHOP_ID = "6650fail1234def5678e2gg"
+    async with TestSessionLocal() as session:
+        tenant, ev, prod = await _setup(session, external_pos_id="ext-fail-1")
+        await _make_bar_with_shop(session, tenant.id, ev.id, shop_id=SHOP_ID)
+        # _persist_line_error writes via a SEPARATE, fresh session (by
+        # design — see its docstring), so tenant/event must be durably
+        # committed here, not just flushed, or that other connection
+        # can't see them yet under READ COMMITTED. In production this is
+        # a non-issue: the tenant/event long predate the poll cycle.
+        await session.commit()
+
+        svc = StockTransactionService(session)
+
+        async def _boom(*args, **kwargs):
+            raise RuntimeError("simulated ingestion failure")
+        monkeypatch.setattr(svc, "ingest_sale", _boom)
+
+        order = _Order(
+            id="o-fail-1",
+            cart=[_CartLine(id="l-fail-1", product="ext-fail-1")],
+            shop=_Shop(id=SHOP_ID),
+            payment=_Payment(type="cash"),
+        )
+        result = await ingest_order(
+            db=session, order=order, event_id=ev.id, tenant_id=tenant.id, service=svc,
+        )
+        await session.flush()
+
+        # Existing behavior unchanged: counted as a line error, order not crashed.
+        assert result.lines_errors == 1
+
+        # New: a durable, queryable row exists for this exact failure.
+        error_row = await session.scalar(
+            select(IngestionLineError).where(
+                IngestionLineError.slesh_order_id == "o-fail-1",
+                IngestionLineError.slesh_line_id == "l-fail-1",
+            )
+        )
+        assert error_row is not None
+        assert error_row.tenant_id == tenant.id
+        assert error_row.event_id == ev.id
+        assert error_row.error_type == "RuntimeError"
+        assert "simulated ingestion failure" in error_row.error_message
+
+        # The order-level summary row still gets written — a failed line
+        # must not take down the rest of the order.
+        eo_row = await session.scalar(
+            select(EventOrder).where(EventOrder.slesh_order_id == "o-fail-1")
+        )
+        assert eo_row is not None
+
+        await delete_tenant_cascade(session, tenant.id)

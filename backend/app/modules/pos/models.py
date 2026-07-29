@@ -12,6 +12,12 @@ Currently contains:
     hourly sync tick would. A separate, deliberately non-overlapping
     system from SleshShopMatchProposal — see PendingShopMapping's
     docstring for why they aren't merged.
+  - IngestionLineError: durable record of a per-cart-line ingestion
+    failure (2026-07-29 hardening). Before this, a failed line only
+    ever showed up in IngestResult.lines_errors — an in-memory return
+    value read by the poller for logging and then discarded. A
+    Jul-5-style silent loss of hundreds of lines left zero queryable
+    trace. This table exists so the next one doesn't.
 
 See docs/e2e-validation-design.md (S4 — Name-matching UX).
 """
@@ -21,7 +27,7 @@ from enum import Enum as PyEnum
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, Numeric, String
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -182,4 +188,40 @@ class PendingShopMapping(TenantScopedModel):
         PgUUID(as_uuid=True),
         ForeignKey("bars.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+
+# ─── Durable per-line ingestion error trace (2026-07-29 hardening) ─────────────
+
+class IngestionLineError(TenantScopedModel):
+    """A single cart line that failed during ingest_order().
+
+    Written by order_ingester._persist_line_error at the moment of
+    failure, using a FRESH, independent session — deliberately decoupled
+    from the ingesting order's own transaction, since the failure may
+    itself be a DB error that has left that transaction unusable. The
+    write is best-effort: it swallows its own exceptions, because
+    logging a failure must never be able to cause a second one.
+
+    Read-only from the application's perspective today — this is a
+    queryable trace for investigation (`select * from
+    ingestion_line_errors where event_id = ...`), not wired into any
+    dashboard or alert yet. That's a deliberate scope cut to land before
+    Aug-2 without touching the live-event critical path.
+    """
+    __tablename__ = "ingestion_line_errors"
+
+    __table_args__ = (
+        Index("ix_ingestion_line_errors_event_id", "event_id"),
+    )
+
+    event_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False,
+    )
+    slesh_order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    slesh_line_id:  Mapped[str] = mapped_column(String(64), nullable=False)
+    error_type:     Mapped[str] = mapped_column(String(128), nullable=False)
+    error_message:  Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"),
     )

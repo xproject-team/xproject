@@ -52,6 +52,7 @@ from sqlalchemy.dialects.postgresql import insert as _pg_insert
 
 from app.modules.events.models import EventOrder as _EventOrder
 from app.modules.bars.device_model import BarDevice as _BarDevice
+from app.modules.pos.models import IngestionLineError as _IngestionLineError
 
 import logging
 from dataclasses import dataclass, field
@@ -224,6 +225,40 @@ class IngestResult:
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Durable per-line error trace (2026-07-29 hardening)
+# ─────────────────────────────────────────────────────────────────────
+async def _persist_line_error(
+    *, tenant_id: UUID, event_id: UUID, slesh_order_id: str, slesh_line_id: str,
+    error_type: str, error_message: str,
+) -> None:
+    """Best-effort durable record of a per-line ingestion failure.
+
+    Uses a FRESH session, independent of the caller's — the failure that
+    triggered this may itself be a DB error that has left the caller's
+    transaction unusable, so we can't reuse it. Swallows its own
+    exceptions: a failure to log must never be able to cause a second,
+    unrelated failure in the ingestion path.
+    """
+    try:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            db.add(_IngestionLineError(
+                tenant_id=tenant_id,
+                event_id=event_id,
+                slesh_order_id=slesh_order_id,
+                slesh_line_id=slesh_line_id,
+                error_type=error_type,
+                error_message=error_message[:4000],
+            ))
+            await db.commit()
+    except Exception:  # noqa: BLE001 — logging must never crash ingestion
+        logger.exception(
+            "failed to persist ingestion line error for order=%s line=%s (non-fatal)",
+            slesh_order_id, slesh_line_id,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Public API — ingest one Slesh order
 # ─────────────────────────────────────────────────────────────────────
 async def ingest_order(
@@ -309,6 +344,11 @@ async def ingest_order(
             result.error_messages.append(f"{line.id}: {type(exc).__name__}: {exc}")
             logger.exception(
                 "ingest_order %s cart-line %s: unexpected failure", order.id, line.id,
+            )
+            await _persist_line_error(
+                tenant_id=tenant_id, event_id=event_id,
+                slesh_order_id=order.id, slesh_line_id=line.id,
+                error_type=type(exc).__name__, error_message=str(exc),
             )
 
     # ── Phase 1b: write per-order summary row (revenue breakdown) ──

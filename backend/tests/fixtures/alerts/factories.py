@@ -265,8 +265,10 @@ async def delete_tenant_cascade(session: AsyncSession, tenant_id: uuid.UUID) -> 
     from app.modules.alerts.models import Alert
     from app.modules.event_products.models import EventProduct
     from app.modules.customer_analytics.models import CustomerPurchase, CustomerSession
+    from app.modules.pos.models import IngestionLineError
     for model in [
         Alert,
+        IngestionLineError,
         CustomerPurchase,
         CustomerSession,
         StockTransaction,
