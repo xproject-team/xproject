@@ -58,7 +58,11 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.events.models import Event, EventStatus
-from app.modules.predictions.demand.predictor import DATA_DIR as _DEMAND_DATA_DIR, fit_demand_curves
+from app.modules.predictions.demand.predictor import (
+    DATA_DIR as _DEMAND_DATA_DIR,
+    fit_demand_curves,
+    fit_interval_table,
+)
 from app.modules.predictions.demand.training_data import (
     DRINK_CATEGORIES,
     build_current_grid,
@@ -171,12 +175,18 @@ async def retrain_demand_model(
     shape_curve, r2_table, category_share, bar_share = fit_demand_curves(
         combined.events, combined.grid, None, shape_only,
     )
+    # LOO-calibrated confidence-interval half-width table — see
+    # fit_interval_table's docstring. Refits once per training event, so
+    # this genuinely costs O(n) extra fits on top of the one above; still
+    # fast at n~11 and this only runs on event-completion, not per-request.
+    interval_table = fit_interval_table(combined.events, combined.grid, None, shape_only)
 
     bundle = {
         "shape_curve": shape_curve,
         "r2_table": r2_table,
         "category_share": category_share,
         "bar_share": bar_share,
+        "interval_table": interval_table,
         "historical_mean_total": float(combined.events["total_drinks"].mean()),
         "historical_n": int(len(combined.events)),
     }
@@ -225,6 +235,10 @@ async def retrain_demand_model(
         metrics_json={
             "r2_at_hour_4": float(r2_table.get(4.0, 0.0)),
             "r2_at_hour_8": float(r2_table.get(8.0, 0.0)),
+            "interval_half_width_pct_at_hour_2": round(float(interval_table.get(2.0, float("nan"))) * 100, 1),
+            "interval_half_width_pct_at_hour_4": round(float(interval_table.get(4.0, float("nan"))) * 100, 1),
+            "interval_half_width_pct_at_hour_6": round(float(interval_table.get(6.0, float("nan"))) * 100, 1),
+            "interval_half_width_pct_at_hour_8": round(float(interval_table.get(8.0, float("nan"))) * 100, 1),
         },
         is_active=True,
         promoted_at=func.now(),

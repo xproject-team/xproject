@@ -188,6 +188,48 @@ def _weighted_share_table(share_rows_df: pd.DataFrame, col_key: str, columns: li
     return weighted_mean.unstack(col_key).reindex(index=HOUR_GRID, columns=columns)
 
 
+def fit_interval_table(
+    events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
+    shape_only: pd.DataFrame | None = None,
+) -> pd.Series:
+    """Leave-one-out half-width table for the predicted_final_total
+    confidence band, indexed by HOUR_GRID. half_width[h] = mean absolute
+    relative error of predicted_final_total, across LOO folds, when the
+    prediction is made h hours into the event — same indexing/semantics
+    as r2_table (compares a prediction made at hour h against the
+    event's true final total), just expressed as an error magnitude
+    instead of a variance-explained fraction. Widens at low-r2/early
+    hours for the same underlying reason: little cumulative signal yet.
+
+    Expensive (refits once per held-out training event) — call once at
+    retrain time and persist the result; DemandPredictor never computes
+    this implicitly (see interval_table param on from_dataframes/predict).
+    """
+    totals = events_df.set_index("event_id")["total_drinks"]
+    event_ids = events_df["event_id"].unique().tolist()
+    errors_by_hour: dict[float, list[float]] = {float(h): [] for h in HOUR_GRID}
+
+    for held_out in event_ids:
+        actual_final = float(totals[held_out])
+        if actual_final <= 0:
+            continue
+        train_events = events_df[events_df["event_id"] != held_out]
+        train_grid = grid_df[grid_df["event_id"] != held_out]
+        held_out_grid = grid_df[grid_df["event_id"] == held_out]
+        if train_events.empty:
+            continue
+        fold_predictor = DemandPredictor.from_dataframes(train_events, train_grid, weights, shape_only)
+        for h in HOUR_GRID:
+            observed_so_far = held_out_grid[held_out_grid["hour_of_event"] <= h]["drinks_count"].sum()
+            prediction = fold_predictor.predict(float(observed_so_far), float(h))
+            predicted_final = prediction["predicted_final_total"]
+            errors_by_hour[float(h)].append(abs(actual_final - predicted_final) / actual_final)
+
+    half_width = {h: (float(np.mean(errs)) if errs else float("nan")) for h, errs in errors_by_hour.items()}
+    table = pd.Series(half_width).reindex(HOUR_GRID)
+    return table.interpolate(limit_direction="both")
+
+
 class DemandPredictor:
     """Stateless-per-call, mirrors NowcastPredictor's lifecycle exactly
     (fit once at construction from parquet or from_dataframes, predict()
@@ -207,22 +249,27 @@ class DemandPredictor:
     @classmethod
     def from_dataframes(
         cls, events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
-        shape_only: pd.DataFrame | None = None,
+        shape_only: pd.DataFrame | None = None, interval_table: pd.Series | None = None,
     ) -> "DemandPredictor":
         self = cls.__new__(cls)
         self.data_dir = None
-        self._fit_from(events_df, grid_df, weights, shape_only)
+        self._fit_from(events_df, grid_df, weights, shape_only, interval_table)
         return self
 
     def _fit_from(
         self, events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
-        shape_only: pd.DataFrame | None = None,
+        shape_only: pd.DataFrame | None = None, interval_table: pd.Series | None = None,
     ) -> None:
         self.shape_curve, self.r2_table, self.category_share, self.bar_share = \
             fit_demand_curves(events_df, grid_df, weights, shape_only)
         self.historical_mean_total = float(events_df["total_drinks"].mean())
         self.historical_n = int(len(events_df))
         self._events_df = events_df
+        # None unless a caller fit it explicitly via fit_interval_table
+        # (expensive — an LOO refit per training event — so it is never
+        # computed implicitly here). predict() falls back to a rough
+        # (1 - r2) proxy when this is absent; see _interp_half_width.
+        self.interval_table = interval_table
 
     def _interp_shape(self, hour_offset: float) -> float:
         return float(np.interp(
@@ -248,6 +295,25 @@ class DemandPredictor:
             left=self.bar_share[rank].iloc[0], right=self.bar_share[rank].iloc[-1],
         ))
 
+    def _interp_half_width(self, hour_offset: float) -> tuple[float, bool]:
+        """Returns (half_width_fraction, is_calibrated). Uses the fitted
+        LOO interval_table when available (see fit_interval_table); falls
+        back to a rough (1 - r2) proxy otherwise, floored at 5% so the
+        band is never a zero-width point estimate. The proxy widens for
+        the same reason the calibrated table does — both are driven by
+        how little cumulative signal exists yet — but is not backed by
+        actual held-out error magnitudes, so callers should prefer a
+        fitted table (retrain.py always supplies one) and treat
+        is_calibrated=False as "approximate."""
+        if self.interval_table is not None:
+            hw = float(np.interp(
+                hour_offset, HOUR_GRID, self.interval_table.to_numpy(),
+                left=self.interval_table.iloc[0], right=self.interval_table.iloc[-1],
+            ))
+            return hw, True
+        r2 = self._interp_r2(hour_offset)
+        return max(0.05, 1.0 - r2), False
+
     def predict(self, drinks_so_far: float, hour_offset_from_start: float) -> dict:
         """Predict remaining-hours drinks demand, broken down by
         (bar_rank, category, hour). Mirrors NowcastPredictor.predict()'s
@@ -257,6 +323,10 @@ class DemandPredictor:
         Returns:
           predicted_final_total: point estimate for the whole event
           confidence: r² at this hour (0 pre-signal, ->1 late in the night)
+          confidence_interval: {lower, upper, half_width_pct, calibrated}
+              around predicted_final_total — widens exactly where
+              confidence is low, since both are driven by the same
+              cumulative-signal scarcity; see _interp_half_width
           predicted_by_hour: {hour: {bar_rank: {category: incremental_count}}}
               for every hour-grid point still ahead of hour_offset_from_start
         """
@@ -268,6 +338,14 @@ class DemandPredictor:
         else:
             predicted_final = drinks_so_far / f_now
             confidence = self._interp_r2(hour_offset_from_start)
+
+        half_width, interval_calibrated = self._interp_half_width(hour_offset_from_start)
+        confidence_interval = {
+            "lower": round(max(0.0, predicted_final * (1.0 - half_width)), 1),
+            "upper": round(predicted_final * (1.0 + half_width), 1),
+            "half_width_pct": round(half_width * 100.0, 1),
+            "calibrated": interval_calibrated,
+        }
 
         predicted_by_hour: dict = {}
         prev_cum_fraction = self._interp_shape(hour_offset_from_start)
@@ -292,6 +370,7 @@ class DemandPredictor:
         return {
             "predicted_final_total": round(float(predicted_final), 2),
             "confidence": round(float(confidence), 4),
+            "confidence_interval": confidence_interval,
             "fallback_used": fallback_used,
             "historical_n": self.historical_n,
             "predicted_by_hour": predicted_by_hour,

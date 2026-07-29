@@ -18,6 +18,7 @@ from app.modules.predictions.demand.predictor import (
     HOUR_GRID,
     DemandPredictor,
     fit_demand_curves,
+    fit_interval_table,
 )
 from app.modules.predictions.demand.training_data import (
     DRINK_CATEGORIES,
@@ -242,3 +243,41 @@ def test_predict_never_returns_negative_counts():
         for by_cat in by_bar.values():
             for count in by_cat.values():
                 assert count >= 0
+
+
+# ─── confidence_interval ─────────────────────────────────────────────
+
+def test_predict_exposes_uncalibrated_band_without_fitted_table():
+    """No interval_table supplied -> falls back to the (1 - r2) proxy,
+    clearly flagged as uncalibrated rather than silently pretending to
+    be a real LOO-backed band."""
+    events_df, grid_df = _make_synthetic_grid()
+    predictor = DemandPredictor.from_dataframes(events_df, grid_df)
+    result = predictor.predict(drinks_so_far=50, hour_offset_from_start=3.0)
+    ci = result["confidence_interval"]
+    assert ci["calibrated"] is False
+    assert ci["lower"] <= result["predicted_final_total"] <= ci["upper"]
+    assert ci["half_width_pct"] >= 5.0  # floored, never a zero-width point estimate
+
+
+def test_predict_uses_fitted_interval_table_when_supplied():
+    events_df, grid_df = _make_synthetic_grid(n_events=6)
+    interval_table = fit_interval_table(events_df, grid_df)
+    predictor = DemandPredictor.from_dataframes(events_df, grid_df, interval_table=interval_table)
+    result = predictor.predict(drinks_so_far=50, hour_offset_from_start=3.0)
+    ci = result["confidence_interval"]
+    assert ci["calibrated"] is True
+    assert ci["lower"] <= result["predicted_final_total"] <= ci["upper"]
+
+
+def test_confidence_interval_widens_when_confidence_is_lower():
+    """Band width and r²-based confidence are driven by the same
+    cumulative-signal scarcity, so an early (low-confidence) hour must
+    produce a wider band than a late (high-confidence) one."""
+    events_df, grid_df = _make_synthetic_grid(n_events=6)
+    interval_table = fit_interval_table(events_df, grid_df)
+    predictor = DemandPredictor.from_dataframes(events_df, grid_df, interval_table=interval_table)
+    early = predictor.predict(drinks_so_far=10, hour_offset_from_start=1.0)
+    late = predictor.predict(drinks_so_far=80, hour_offset_from_start=5.0)
+    assert early["confidence"] <= late["confidence"]
+    assert early["confidence_interval"]["half_width_pct"] >= late["confidence_interval"]["half_width_pct"]
