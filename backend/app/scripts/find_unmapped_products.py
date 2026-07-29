@@ -15,6 +15,21 @@ recorded at the order level (event_orders.fiscal_gross_cents), but its
 drink/food detail is gone forever; it can never be recovered from our
 own database because we never stored it.
 
+CAVEAT (2026-07-29): this is ONE possible cause of a zero-line order,
+not the only one. Run against Jul-5's 880 zero-line orders, this script
+found ZERO unmapped products — every product involved was correctly
+cataloged as drink or food. The actual cause there was bar-level: two
+bars ("Twist & Chips", "Gastronomade Bistrot" — food trucks) had 100%
+of their orders come back with no lines at all, matching the
+already-documented "Jul-5 food-truck stock undercounted, unmapped
+shops dropped from the cascade" issue. A further ~517 orders at
+otherwise-normal bars (Bar Main, Bar Stage, Focacceria Romana) also
+came back line-less, spread across the whole event rather than
+clustered in one window — unexplained by either theory, still open.
+Use this script to rule the catalog-mapping cause in or out; a clean
+result here means look at bar mapping / poller reliability next, not
+that the gap is fully explained.
+
 Our DB has no record of what these products WERE (no name, no id we
 recognize) — the only place that information still exists is Slesh
 itself, via CartLine._productName on the raw order. This script re-pulls
