@@ -25,6 +25,7 @@ from app.modules.events.models import EventOrder
 from app.modules.products.models import ProductType
 from app.modules.stock_transactions.models import TransactionSource
 from app.scripts.build_customer_features import (
+    _chunked,
     build_event,
     build_session_row,
     bucket_category,
@@ -44,6 +45,24 @@ from tests.fixtures.alerts.factories import (
     make_tenant,
 )
 from tests.fixtures.alerts.session import TestSessionLocal
+
+# ─── _chunked ────────────────────────────────────────────────────────────
+# asyncpg caps bind parameters at 32,767; a one-shot bulk insert of a
+# full event's rows blew past that in production (Sundance 14, ~6,950
+# purchase rows). Batching fixed it — this is the regression test.
+
+def test_chunked_splits_into_expected_batch_sizes():
+    batches = list(_chunked(list(range(2500)), 1000))
+    assert [len(b) for b in batches] == [1000, 1000, 500]
+
+
+def test_chunked_empty_list():
+    assert list(_chunked([], 1000)) == []
+
+
+def test_chunked_smaller_than_batch_size():
+    assert list(_chunked([1, 2, 3], 1000)) == [[1, 2, 3]]
+
 
 # ─── bucket_category ────────────────────────────────────────────────────
 

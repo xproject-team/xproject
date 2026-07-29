@@ -314,6 +314,18 @@ def percentile_stats(values: list[float]) -> tuple[float, float]:
     return float(np.percentile(arr, 50)), float(np.percentile(arr, 90))
 
 
+# asyncpg hard-caps a single prepared statement at 32,767 bind
+# parameters. CustomerSession has ~26 columns, CustomerPurchase ~13 —
+# 1,000 rows/batch stays comfortably under that for either table even
+# though only one is ever needed at a time.
+_INSERT_BATCH_SIZE = 1000
+
+
+def _chunked(rows: list[dict], size: int):
+    for i in range(0, len(rows), size):
+        yield rows[i:i + size]
+
+
 # ─────────────────────────────────────────────────────────────────────
 # I/O — fetch, orchestrate, write
 # ─────────────────────────────────────────────────────────────────────
@@ -463,10 +475,13 @@ async def build_event(
         await db.execute(delete(CustomerSession).where(
             CustomerSession.tenant_id == tenant_id, CustomerSession.event_id == event_id,
         ))
-        if session_rows:
-            await db.execute(pg_insert(CustomerSession).values(session_rows))
-        if purchase_rows:
-            await db.execute(pg_insert(CustomerPurchase).values(purchase_rows))
+        # asyncpg caps a single prepared statement at 32,767 bind
+        # parameters — a plain one-shot bulk insert blows past that once
+        # an event has a few thousand rows. Batch instead.
+        for batch in _chunked(session_rows, _INSERT_BATCH_SIZE):
+            await db.execute(pg_insert(CustomerSession).values(batch))
+        for batch in _chunked(purchase_rows, _INSERT_BATCH_SIZE):
+            await db.execute(pg_insert(CustomerPurchase).values(batch))
         await db.commit()
 
     return report
