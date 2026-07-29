@@ -33,6 +33,16 @@ class CustomerSession(TenantScopedModel):
     customer who buys once at 14:00 and again at 20:00 has a 6-hour
     session_minutes even if they left and came back, or never left at
     all. Do not read this as time-on-site.
+
+    PRIMARY SOURCE IS event_orders, not the line join: every order with
+    a customer_key produces/updates a session row, so order_count and
+    total_spend_cents are always complete even when line-level detail
+    is missing (see orders_with_lines / has_full_line_coverage — a
+    2026-07-29 finding showed ~21% of Jul-5's identified orders have
+    zero matching stock_transactions rows because every cart line's
+    product failed to match our catalog). Only drink_count, food_count,
+    and the category counts are line-derived and can be 0 for an
+    otherwise-real, fully-counted session.
     """
     __tablename__ = "customer_sessions"
 
@@ -59,6 +69,13 @@ class CustomerSession(TenantScopedModel):
     first_bar_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("bars.id", ondelete="SET NULL"), nullable=True,
     )
+
+    # Of order_count, how many have >=1 matching stock_transactions row.
+    orders_with_lines: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # order_count == orders_with_lines. False = money is fully counted
+    # but drink/food detail is missing for >=1 order — a catalog mapping
+    # gap, not a join bug. See class docstring.
+    has_full_line_coverage: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     # customer_email's domain != 'slesh.it'. NULL when none of this
     # customer's orders at this event carry a customer_email at all
@@ -128,5 +145,10 @@ class CustomerPurchase(TenantScopedModel):
     )
     qty: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False)
     price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # True for Bicchiere / Cauzione Bottiglia / Free Bicchiere and any
+    # other deposit-type product (see is_deposit_product() in
+    # build_customer_features.py). Excluded from customer_sessions
+    # category counts and drink_count.
+    is_deposit: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     ordered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

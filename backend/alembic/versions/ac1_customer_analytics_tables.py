@@ -13,14 +13,28 @@ customer_sessions
     One row per (event_id, customer_key) — the per-customer aggregate
     profile a model trains on. customer_key is
     event_orders.raw_extras->'user'->>'_id'; orders without one are
-    never represented here.
+    never represented here. PRIMARY SOURCE IS event_orders, not the
+    line join — every identified order produces/updates a session
+    (order_count, spend, timing, registration) from event_orders alone.
+    Line-derived fields (drink/food/category counts) come from
+    customer_purchases where lines exist and are 0 where they don't —
+    see orders_with_lines / has_full_line_coverage below, which exist
+    specifically to make that gap visible instead of silently averaged
+    away. (2026-07-29 finding: ~21% of Jul-5's identified orders have
+    zero matching stock_transactions rows — every cart line's product
+    failed to match our catalog. The order and its money are real and
+    counted here; the drink-level detail for it simply doesn't exist.)
 
 customer_purchases
     One row per drink/food line attributed to a customer, joined via
     stock_transactions.source_idempotency_key back to
     event_orders.slesh_order_id. ordered_at is always
     event_orders.created_at_slesh (the poller's ingestion timestamp on
-    stock_transactions is never used for this table).
+    stock_transactions is never used for this table). Deposit/cup-charge
+    lines (Bicchiere, Cauzione Bottiglia, Free Bicchiere) are KEPT here
+    (a customer really did pay/hold that line) but flagged is_deposit —
+    event_orders.fiscal_gross_cents is net of deposits, so summing raw
+    line prices without this flag overshoots revenue coverage past 100%.
 
 FK policy:
     tenant_id, event_id -> CASCADE (tenant/event deletion wipes derived data)
@@ -64,6 +78,19 @@ def upgrade() -> None:
 
         sa.Column("distinct_bars", sa.Integer, nullable=False),
         sa.Column("first_bar_id", postgresql.UUID(as_uuid=True), nullable=True),
+
+        sa.Column(
+            "orders_with_lines", sa.Integer, nullable=False, server_default="0",
+            comment="Of order_count, how many have >=1 matching stock_transactions "
+                    "row. Can be less than order_count — see has_full_line_coverage.",
+        ),
+        sa.Column(
+            "has_full_line_coverage", sa.Boolean, nullable=False, server_default="false",
+            comment="order_count == orders_with_lines. False means this customer's "
+                    "money is fully counted (order_count, total_spend_cents) but "
+                    "drink/food-level detail is missing for at least one of their "
+                    "orders — a product-catalog mapping gap, not a join bug.",
+        ),
 
         sa.Column(
             "is_registered", sa.Boolean, nullable=True,
@@ -116,6 +143,15 @@ def upgrade() -> None:
         sa.Column("bar_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("qty", sa.Numeric(12, 3), nullable=False),
         sa.Column("price_cents", sa.Integer, nullable=True),
+        sa.Column(
+            "is_deposit", sa.Boolean, nullable=False, server_default="false",
+            comment="True for Bicchiere / Cauzione Bottiglia / Free Bicchiere "
+                    "and any other deposit-type product (matched by normalized "
+                    "name — see is_deposit_product() in build_customer_features.py). "
+                    "Excluded from customer_sessions category counts and "
+                    "drink_count; event_orders.fiscal_gross_cents is net of "
+                    "deposits, so including these in a revenue sum overshoots.",
+        ),
 
         sa.Column(
             "ordered_at", sa.DateTime(timezone=True), nullable=False,
