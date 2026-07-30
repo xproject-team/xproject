@@ -45,6 +45,14 @@ class Event(TenantScopedModel):
     is_training_eligible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true"),
     )
+    # Day 4 customer-intelligence panel — manual heat adjustment for the
+    # demand model's category breakdown. See alembic migration ae1 for
+    # the full rationale (one hot event isn't enough to fit a weather
+    # feature responsibly; this is a deliberate manual toggle, never an
+    # automatic model input). Off by default.
+    hot_night_override: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"),
+    )
     venue_id: Mapped[UUID] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("venues.id", ondelete="RESTRICT"),

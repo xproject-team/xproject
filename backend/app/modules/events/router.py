@@ -84,6 +84,17 @@ from app.modules.predictions.nowcast.service import (
     EventNotInTenantError as ForecastEventNotInTenantError,
     get_revenue_forecast,
 )
+from app.modules.customer_intelligence.schemas import (
+    CustomerIntelligenceResponse,
+    HotNightOverrideIn,
+    HotNightOverrideOut,
+)
+from app.modules.customer_intelligence.service import (
+    EventNotFoundError as CustomerIntelEventNotFoundError,
+    EventNotInTenantError as CustomerIntelEventNotInTenantError,
+    get_customer_intelligence_cached,
+    set_hot_night_override,
+)
 from app.modules.events.service import (
     EventNotFoundError,
     EventService,
@@ -1095,3 +1106,77 @@ async def get_revenue_forecast_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "event_not_in_tenant", "message": str(e)},
         )
+
+
+@router.get("/{event_id}/customer-intelligence", response_model=CustomerIntelligenceResponse)
+async def get_customer_intelligence_endpoint(
+    event_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+    as_of_time: datetime | None = None,
+) -> CustomerIntelligenceResponse:
+    """Day 4 Customer Intelligence panel: live guest/spend/returning-guest
+    stats plus the demand forecast (next-hour total + band, category
+    breakdown, predicted-vs-actual per closed hour).
+
+    Live stats come from event_orders/stock_transactions directly, not
+    from customer_sessions/customer_purchases (those are offline-batch
+    tables, stale for a currently-LIVE event) — see service.py.
+
+    Cached ~30s when as_of_time is omitted (the live-polling case);
+    an explicit as_of_time bypasses the cache (a backtest/preview, same
+    semantics as revenue-forecast). Degrades per-section: an untrained
+    demand model yields demand_forecast.available=False and an empty
+    predicted_vs_actual, never a failed response — live guest/spend
+    stats always render as long as the event itself exists.
+
+    404 if event_id doesn't exist at all. 403 if it exists but belongs
+    to a different tenant.
+    """
+    use_cache = as_of_time is None
+    if as_of_time is None:
+        as_of_time = datetime.now(timezone.utc)
+    try:
+        return await get_customer_intelligence_cached(
+            db, tenant_id, event_id, as_of_time, use_cache=use_cache,
+        )
+    except CustomerIntelEventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except CustomerIntelEventNotInTenantError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "event_not_in_tenant", "message": str(e)},
+        )
+
+
+@router.post("/{event_id}/hot-night-override", response_model=HotNightOverrideOut)
+async def set_hot_night_override_endpoint(
+    event_id: UUID,
+    payload: HotNightOverrideIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    tenant_id: Annotated[UUID, Depends(get_current_tenant_id)],
+) -> HotNightOverrideOut:
+    """Manual toggle for the demand model's heat adjustment (see
+    predictions/demand/predictor.py's apply_hot_night_boost and alembic
+    migration ae1). Off by default; a manager flips this on when
+    tonight is genuinely hot — never inferred automatically from a
+    forecast. Not routed through the optimistic-locking event-update
+    endpoint on purpose: this is a narrow, idempotent operational
+    toggle, not a structural edit.
+    """
+    try:
+        event = await set_hot_night_override(db, tenant_id, event_id, payload.enabled)
+    except CustomerIntelEventNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "event_not_found", "message": str(e)},
+        )
+    except CustomerIntelEventNotInTenantError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": "event_not_in_tenant", "message": str(e)},
+        )
+    return HotNightOverrideOut(event_id=event.id, hot_night_override=event.hot_night_override)

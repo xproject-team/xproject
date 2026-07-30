@@ -15,8 +15,11 @@ import pytest
 
 from app.modules.predictions.demand.predictor import (
     BAR_RANKS,
+    HOT_NIGHT_HOURS,
+    HOT_NIGHT_SPRITZ_BOOST_PP,
     HOUR_GRID,
     DemandPredictor,
+    apply_hot_night_boost,
     fit_demand_curves,
     fit_interval_table,
 )
@@ -281,3 +284,88 @@ def test_confidence_interval_widens_when_confidence_is_lower():
     late = predictor.predict(drinks_so_far=80, hour_offset_from_start=5.0)
     assert early["confidence"] <= late["confidence"]
     assert early["confidence_interval"]["half_width_pct"] >= late["confidence_interval"]["half_width_pct"]
+
+
+# ─── from_bundle ──────────────────────────────────────────────────────
+
+def test_from_bundle_reconstructs_without_refitting():
+    events_df, grid_df = _make_synthetic_grid(n_events=6)
+    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
+    interval_table = fit_interval_table(events_df, grid_df)
+    bundle = {
+        "shape_curve": shape_curve, "r2_table": r2_table,
+        "category_share": category_share, "bar_share": bar_share,
+        "interval_table": interval_table,
+        "historical_mean_total": float(events_df["total_drinks"].mean()),
+        "historical_n": int(len(events_df)),
+    }
+    predictor = DemandPredictor.from_bundle(bundle)
+    result = predictor.predict(drinks_so_far=50, hour_offset_from_start=3.0)
+    assert result["historical_n"] == len(events_df)
+    assert result["confidence_interval"]["calibrated"] is True
+
+
+def test_from_bundle_tolerates_missing_interval_table():
+    """Older artifacts (pre confidence-interval feature) won't have an
+    interval_table key — from_bundle must not KeyError on it."""
+    events_df, grid_df = _make_synthetic_grid()
+    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
+    bundle = {
+        "shape_curve": shape_curve, "r2_table": r2_table,
+        "category_share": category_share, "bar_share": bar_share,
+        "historical_mean_total": float(events_df["total_drinks"].mean()),
+        "historical_n": int(len(events_df)),
+    }
+    predictor = DemandPredictor.from_bundle(bundle)
+    result = predictor.predict(drinks_so_far=50, hour_offset_from_start=3.0)
+    assert result["confidence_interval"]["calibrated"] is False
+
+
+# ─── apply_hot_night_boost ────────────────────────────────────────────
+
+def test_hot_night_boost_only_applies_within_hours_1_to_5():
+    fracs = {"beer": 0.3, "cocktail": 0.3, "spritz": 0.2, "wine": 0.1, "premium": 0.05, "other": 0.05}
+    assert apply_hot_night_boost(fracs, 0.0) == fracs
+    assert apply_hot_night_boost(fracs, 6.0) == fracs
+    for h in HOT_NIGHT_HOURS:
+        assert apply_hot_night_boost(fracs, h) != fracs
+
+
+def test_hot_night_boost_increases_spritz_and_renormalizes():
+    fracs = {"beer": 0.3, "cocktail": 0.3, "spritz": 0.2, "wine": 0.1, "premium": 0.05, "other": 0.05}
+    boosted = apply_hot_night_boost(fracs, 2.0)
+    assert boosted["spritz"] == pytest.approx(0.2 + HOT_NIGHT_SPRITZ_BOOST_PP)
+    assert sum(boosted.values()) == pytest.approx(1.0)
+    # every other category shrank, none went negative
+    for cat in ("beer", "cocktail", "wine", "premium", "other"):
+        assert 0.0 <= boosted[cat] < fracs[cat]
+
+
+def test_hot_night_boost_caps_spritz_at_one_and_never_goes_negative():
+    fracs = {"beer": 0.0, "cocktail": 0.0, "spritz": 0.95, "wine": 0.02, "premium": 0.02, "other": 0.01}
+    boosted = apply_hot_night_boost(fracs, 3.0)
+    assert boosted["spritz"] <= 1.0
+    assert all(v >= 0.0 for v in boosted.values())
+    assert sum(boosted.values()) == pytest.approx(1.0)
+
+
+def test_predict_hot_night_flag_boosts_spritz_share_in_window():
+    events_df, grid_df = _make_synthetic_grid(n_events=6)
+    predictor = DemandPredictor.from_dataframes(events_df, grid_df)
+    normal = predictor.predict(drinks_so_far=30, hour_offset_from_start=1.0)
+    hot = predictor.predict(drinks_so_far=30, hour_offset_from_start=1.0, hot_night=True)
+    assert normal["hot_night_applied"] is False
+    assert hot["hot_night_applied"] is True
+    hour2 = round(2.0, 1)
+    normal_spritz = sum(by_cat["spritz"] for by_cat in normal["predicted_by_hour"][hour2].values())
+    hot_spritz = sum(by_cat["spritz"] for by_cat in hot["predicted_by_hour"][hour2].values())
+    assert hot_spritz >= normal_spritz
+
+
+# ─── shape_fraction_at ────────────────────────────────────────────────
+
+def test_shape_fraction_at_matches_curve_endpoints():
+    events_df, grid_df = _make_synthetic_grid()
+    predictor = DemandPredictor.from_dataframes(events_df, grid_df)
+    assert predictor.shape_fraction_at(0.0) == pytest.approx(predictor.shape_curve.iloc[0])
+    assert predictor.shape_fraction_at(HOUR_GRID[-1]) == pytest.approx(predictor.shape_curve.iloc[-1])

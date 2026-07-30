@@ -230,6 +230,40 @@ def fit_interval_table(
     return table.interpolate(limit_direction="both")
 
 
+# Day 4 "hot night" manual toggle (events.hot_night_override — see
+# alembic migration ae1). Jul-19 (the only >=33C event observed so far)
+# showed spritz at 27-36% actual share during hours 1-5 vs. this
+# model's pooled ~15-18% expectation — a +12 to +19 percentage-point
+# gap. One hot event isn't enough to fit that as a weather feature
+# responsibly (Day 3 closeout report), so this is a fixed, manually
+# toggled boost using the midpoint of the observed gap, not a fitted
+# parameter. Applied ONLY to hours 1-5, ONLY to spritz share; every
+# other category's share is scaled down proportionally so shares still
+# sum to 1. Never applied automatically — see loader.py / router.
+HOT_NIGHT_SPRITZ_BOOST_PP = 0.15
+HOT_NIGHT_HOURS = frozenset({1.0, 2.0, 3.0, 4.0, 5.0})
+
+
+def apply_hot_night_boost(category_fracs: dict[str, float], hour: float) -> dict[str, float]:
+    """Return category_fracs with spritz boosted and the rest scaled
+    down proportionally, for hours 1-5 only. Outside that window, or if
+    spritz is already at/above 1.0 (never happens in practice, guarded
+    anyway), returns category_fracs unchanged."""
+    if hour not in HOT_NIGHT_HOURS:
+        return category_fracs
+    old_spritz = category_fracs.get("spritz", 0.0)
+    new_spritz = min(1.0, old_spritz + HOT_NIGHT_SPRITZ_BOOST_PP)
+    boost_applied = new_spritz - old_spritz
+    others_total = sum(v for k, v in category_fracs.items() if k != "spritz")
+    if boost_applied <= 0 or others_total <= 0:
+        return category_fracs
+    shrink_factor = max(0.0, (others_total - boost_applied) / others_total)
+    return {
+        k: (new_spritz if k == "spritz" else v * shrink_factor)
+        for k, v in category_fracs.items()
+    }
+
+
 class DemandPredictor:
     """Stateless-per-call, mirrors NowcastPredictor's lifecycle exactly
     (fit once at construction from parquet or from_dataframes, predict()
@@ -271,11 +305,42 @@ class DemandPredictor:
         # (1 - r2) proxy when this is absent; see _interp_half_width.
         self.interval_table = interval_table
 
+    @classmethod
+    def from_bundle(cls, bundle: dict) -> "DemandPredictor":
+        """Reconstruct a predictor from a retrain.py bundle (the exact
+        dict pickled to model_artifacts' file_path) WITHOUT refitting —
+        the bundle already carries fitted curves, so this just assigns
+        them directly. Used by loader.py to serve predictions from the
+        active model_artifacts row; from_dataframes/__init__ are for
+        fitting from raw data (training/validation/retrain), not serving.
+        """
+        self = cls.__new__(cls)
+        self.data_dir = None
+        self.shape_curve = bundle["shape_curve"]
+        self.r2_table = bundle["r2_table"]
+        self.category_share = bundle["category_share"]
+        self.bar_share = bundle["bar_share"]
+        self.interval_table = bundle.get("interval_table")
+        self.historical_mean_total = bundle["historical_mean_total"]
+        self.historical_n = bundle["historical_n"]
+        self._events_df = None
+        return self
+
     def _interp_shape(self, hour_offset: float) -> float:
         return float(np.interp(
             hour_offset, HOUR_GRID, self.shape_curve.to_numpy(),
             left=0.0, right=self.shape_curve.iloc[-1],
         ))
+
+    def shape_fraction_at(self, hour_offset: float) -> float:
+        """Public wrapper around the interpolated cumulative-shape
+        fraction at a given hour, for use outside a drinks prediction
+        (Day 4: projecting live guest-count-so-far to a final estimate
+        by reusing this model's shape curve as an approximation for
+        guest-arrival timing — there is no dedicated guest-count model;
+        both drinks and guest arrivals track cumulative event activity
+        reasonably well, but this is an approximation, not a fit)."""
+        return self._interp_shape(hour_offset)
 
     def _interp_r2(self, hour_offset: float) -> float:
         return float(np.interp(
@@ -314,11 +379,17 @@ class DemandPredictor:
         r2 = self._interp_r2(hour_offset)
         return max(0.05, 1.0 - r2), False
 
-    def predict(self, drinks_so_far: float, hour_offset_from_start: float) -> dict:
+    def predict(
+        self, drinks_so_far: float, hour_offset_from_start: float, *, hot_night: bool = False,
+    ) -> dict:
         """Predict remaining-hours drinks demand, broken down by
         (bar_rank, category, hour). Mirrors NowcastPredictor.predict()'s
         calibration exactly for the overall total; see module docstring
         for why category/bar shares are historical-only in this version.
+
+        hot_night: applies apply_hot_night_boost() to the category split
+        for hours 1-5 — see that function's docstring. Off by default;
+        callers must opt in explicitly (events.hot_night_override).
 
         Returns:
           predicted_final_total: point estimate for the whole event
@@ -357,13 +428,17 @@ class DemandPredictor:
             prev_cum_fraction = cum_fraction
             incremental_total = predicted_final * incremental_fraction
 
+            cat_fracs = {cat: self._interp_category_share(cat, hr) for cat in DRINK_CATEGORIES}
+            if hot_night:
+                cat_fracs = apply_hot_night_boost(cat_fracs, float(hr))
+
             by_bar: dict = {}
             for rank in BAR_RANKS:
                 bar_frac = self._interp_bar_share(rank, hr)
-                by_cat = {}
-                for cat in DRINK_CATEGORIES:
-                    cat_frac = self._interp_category_share(cat, hr)
-                    by_cat[cat] = round(incremental_total * bar_frac * cat_frac, 3)
+                by_cat = {
+                    cat: round(incremental_total * bar_frac * cat_frac, 3)
+                    for cat, cat_frac in cat_fracs.items()
+                }
                 by_bar[rank] = by_cat
             predicted_by_hour[round(float(hr), 1)] = by_bar
 
@@ -374,4 +449,5 @@ class DemandPredictor:
             "fallback_used": fallback_used,
             "historical_n": self.historical_n,
             "predicted_by_hour": predicted_by_hour,
+            "hot_night_applied": hot_night,
         }

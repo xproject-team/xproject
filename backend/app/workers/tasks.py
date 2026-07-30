@@ -10,7 +10,9 @@ silent failures or infinite retry loops.
 """
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy import select
@@ -211,6 +213,93 @@ async def retrain_demand_predictor(ctx: dict, tenant_id: str, event_id: str | No
         except Exception as e:  # noqa: BLE001
             logger.exception("retrain_demand_predictor failed: tenant=%s: %s", tenant_id, e)
             return {"status": "error", "reason": str(e)[:200]}
+
+
+# ─── Customer intelligence refresh (Day 4) ────────────────────────────────────
+
+async def refresh_customer_intelligence(ctx: dict, tenant_id: str, event_id: str) -> dict:
+    """Recompute the customer-intelligence panel for one LIVE event,
+    write it to the ~30s cache fresh, and push a thin "something
+    changed" WebSocket notification — same pattern as evaluate_alerts:
+    background compute, then notify, frontend refetches via the
+    (now-warm) GET endpoint. Never raises out to arq.
+    """
+    try:
+        tenant_uuid = UUID(tenant_id)
+        event_uuid = UUID(event_id)
+    except (TypeError, ValueError) as e:
+        logger.warning("refresh_customer_intelligence: bad UUID args %s %s: %s",
+                       tenant_id, event_id, e)
+        return {"status": "error", "reason": "invalid_uuid"}
+
+    from app.modules.customer_intelligence.service import get_customer_intelligence_cached
+
+    async with async_session_factory() as session:
+        try:
+            await get_customer_intelligence_cached(
+                session, tenant_uuid, event_uuid, datetime.now(timezone.utc), use_cache=False,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception(
+                "refresh_customer_intelligence failed: tenant=%s event=%s: %s",
+                tenant_id, event_id, e,
+            )
+            return {"status": "error", "reason": str(e)[:200]}
+
+    # get_customer_intelligence_cached always WRITES the fresh cache
+    # entry (use_cache=False only skips the READ), so the endpoint's
+    # next poll hits a warm cache regardless of whether this notify
+    # step below succeeds.
+    try:
+        from app.core.redis_client import publish as _ws_publish
+        await _ws_publish(
+            f"event:{event_id}",
+            json.dumps({"type": "customer_intelligence.refreshed", "event_id": event_id}),
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("refresh_customer_intelligence: WS notify failed: %s", e)
+
+    return {"status": "ok"}
+
+
+async def cron_refresh_customer_intelligence_for_all_live_events(ctx: dict) -> dict:
+    """Cron entry point: find every LIVE event across all tenants and
+    enqueue one refresh_customer_intelligence job per event. Same
+    enumerate-then-fan-out shape as cron_evaluate_all_live_events.
+    """
+    enqueued = 0
+    skipped = 0
+
+    async with async_session_factory() as session:
+        try:
+            stmt = select(Event.id, Event.tenant_id).where(
+                Event.status == EventStatus.LIVE,
+            )
+            rows = (await session.execute(stmt)).all()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("cron: failed to list live events for customer-intelligence refresh: %s", e)
+            return {"status": "error", "enqueued": 0}
+
+    redis = ctx["redis"]
+    for event_id, tenant_id in rows:
+        try:
+            job = await redis.enqueue_job(
+                "refresh_customer_intelligence",
+                str(tenant_id),
+                str(event_id),
+                _job_id=f"ci_refresh:{tenant_id}:{event_id}",
+            )
+            if job is None:
+                skipped += 1
+            else:
+                enqueued += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "cron: failed to enqueue customer-intelligence refresh for event=%s: %s",
+                event_id, e,
+            )
+
+    return {"status": "ok", "enqueued": enqueued, "skipped": skipped}
 
 
 # ─── Post-event report generation ─────────────────────────────────────────────

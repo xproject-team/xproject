@@ -38,10 +38,12 @@ from app.workers.tasks import (
     cron_evaluate_all_live_events,
     cron_generate_reports_for_completed_events,
     cron_poll_slesh_for_all_live_events,
+    cron_refresh_customer_intelligence_for_all_live_events,
     cron_sync_bars_from_slesh,
     evaluate_alerts,
     generate_report,
     poll_slesh_for_event,
+    refresh_customer_intelligence,
     retrain_demand_predictor,
     retrain_predictor,
     run_predictions,
@@ -61,12 +63,14 @@ class WorkerSettings:
         evaluate_alerts,
         generate_report,
         poll_slesh_for_event,
+        refresh_customer_intelligence,
         cron_evaluate_all_live_events,
         cron_generate_reports_for_completed_events,
         cron_close_paused_invoices,
         cron_poll_slesh_for_all_live_events,
         cron_sync_bars_from_slesh,
         cron_auto_transition_event_statuses,
+        cron_refresh_customer_intelligence_for_all_live_events,
     ]
 
     # Cron jobs run on a fixed schedule inside the worker process.
@@ -134,6 +138,16 @@ class WorkerSettings:
             minute={4, 9, 14, 19, 24, 29, 34, 39, 44, 49, 54, 59},
             run_at_startup=True,   # Fire on boot in case worker
                                    # restarts after a missed schedule.
+        ),
+        # Day 4 customer-intelligence panel. Every 5 min for LIVE events,
+        # offset {3, 8, 13, ...} to avoid the alerts/reports/invoices/
+        # bars-sync crons above. Proactively refreshes the ~30s cache and
+        # WS-notifies connected dashboards even if nobody's actively
+        # polling right then — same rationale as cron_evaluate_all_live_events.
+        cron(
+            cron_refresh_customer_intelligence_for_all_live_events,
+            minute={3, 8, 13, 18, 23, 28, 33, 38, 43, 48, 53, 58},
+            run_at_startup=True,
         ),
     ]
 

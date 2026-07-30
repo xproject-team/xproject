@@ -89,12 +89,14 @@ async def make_product(
     *,
     unit: ProductUnit = ProductUnit.BOTTLE,
     product_type: ProductType = ProductType.DRINK,
+    category: ProductCategory | None = None,
+    name: str | None = None,
 ) -> Product:
     p = Product(
         tenant_id=tenant_id,
-        name=f"test-product-{uuid.uuid4().hex[:8]}",
+        name=name or f"test-product-{uuid.uuid4().hex[:8]}",
         product_type=product_type,
-        category=ProductCategory.BASIC_COCKTAIL,
+        category=category if category is not None else ProductCategory.BASIC_COCKTAIL,
         unit=unit,
         default_price_cents=1000,
         is_archived=False,
