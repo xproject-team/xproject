@@ -28,6 +28,7 @@ import { useWebSocket } from '@/lib/ws'
 
 import { dashboardKeys } from './hooks'
 import { alertsKeys } from '@/features/alerts/useAlerts'
+import { customerIntelKeys } from '@/features/customer-intelligence/useCustomerIntelligence'
 
 interface IncomingFrame {
   type?:        string
@@ -73,9 +74,14 @@ export function useDashboardSocket(
     // We invalidate ALL dashboard-related caches on any frame for v1.0.
     // Future polish: switch on frame.type and only invalidate the
     // affected slice (e.g. only stock keys for stock:* messages).
+    // customer-intelligence.refreshed (Day 4) arrives on this same
+    // event:{eventId} channel, pushed every 5 min for LIVE events by
+    // the arq refresh job — same "background compute, thin notify,
+    // frontend refetches" pattern as everything else here.
     if (frame.type) {
       qc.invalidateQueries({ queryKey: dashboardKeys.all })
       qc.invalidateQueries({ queryKey: alertsKeys.all })
+      qc.invalidateQueries({ queryKey: customerIntelKeys.all })
     }
   }
 

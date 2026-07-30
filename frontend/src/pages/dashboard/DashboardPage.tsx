@@ -29,6 +29,8 @@ import { useEvent } from '@/features/events/hooks'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart'
 import { RevenueForecastPanel } from '@/features/dashboard/RevenueForecastPanel'
 import { useRevenueForecast } from '@/features/predictions/useRevenueForecast'
+import { CustomerIntelligencePanel } from '@/features/dashboard/CustomerIntelligencePanel'
+import { useCustomerIntelligence } from '@/features/customer-intelligence/useCustomerIntelligence'
 import { FreshnessBadge } from '@/features/dashboard/FreshnessBadge'
 import { WeatherPill } from '@/features/dashboard/WeatherPill'
 import { WristbandActivityFeed } from '@/features/dashboard/WristbandActivityFeed'
@@ -542,6 +544,12 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   const { forecast, loading: forecastLoading, error: forecastError } =
     useRevenueForecast(eventId, currentEvent?.status, currentEvent?.ended_at)
 
+  // Day 4 — Customer Intelligence panel. Same status-gated polling
+  // contract as the revenue forecast above (30s while LIVE, once at
+  // ended_at when COMPLETED, disabled otherwise).
+  const { data: customerIntel, loading: customerIntelLoading, error: customerIntelError } =
+    useCustomerIntelligence(eventId, currentEvent?.status, currentEvent?.ended_at)
+
   // Live push: keeps all alerts queries fresh via WebSocket invalidation.
   // If the socket disconnects, the 10s polling fallback inside the query
   // hooks still keeps the UI correct — belt AND suspenders.
@@ -825,6 +833,18 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
               <div className="mb-4">
                 <RechargeDeskCard eventId={eventId} />
               </div>
+              {/* Customer Intelligence — Day 4. Same placement rationale
+                  as RechargeDeskCard above: sits between the money-in
+                  row and the per-bar grid. LIVE/COMPLETED only, same
+                  gate as the revenue forecast sidebar. */}
+              {(isLive || isCompleted) && (
+                <CustomerIntelligencePanel
+                  eventId={eventId}
+                  data={customerIntel}
+                  loading={customerIntelLoading}
+                  error={customerIntelError}
+                />
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {liveKpis.map((kpi) => {
                   const stub = stubById.get(kpi.id)
