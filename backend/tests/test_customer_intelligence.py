@@ -185,6 +185,43 @@ async def test_demand_forecast_unavailable_when_model_untrained():
 
 
 @pytest.mark.asyncio
+async def test_demand_forecast_distinguishes_artifact_unavailable_from_untrained(tmp_path):
+    """The Jul-30 production incident, reproduced end-to-end: a model
+    WAS trained (an active row exists) but its payload can't be loaded
+    -- the panel must say so distinctly, not "not yet trained"."""
+    from app.modules.predictions.demand.retrain import retrain_demand_model
+    from app.modules.predictions.models import ModelArtifact
+
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        await retrain_demand_model(session, tenant.id, triggered_by="test", artifacts_dir=tmp_path)
+        await session.execute(
+            ModelArtifact.__table__.update()
+            .where(ModelArtifact.tenant_id == tenant.id)
+            .values(file_bytes=None, file_path="/nonexistent/path.pkl")
+        )
+        await session.commit()
+
+        event = await make_event(session, tenant.id, status=EventStatus.LIVE)
+        bar = await make_bar(session, tenant.id, event.id)
+        beer = await make_product(session, tenant.id, product_type=ProductType.DRINK,
+                                   category=ProductCategory.BEER_DRAFT, name="Birra")
+        order = await _order(session, tenant_id=tenant.id, event_id=event.id, slesh_order_id="o-1",
+                              user_id="u-1", fiscal_gross_cents=1000)
+        await session.flush()
+        await _line(session, tenant.id, event.id, bar, beer, order, line_id="l1")
+        await session.commit()
+
+        result = await get_customer_intelligence(session, tenant.id, event.id, T0 + timedelta(hours=1))
+        assert result.demand_forecast.available is False
+        assert result.demand_forecast.unavailable_reason == "model artifact unavailable"
+        assert "not yet trained" not in result.demand_forecast.unavailable_reason
+        assert result.guests.live_identified_count == 1
+
+        await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
 async def test_demand_forecast_available_with_next_hour_band_and_low_confidence_flags(tmp_path):
     async with TestSessionLocal() as session:
         tenant = await make_tenant(session)

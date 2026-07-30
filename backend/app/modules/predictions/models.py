@@ -34,7 +34,7 @@ from sqlalchemy import (
     Enum as SqlEnum,
     text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID as PgUUID
+from sqlalchemy.dialects.postgresql import ARRAY, BYTEA, JSONB, UUID as PgUUID
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -212,6 +212,14 @@ class ModelArtifact(Base):
     file_path = Column(Text, nullable=False)
     file_size_bytes = Column(BigInteger, nullable=False)
     file_sha256 = Column(Text, nullable=False)
+    # Durable storage (migration af1) -- file_path points at local
+    # container disk, which Railway does NOT persist across deploys
+    # (no volume attached to this service). file_bytes holds the exact
+    # pickle.dumps(bundle) output in Postgres, which does persist.
+    # NULL for rows written before af1; loader.py falls back to
+    # file_path only in that case (and correctly reports the artifact
+    # unavailable once that file is inevitably gone).
+    file_bytes = Column(BYTEA, nullable=True)
 
     trained_at = Column(DateTime(timezone=True), nullable=False, server_default=text("NOW()"))
     training_event_ids = Column(ARRAY(PgUUID(as_uuid=True)), nullable=False, server_default=text("ARRAY[]::UUID[]"))

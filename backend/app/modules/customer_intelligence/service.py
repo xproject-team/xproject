@@ -208,9 +208,15 @@ def _predicted_by_hour_categories(prediction: dict, hour: float) -> dict[str, fl
 
 def _build_demand_forecast(
     predictor: DemandPredictor | None, drinks_so_far: float, hour_offset: float, hot_night: bool,
+    unavailable_reason: str | None = None,
 ) -> DemandForecastOut:
     if predictor is None:
-        return DemandForecastOut(available=False, unavailable_reason="demand model not yet trained")
+        # unavailable_reason distinguishes "never trained" from "was
+        # trained, artifact unavailable" — see loader.py. Falls back to
+        # the former only if a caller somehow didn't pass one through.
+        return DemandForecastOut(
+            available=False, unavailable_reason=unavailable_reason or "demand model not yet trained",
+        )
 
     prediction = predictor.predict(drinks_so_far, hour_offset, hot_night=hot_night)
     ci = ConfidenceIntervalOut(**prediction["confidence_interval"])
@@ -317,7 +323,7 @@ async def get_customer_intelligence(
         hour_offset = max(0.0, (as_of_time - first_order_at).total_seconds() / 3600.0)
         drinks_so_far = sum(_hour_total(grid, h) for h in grid)
 
-    predictor = await get_active_demand_predictor(db, tenant_id)
+    predictor, load_reason = await get_active_demand_predictor(db, tenant_id)
 
     live_count = segment_counts["live_identified_count"]
     projected_final: float | None = live_count or None
@@ -328,7 +334,7 @@ async def get_customer_intelligence(
 
     demand_forecast = _build_demand_forecast(
         predictor, drinks_so_far, hour_offset if hour_offset is not None else 0.0,
-        event.hot_night_override,
+        event.hot_night_override, load_reason,
     ) if hour_offset is not None else DemandForecastOut(
         available=False, unavailable_reason="no orders yet — doors have not opened",
     )

@@ -15,10 +15,12 @@ import pytest
 
 from app.modules.predictions.demand.predictor import (
     BAR_RANKS,
+    FORMAT_VERSION,
     HOT_NIGHT_HOURS,
     HOT_NIGHT_SPRITZ_BOOST_PP,
     HOUR_GRID,
     DemandPredictor,
+    IncompatibleArtifactFormatError,
     apply_hot_night_boost,
     fit_demand_curves,
     fit_interval_table,
@@ -293,6 +295,7 @@ def test_from_bundle_reconstructs_without_refitting():
     shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
     interval_table = fit_interval_table(events_df, grid_df)
     bundle = {
+        "format_version": FORMAT_VERSION,
         "shape_curve": shape_curve, "r2_table": r2_table,
         "category_share": category_share, "bar_share": bar_share,
         "interval_table": interval_table,
@@ -306,11 +309,13 @@ def test_from_bundle_reconstructs_without_refitting():
 
 
 def test_from_bundle_tolerates_missing_interval_table():
-    """Older artifacts (pre confidence-interval feature) won't have an
-    interval_table key — from_bundle must not KeyError on it."""
+    """A bundle with the current format_version but no interval_table
+    key (e.g. fit_interval_table skipped) -- from_bundle must not
+    KeyError on that specific field, only enforce format_version."""
     events_df, grid_df = _make_synthetic_grid()
     shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
     bundle = {
+        "format_version": FORMAT_VERSION,
         "shape_curve": shape_curve, "r2_table": r2_table,
         "category_share": category_share, "bar_share": bar_share,
         "historical_mean_total": float(events_df["total_drinks"].mean()),
@@ -319,6 +324,36 @@ def test_from_bundle_tolerates_missing_interval_table():
     predictor = DemandPredictor.from_bundle(bundle)
     result = predictor.predict(drinks_so_far=50, hour_offset_from_start=3.0)
     assert result["confidence_interval"]["calibrated"] is False
+
+
+def test_from_bundle_rejects_missing_format_version_loudly():
+    """A bundle with no format_version at all (anything written before
+    this check existed) must fail loudly and specifically, not silently
+    deserialize into a predictor of unknown provenance."""
+    events_df, grid_df = _make_synthetic_grid()
+    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
+    bundle = {
+        "shape_curve": shape_curve, "r2_table": r2_table,
+        "category_share": category_share, "bar_share": bar_share,
+        "historical_mean_total": float(events_df["total_drinks"].mean()),
+        "historical_n": int(len(events_df)),
+    }
+    with pytest.raises(IncompatibleArtifactFormatError, match="format_version"):
+        DemandPredictor.from_bundle(bundle)
+
+
+def test_from_bundle_rejects_mismatched_format_version_loudly():
+    events_df, grid_df = _make_synthetic_grid()
+    shape_curve, r2_table, category_share, bar_share = fit_demand_curves(events_df, grid_df)
+    bundle = {
+        "format_version": FORMAT_VERSION + 999,
+        "shape_curve": shape_curve, "r2_table": r2_table,
+        "category_share": category_share, "bar_share": bar_share,
+        "historical_mean_total": float(events_df["total_drinks"].mean()),
+        "historical_n": int(len(events_df)),
+    }
+    with pytest.raises(IncompatibleArtifactFormatError, match="format_version"):
+        DemandPredictor.from_bundle(bundle)
 
 
 # ─── apply_hot_night_boost ────────────────────────────────────────────

@@ -45,10 +45,24 @@ outright — up-weighting monotonically INCREASED mean LOO MAPE (37.1% ->
 up-weighting them shrinks the effective pool this small-n approach
 depends on. No weighting is applied here; fit_demand_curves is called
 with weights=None (uniform, its default).
+
+DURABLE STORAGE (migration af1, 2026-07-30): the pickled bundle is
+stored as bytes directly on the model_artifacts row (file_bytes), not
+just written to local disk. Root cause this fixes: version 3's file
+disappeared after the very next deploy because Railway's app-service
+container has no attached volume (confirmed via `railway volume list`)
+— local disk is wiped on every deploy/restart. The DB row (Postgres,
+genuinely durable) survived with is_active=true pointing at a file that
+no longer existed; loader.py's broad except swallowed the resulting
+FileNotFoundError and reported "not yet trained", which is a different
+and misleading state from "was trained, artifact now unavailable". The
+local file (file_path) is still written here, best-effort, for
+same-process debugging only — nothing depends on it surviving.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 import pickle
 from pathlib import Path
 from uuid import UUID
@@ -60,6 +74,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.events.models import Event, EventStatus
 from app.modules.predictions.demand.predictor import (
     DATA_DIR as _DEMAND_DATA_DIR,
+    FORMAT_VERSION,
     fit_demand_curves,
     fit_interval_table,
 )
@@ -71,6 +86,8 @@ from app.modules.predictions.demand.training_data import (
     combine_grids,
 )
 from app.modules.predictions.models import ModelArtifact
+
+logger = logging.getLogger(__name__)
 
 MODEL_NAME = "demand_forecast"
 ALGORITHM = "shape_curve_v1"  # matches nowcast's fit_shape_and_r2 method, extended for bar/category
@@ -192,6 +209,7 @@ async def retrain_demand_model(
     interval_table = fit_interval_table(combined.events, combined.grid, None, shape_only)
 
     bundle = {
+        "format_version": FORMAT_VERSION,
         "shape_curve": shape_curve,
         "r2_table": r2_table,
         "category_share": category_share,
@@ -212,10 +230,21 @@ async def retrain_demand_model(
     version = _next_version(list(existing_versions))
 
     file_path = target_dir / f"{MODEL_NAME}_v{version}.pkl"
-    with open(file_path, "wb") as f:
-        pickle.dump(bundle, f)
-    file_bytes = file_path.read_bytes()
+    file_bytes = pickle.dumps(bundle)
     file_sha256 = hashlib.sha256(file_bytes).hexdigest()
+
+    # Best-effort local write, same-process debugging only (migration
+    # af1's docstring). The durable copy is file_bytes on the row below;
+    # nothing depends on this surviving, so a failure here is a warning,
+    # not a hard stop.
+    try:
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+    except OSError as e:
+        logger.warning(
+            "retrain_demand_model: local file write failed (non-fatal — "
+            "the durable copy is file_bytes on the model_artifacts row): %s", e,
+        )
 
     # Deactivate any current active version for this (tenant, model_name)
     # BEFORE inserting the new active one — the partial unique index
@@ -237,6 +266,7 @@ async def retrain_demand_model(
         file_path=str(file_path),
         file_size_bytes=len(file_bytes),
         file_sha256=file_sha256,
+        file_bytes=file_bytes,
         training_event_ids=training_event_ids,
         n_training_events=int(len(combined.events)),
         n_training_rows=int(len(combined.grid)),

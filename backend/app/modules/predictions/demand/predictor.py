@@ -53,6 +53,21 @@ HOUR_GRID = np.arange(0, 11, 1.0)  # elapsed hours since first order: 0..10, mat
 DATA_DIR = Path(__file__).parent / "data"
 BAR_RANKS = tuple(range(1, MAX_BAR_RANK + 1))
 
+# Bump whenever a change to this module would make an OLD pickled
+# bundle unsafe to load into the CURRENT DemandPredictor (a renamed/
+# removed field, a changed meaning for an existing one, etc.). retrain.py
+# stamps every new bundle with this; from_bundle() refuses to load a
+# bundle whose stamp doesn't match, loudly (a named exception with a
+# clear message), rather than silently deserializing into a
+# wrong/partial predictor. See loader.py for how that surfaces to callers.
+FORMAT_VERSION = 1
+
+
+class IncompatibleArtifactFormatError(Exception):
+    """Raised by DemandPredictor.from_bundle when the bundle's
+    format_version doesn't match this code's FORMAT_VERSION. The
+    artifact must be retrained, not loaded — see FORMAT_VERSION."""
+
 
 def fit_demand_curves(
     events_df: pd.DataFrame, grid_df: pd.DataFrame, weights: pd.Series | None = None,
@@ -308,12 +323,26 @@ class DemandPredictor:
     @classmethod
     def from_bundle(cls, bundle: dict) -> "DemandPredictor":
         """Reconstruct a predictor from a retrain.py bundle (the exact
-        dict pickled to model_artifacts' file_path) WITHOUT refitting —
-        the bundle already carries fitted curves, so this just assigns
-        them directly. Used by loader.py to serve predictions from the
+        dict pickled to model_artifacts) WITHOUT refitting — the bundle
+        already carries fitted curves, so this just assigns them
+        directly. Used by loader.py to serve predictions from the
         active model_artifacts row; from_dataframes/__init__ are for
         fitting from raw data (training/validation/retrain), not serving.
+
+        Raises IncompatibleArtifactFormatError if the bundle's
+        format_version doesn't match FORMAT_VERSION — including bundles
+        with no format_version at all (anything written before this
+        check existed). Refusing to guess is the point: a silently
+        wrong/partial predictor is worse than a loud, named failure the
+        caller (loader.py) can log and report accurately.
         """
+        bundle_version = bundle.get("format_version")
+        if bundle_version != FORMAT_VERSION:
+            raise IncompatibleArtifactFormatError(
+                f"model artifact format_version={bundle_version!r} does not match "
+                f"this code's FORMAT_VERSION={FORMAT_VERSION!r} — the artifact was "
+                f"written by incompatible code and must be retrained, not loaded."
+            )
         self = cls.__new__(cls)
         self.data_dir = None
         self.shape_curve = bundle["shape_curve"]
