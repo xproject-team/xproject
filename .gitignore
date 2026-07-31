@@ -71,3 +71,9 @@ cbw_audit/
 # ml_data/ rule above: reproducible via build_demand_training_data.py
 # + a read-only prod fetch, not version controlled.
 backend/app/scripts/ml_data/
+
+# Aug-2 event clone — raw source-event dump (product names, prices,
+# recipe/menu detail) fetched read-only from production by
+# clone_event.py --fetch-source. Reproducible any time by re-running
+# that command; not version controlled.
+backend/scripts/event_clone_data/
