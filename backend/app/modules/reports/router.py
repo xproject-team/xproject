@@ -239,8 +239,10 @@ async def download_report_pdf(
 
     404 if the report doesn't exist.
     404 with 'pdf_not_yet_available' if the report exists but pdf_bytes
-    is NULL (Phase 2 populates this; until then, all reports return 404
-    for /pdf).
+    is NULL — in practice this only happens for a report still in
+    pending/generating/failed status, since _populate_report() renders
+    the PDF synchronously and unconditionally before marking a report
+    ready (see service.py); a 'ready' report always has pdf_bytes set.
     """
     service = ReportService(db)
     try:
@@ -255,7 +257,7 @@ async def download_report_pdf(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "pdf_not_yet_available",
-                "message": "PDF generation is Phase 2 — not yet implemented.",
+                "message": f"Report is {report.status}; no PDF has been rendered yet.",
             },
         )
     filename = f"report-{report.event_id}-v{report.version}-{report.language}.pdf"

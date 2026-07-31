@@ -280,8 +280,10 @@ export function useRegenerateReport(reportId: string) {
  * Trigger a PDF download for a given report. Not a hook — fires when called.
  * Returns a blob the caller can save via <a download> or similar.
  *
- * Note: Phase 2 will populate pdf_bytes; until then the backend returns 404
- * with detail.error === 'pdf_not_yet_available'.
+ * The backend renders pdf_bytes synchronously as part of report generation
+ * (ReportLab + Matplotlib, see backend/app/modules/reports/pdf.py) — any
+ * 'ready' report already has a PDF. A 404 here means the report itself
+ * doesn't exist or isn't ready yet, not a missing feature.
  */
 export async function downloadReportPdf(reportId: string): Promise<Blob> {
   const { data } = await api.get<Blob>(`/reports/${reportId}/pdf`, {

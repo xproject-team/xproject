@@ -13,6 +13,7 @@ import {
 } from '@/features/events/hooks'
 import { useVenues } from '@/features/venues/hooks'
 import { usePermissions } from '@/features/auth/usePermissions'
+import { useReportsForEvent } from '@/features/reports/useReports'
 
 // Convert ISO datetime string (with timezone) to the format
 // expected by <input type="datetime-local">. The input doesn't
@@ -136,6 +137,21 @@ function EventDetailContent({ event }: { event: Event }) {
   const barsQuery   = useBars(effective.id)
   const realBars    = barsQuery.data ?? []
   const realBarsCount = realBars.length
+
+  // "View Report" needs an actual report id, not the event id — report rows
+  // are a distinct primary key (a report is generated per event, but its id
+  // is its own). Bug fix: this button used to navigate(`/reports/${effective.id}`),
+  // which resolved to "Report not found" for every event. Prefer the newest
+  // ready 'it' report (matching the generate modal's default language), else
+  // any ready report, else the newest row of any status so a still-generating
+  // report at least routes somewhere sensible instead of nowhere.
+  const eventReportsQuery = useReportsForEvent(effectiveCanViewReport ? effective.id : null)
+  const eventReports = eventReportsQuery.data ?? []
+  const reportToView =
+    eventReports.find((r) => r.status === 'ready' && r.language === 'it') ??
+    eventReports.find((r) => r.status === 'ready') ??
+    eventReports[0] ??
+    null
   // Reconciliation is available once the event has gone LIVE at least once
   // (i.e., status is 'live' or 'completed') AND the user has Owner permission.
   const effectiveCanViewReconciliation =
@@ -373,8 +389,10 @@ function EventDetailContent({ event }: { event: Event }) {
           {/* View Report — Completed */}
           {effectiveCanViewReport && (
             <button
-              onClick={() => navigate(`/reports/${effective.id}`)}
-              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-4 py-2 rounded-lg transition-colors"
+              onClick={() => reportToView && navigate(`/reports/${reportToView.id}`)}
+              disabled={!reportToView}
+              title={reportToView ? undefined : 'Report not generated yet'}
+              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
             >
               View Report
             </button>

@@ -11,7 +11,8 @@
  *
  * Top toolbar:
  *   - Language toggle IT ↔ EN (triggers refetch via language param)
- *   - Download PDF button (404 until Phase 2 ships PDF renderer)
+ *   - Download PDF button (backend renders pdf_bytes synchronously at
+ *     generation time — see downloadReportPdf's docstring)
  *   - Regenerate button (creates v+1, admin only)
  *
  * Spec: docs/report-module-spec.md §3 + §8.2.
@@ -436,10 +437,14 @@ export default function ReportDetailPage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
+      // The backend renders pdf_bytes synchronously at generation time — a
+      // 'ready' report always has one. A failure here is a genuine error
+      // (network, report not found), not a missing feature — see
+      // downloadReportPdf's docstring.
       alert(
         activeLang === 'it'
-          ? 'Il PDF non è ancora disponibile. Questa funzionalità arriva nella prossima fase.'
-          : 'PDF is not yet available. This feature ships in the next phase.',
+          ? 'Impossibile scaricare il PDF. Riprova.'
+          : 'Failed to download PDF. Please try again.',
       )
     }
   }
