@@ -396,9 +396,16 @@ class EventReport:
 
 
 async def build_event(
-    *, tenant_id: UUID, event_id: UUID, expected_customers: int, known_revenue_cents: int,
+    *, tenant_id: UUID, event_id: UUID, expected_customers: int | None = None,
+    known_revenue_cents: int = 0,
 ) -> EventReport:
-    report = EventReport(event_id=event_id, expected_customers=expected_customers,
+    """expected_customers is the manual-backfill drift-protection anchor
+    (a human-verified count from Slesh's own dashboard) — when given, the
+    write is gated on distinct_customers matching it exactly (unchanged
+    behavior). When None (the automatic post-event-completion trigger has
+    no such anchor to check against), the gate is skipped and the write
+    always proceeds — see workers/tasks.py::populate_customer_features."""
+    report = EventReport(event_id=event_id, expected_customers=expected_customers or 0,
                           known_revenue_cents=known_revenue_cents)
 
     async with AsyncSessionLocal() as db:
@@ -467,7 +474,10 @@ async def build_event(
     report.median_session_minutes, report.p90_session_minutes = percentile_stats([s["session_minutes"] for s in session_rows])
 
     # ── Hard sanity gate — checked BEFORE any write ─────────────────
-    report.sanity_passed = (report.distinct_customers == expected_customers)
+    report.sanity_passed = (
+        True if expected_customers is None
+        else report.distinct_customers == expected_customers
+    )
     if not report.sanity_passed:
         return report
 

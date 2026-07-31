@@ -100,6 +100,131 @@ class ReportAlertRow(BaseModel):
     audience: AlertAudience
 
 
+class ReportGuestKpis(BaseModel):
+    """Section A — Guests. Sourced from customer_sessions/customer_purchases.
+
+    identified_total is a FLOOR on attendance, not attendance itself —
+    it counts guests who made an identified purchase, not everyone who
+    walked in. The only attendance NUMBER this system has at all is
+    ReportEventInfo.expected_guest_count, which is a planning estimate,
+    not a measurement (see caveat on ReportRevenueDecomposition).
+    """
+    available: bool = True
+    unavailable_reason: str | None = None
+    identified_total: int = 0
+    registered_count: int = 0
+    guest_count: int = 0
+    unknown_count: int = 0
+    whale_count: int = 0
+    regular_count: int = 0
+    light_count: int = 0
+    whale_threshold_cents: int = 0
+    light_threshold_cents: int = 0
+    returning_count: int = 0
+    new_count: int = 0
+
+
+class ReportForecastHourRow(BaseModel):
+    """One hour-of-event checkpoint in Section B's predicted-vs-actual series."""
+    hour_of_event: float
+    predicted: float
+    actual: float
+    lower: float
+    upper: float
+    within_band: bool
+
+
+class ReportForecastAccuracy(BaseModel):
+    """Section B — Forecast vs. Actual, from the demand model
+    (predictions/demand/). available=False (with unavailable_reason) is
+    the normal, expected state for any tenant/event that hasn't trained
+    a demand model yet — this must never block the rest of the report.
+    """
+    available: bool = True
+    unavailable_reason: str | None = None
+    predicted_final_total: float | None = None
+    actual_final_total: float | None = None
+    hours: list[ReportForecastHourRow] = Field(default_factory=list)
+    # "actual fell within the predicted range in N of M hours" — the
+    # single honest forecast-quality statement, not an error percentage.
+    band_hits: int | None = None
+    band_hours_total: int | None = None
+
+
+class ReportComparisonMetric(BaseModel):
+    """One row in Section C's comparison table — e.g. 'Total Revenue'."""
+    label: str
+    current_value: float | None = None
+    previous_event_value: float | None = None
+    previous_event_delta_pct: float | None = None
+    season_avg_value: float | None = None
+    season_avg_delta_pct: float | None = None
+
+
+class ReportComparison(BaseModel):
+    """Section C — Event-over-Event Comparison.
+
+    Revenue/peak-hour metrics are available for every past event (they
+    were already in every historical data_json). Guest/category/
+    decomposition metrics are only available for events whose reports
+    were generated after this feature shipped — NOT backfilled by
+    regenerating old reports (that would risk changing numbers Omar has
+    already seen). guest_metrics_available_from documents the cutoff so
+    the report can say so plainly rather than silently show fewer rows.
+    """
+    available: bool = True
+    unavailable_reason: str | None = None
+    previous_event_name: str | None = None
+    previous_event_date: datetime | None = None
+    season_avg_n_events: int = 0
+    metrics: list[ReportComparisonMetric] = Field(default_factory=list)
+    guest_metrics_available_from: str | None = None
+
+
+class ReportRevenueDecomposition(BaseModel):
+    """Section D — Revenue Decomposition: attendance x purchase rate x
+    orders/purchaser x AOV.
+
+    estimated_attendance is expected_guest_count, verbatim — a planning
+    figure, not a measured fact. purchase_rate_pct is therefore ALSO an
+    estimate (purchasers / an estimate), and must be presented as one
+    everywhere this is shown (PDF label, narrative wording, frontend) —
+    never stated as a measured conversion rate.
+    """
+    available: bool = True
+    unavailable_reason: str | None = None
+    estimated_attendance: int | None = None
+    purchasers: int | None = None
+    purchase_rate_pct: float | None = None
+    orders_per_purchaser: float | None = None
+    average_order_value_cents: int | None = None
+    implied_revenue_cents: int | None = None
+    actual_revenue_cents: int | None = None
+
+
+class ReportProductRow(BaseModel):
+    """One row in Section E's top/lowest-selling product tables."""
+    product_id: UUID
+    product_name: str
+    category: str | None = None
+    units_sold: int
+    revenue_cents: int
+    category_revenue_share_pct: float | None = None
+
+
+class ReportProductPerformance(BaseModel):
+    """Section E — Top and Lowest-Selling Products.
+
+    "lowest_selling", deliberately not "bottom"/"underperforming" —
+    excludes products with zero units sold (never listed = not on the
+    menu, a different situation from selling weakly). The narrative
+    raises these as a question (new item? priced high? quiet bar?), not
+    a verdict.
+    """
+    top_products: list[ReportProductRow] = Field(default_factory=list)
+    lowest_selling_products: list[ReportProductRow] = Field(default_factory=list)
+
+
 class ReportNarrative(BaseModel):
     """The three prose sections of Section 1 (Executive Narrative).
 
@@ -126,13 +251,25 @@ class ReportData(BaseModel):
     language: ReportLanguage
     generated_at: datetime
 
-    # Body — matches the 4 content pages in spec §3
+    # Body — matches the content pages in spec §3
     event: ReportEventInfo
     revenue_kpis: ReportRevenueKpis
     bar_revenues: list[ReportBarRevenue] = Field(default_factory=list)
     stock_rows: list[ReportStockRow] = Field(default_factory=list)
     alerts: list[ReportAlertRow] = Field(default_factory=list)
     narrative: ReportNarrative
+
+    # New sections (Reports feature improvement, 2026-07-31). Optional
+    # with no default value collision risk: old data_json blobs simply
+    # lack these keys, and Pydantic fills None — every consumer (PDF,
+    # narrative templates, frontend) must treat None as "not computed
+    # for this report" (older report) same as available=False (computed,
+    # but the underlying data wasn't there), not as an error.
+    guests: ReportGuestKpis | None = None
+    forecast_accuracy: ReportForecastAccuracy | None = None
+    comparison: ReportComparison | None = None
+    revenue_decomposition: ReportRevenueDecomposition | None = None
+    product_performance: ReportProductPerformance | None = None
 
 
 # ─── API envelopes (wire format for REST endpoints) ───────────────────────────

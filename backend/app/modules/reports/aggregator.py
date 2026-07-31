@@ -26,6 +26,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
+import sqlalchemy as sa
 from sqlalchemy import and_, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,19 +34,38 @@ from app.modules.alerts.models import Alert
 from app.modules.auth.models import User
 from app.modules.bar_stock.models import BarStock
 from app.modules.bars.models import Bar
+from app.modules.customer_analytics.models import CustomerPurchase, CustomerSession
+from app.modules.customer_intelligence.constants import LIGHT_SPEND_MAX_CENTS, WHALE_SPEND_MIN_CENTS
 from app.modules.events.models import Event
+from app.modules.predictions.demand.loader import get_active_demand_predictor
+from app.modules.predictions.demand.predictor import HOUR_GRID
+from app.modules.predictions.demand.training_data import DRINK_CATEGORIES
 from app.modules.products.models import Product
+from app.modules.reports.models import Report
 from app.modules.reports.schemas import (
     ReportAlertRow,
     ReportBarRevenue,
+    ReportComparison,
+    ReportComparisonMetric,
     ReportData,
     ReportEventInfo,
+    ReportForecastAccuracy,
+    ReportForecastHourRow,
+    ReportGuestKpis,
     ReportNarrative,
+    ReportProductPerformance,
+    ReportProductRow,
+    ReportRevenueDecomposition,
     ReportRevenueKpis,
     ReportStockRow,
 )
 from app.modules.stock_transactions.models import StockTransaction, TransactionSource
 from app.modules.venues.models import Venue
+
+# The date this feature shipped — guest/category/decomposition comparison
+# metrics are only meaningful from here forward (see _build_comparison's
+# docstring: NOT backfilled onto older reports by regenerating them).
+GUEST_METRICS_AVAILABLE_FROM = "August 2026"
 
 
 # Transaction sources that count as revenue. Adjustments and reconciliations
@@ -119,6 +139,22 @@ class ReportAggregator:
         )
         alerts = await self._build_alerts(tenant_id, event_id)
 
+        # New sections (Reports feature improvement). Each is independently
+        # gracefully-degrading — a missing data source (customer features
+        # not yet populated, no trained demand model, no prior event to
+        # compare against) never blocks the other four or the report as a
+        # whole. See each method's own docstring for its specific
+        # unavailable_reason states.
+        guests = await self._build_guests(tenant_id, event_id)
+        forecast_accuracy = await self._build_forecast_accuracy(tenant_id, event_id)
+        revenue_decomposition = await self._build_revenue_decomposition(
+            tenant_id, event, guests, revenue_kpis,
+        )
+        comparison = await self._build_comparison(
+            tenant_id, event_id, event, language, revenue_kpis, guests,
+        )
+        product_performance = await self._build_product_performance(tenant_id, event_id)
+
         return ReportData(
             report_id=report_id,
             version=version,
@@ -130,6 +166,11 @@ class ReportAggregator:
             stock_rows=stock_rows,
             alerts=alerts,
             narrative=narrative,
+            guests=guests,
+            forecast_accuracy=forecast_accuracy,
+            comparison=comparison,
+            revenue_decomposition=revenue_decomposition,
+            product_performance=product_performance,
         )
 
     # ─── Slice 1: event metadata ─────────────────────────────────────────────
@@ -472,3 +513,394 @@ class ReportAggregator:
             )
             for r in rows
         ]
+
+    # ─── Section A: Guests ────────────────────────────────────────────────────
+
+    async def _build_guests(self, tenant_id: UUID, event_id: UUID) -> ReportGuestKpis:
+        """ReportGuestKpis, from customer_sessions (see EventService's
+        _enqueue_customer_features_population -- this table is populated
+        by a separate arq job triggered at the same event-completion
+        moment as report generation, not always guaranteed to have run
+        yet; see reports/repository.py::list_events_needing_reports for
+        the ordering guarantee/hard-cutoff that bounds how long a report
+        will wait for it).
+
+        available=False (zero rows) is the normal state for an event
+        whose population job hasn't finished, or ran but found nothing
+        identifiable -- never treated as an error.
+        """
+        count_stmt = (
+            select(
+                func.count().label("identified_total"),
+                func.count().filter(CustomerSession.is_registered.is_(True)).label("registered_count"),
+                func.count().filter(CustomerSession.is_registered.is_(False)).label("guest_count"),
+                func.count().filter(CustomerSession.is_registered.is_(None)).label("unknown_count"),
+                func.count().filter(CustomerSession.total_spend_cents >= WHALE_SPEND_MIN_CENTS).label("whale_count"),
+                func.count().filter(CustomerSession.total_spend_cents <= LIGHT_SPEND_MAX_CENTS).label("light_count"),
+            )
+            .where(CustomerSession.tenant_id == tenant_id, CustomerSession.event_id == event_id)
+        )
+        row = (await self.db.execute(count_stmt)).one()
+        if not row.identified_total:
+            return ReportGuestKpis(
+                available=False,
+                unavailable_reason="customer identity data not available for this event",
+            )
+
+        regular_count = row.identified_total - row.whale_count - row.light_count
+
+        this_event_keys_stmt = select(CustomerSession.customer_key).where(
+            CustomerSession.tenant_id == tenant_id, CustomerSession.event_id == event_id,
+        )
+        this_event_keys = set((await self.db.execute(this_event_keys_stmt)).scalars().all())
+
+        # Python-side set intersection (matching customer_intelligence's
+        # established pattern) rather than a SQL IN(...) with thousands of
+        # values -- bounded, small-n data (a handful of events, each a few
+        # thousand identified guests at most).
+        other_keys_stmt = select(func.distinct(CustomerSession.customer_key)).where(
+            CustomerSession.tenant_id == tenant_id, CustomerSession.event_id != event_id,
+        )
+        other_keys = set((await self.db.execute(other_keys_stmt)).scalars().all())
+        returning_count = len(this_event_keys & other_keys)
+
+        return ReportGuestKpis(
+            available=True,
+            identified_total=row.identified_total,
+            registered_count=row.registered_count,
+            guest_count=row.guest_count,
+            unknown_count=row.unknown_count,
+            whale_count=row.whale_count,
+            regular_count=regular_count,
+            light_count=row.light_count,
+            whale_threshold_cents=WHALE_SPEND_MIN_CENTS,
+            light_threshold_cents=LIGHT_SPEND_MAX_CENTS,
+            returning_count=returning_count,
+            new_count=row.identified_total - returning_count,
+        )
+
+    # ─── Section B: Forecast vs. Actual ──────────────────────────────────────
+
+    async def _build_forecast_accuracy(
+        self, tenant_id: UUID, event_id: UUID,
+    ) -> ReportForecastAccuracy:
+        """ReportForecastAccuracy, reusing the demand model's bytes-based
+        loader (predictions/demand/loader.py, built for the customer-
+        intelligence panel) and the same "actuals-through-h -> predict
+        h+1" checkpoint protocol as
+        customer_intelligence/service.py::_build_predicted_vs_actual and
+        validate_demand_model.py -- replayed here for every hour of an
+        already-COMPLETED event instead of a live one.
+
+        Reads customer_purchases directly rather than re-deriving a live
+        stock_transactions<->event_orders join (customer_intelligence's
+        approach for a still-LIVE event, where customer_purchases may not
+        exist yet) -- by report-generation time customer_purchases is the
+        clean, already-categorized, already-populated source. Sums `qty`
+        per line rather than counting rows -- matches
+        training_data.py::build_current_grid's documented convention
+        (qty is always 1 in observed production data today, but summed
+        in case that changes).
+
+        Band width: confidence_interval.half_width_pct is calibrated
+        around predicted_final_total, not any one hour's incremental
+        slice -- there is no separately-calibrated per-hour interval in
+        this model. It is reused here as a relative uncertainty proxy
+        for the hour's incremental prediction too, since both are driven
+        by the same shape-fraction estimate the docstring on
+        DemandPredictor.predict names as the shared driver of scarcity-
+        widening. This is an approximation, not a second calibration --
+        good enough for "did actual land in a plausible range," which is
+        all the band-hit-rate statistic claims to be.
+        """
+        predictor, reason = await get_active_demand_predictor(self.db, tenant_id)
+        if predictor is None:
+            return ReportForecastAccuracy(available=False, unavailable_reason=reason)
+
+        rows = (await self.db.execute(
+            select(CustomerPurchase.ordered_at, CustomerPurchase.category, CustomerPurchase.qty).where(
+                CustomerPurchase.tenant_id == tenant_id,
+                CustomerPurchase.event_id == event_id,
+                CustomerPurchase.is_deposit.is_(False),
+                CustomerPurchase.category.in_(DRINK_CATEGORIES),
+            )
+        )).all()
+        if not rows:
+            return ReportForecastAccuracy(
+                available=False, unavailable_reason="no drink purchase data available for this event",
+            )
+
+        first_order_at = min(r[0] for r in rows)
+        grid: dict[int, float] = {}
+        for ordered_at, _category, qty in rows:
+            hour = int((ordered_at - first_order_at).total_seconds() // 3600)
+            grid[hour] = grid.get(hour, 0.0) + float(qty or 0)
+        final_hour_offset = max(grid.keys())
+
+        def _hour_total(h: int) -> float:
+            return float(grid.get(h, 0.0))
+
+        def _cumulative_through(h: int) -> float:
+            return float(sum(v for k, v in grid.items() if k <= h))
+
+        cold_start = predictor.predict(0.0, 0.0)
+
+        hours: list[ReportForecastHourRow] = []
+        for target in HOUR_GRID:
+            if target <= 0 or target > final_hour_offset:
+                continue
+            h_now = target - 1.0
+            observed_so_far = _cumulative_through(int(h_now))
+            prediction = predictor.predict(observed_so_far, h_now)
+            by_bar = prediction["predicted_by_hour"].get(round(float(target), 1), {})
+            predicted = sum(
+                by_cat.get(cat, 0.0) for by_cat in by_bar.values() for cat in DRINK_CATEGORIES
+            )
+            half_width = prediction["confidence_interval"]["half_width_pct"] / 100.0
+            lower = max(0.0, predicted * (1 - half_width))
+            upper = predicted * (1 + half_width)
+            actual = _hour_total(int(target))
+            hours.append(ReportForecastHourRow(
+                hour_of_event=target, predicted=round(predicted, 1), actual=actual,
+                lower=round(lower, 1), upper=round(upper, 1),
+                within_band=lower <= actual <= upper,
+            ))
+
+        return ReportForecastAccuracy(
+            available=True,
+            predicted_final_total=cold_start["predicted_final_total"],
+            actual_final_total=_cumulative_through(final_hour_offset),
+            hours=hours,
+            band_hits=sum(1 for h in hours if h.within_band),
+            band_hours_total=len(hours),
+        )
+
+    # ─── Section D: Revenue Decomposition ────────────────────────────────────
+
+    async def _build_revenue_decomposition(
+        self, tenant_id: UUID, event: Event, guests: ReportGuestKpis, revenue_kpis: ReportRevenueKpis,
+    ) -> ReportRevenueDecomposition:
+        """ReportRevenueDecomposition: attendance x purchase rate x
+        orders/purchaser x AOV.
+
+        estimated_attendance is event.expected_guest_count VERBATIM -- a
+        planning figure set before the event, never a measured fact.
+        purchase_rate_pct is therefore an estimate derived from an
+        estimate, not a measured conversion rate; every surface that
+        renders this (PDF, frontend, narrative) must say so explicitly,
+        not just this docstring.
+        """
+        if not guests.available or event.expected_guest_count is None:
+            return ReportRevenueDecomposition(
+                available=False,
+                unavailable_reason=(
+                    "guest data not available for this event" if not guests.available
+                    else "no expected_guest_count set for this event"
+                ),
+            )
+
+        agg_stmt = select(
+            func.sum(CustomerSession.order_count),
+            func.sum(CustomerSession.total_spend_cents),
+        ).where(CustomerSession.tenant_id == tenant_id, CustomerSession.event_id == event.id)
+        total_orders, total_spend_cents = (await self.db.execute(agg_stmt)).one()
+        total_orders = total_orders or 0
+        total_spend_cents = total_spend_cents or 0
+
+        purchasers = guests.identified_total
+        estimated_attendance = event.expected_guest_count
+        purchase_rate_pct = (
+            round(100.0 * purchasers / estimated_attendance, 1) if estimated_attendance > 0 else None
+        )
+        orders_per_purchaser = round(total_orders / purchasers, 2) if purchasers > 0 else None
+        aov_cents = round(total_spend_cents / total_orders) if total_orders > 0 else None
+
+        implied_revenue_cents = None
+        if purchase_rate_pct is not None and orders_per_purchaser is not None and aov_cents is not None:
+            implied_revenue_cents = round(
+                estimated_attendance * (purchase_rate_pct / 100.0) * orders_per_purchaser * aov_cents
+            )
+
+        return ReportRevenueDecomposition(
+            available=True,
+            estimated_attendance=estimated_attendance,
+            purchasers=purchasers,
+            purchase_rate_pct=purchase_rate_pct,
+            orders_per_purchaser=orders_per_purchaser,
+            average_order_value_cents=aov_cents,
+            implied_revenue_cents=implied_revenue_cents,
+            actual_revenue_cents=int(revenue_kpis.total_revenue * 100),
+        )
+
+    # ─── Section C: Event-over-Event Comparison ──────────────────────────────
+
+    async def _build_comparison(
+        self, tenant_id: UUID, event_id: UUID, event: Event, language: str,
+        revenue_kpis: ReportRevenueKpis, guests: ReportGuestKpis,
+    ) -> ReportComparison:
+        """ReportComparison: this event vs. the previous one and vs. the
+        season average, reusing the same data_json JSONB-path-extraction
+        technique as repository.py's sum_lifetime_revenue/
+        get_top_event_by_revenue (the Portfolio KPI strip's existing
+        cross-report queries), applied per-metric instead of as a single
+        lifetime sum.
+
+        Revenue/peak-hour comparisons work for every past event (already
+        in every historical data_json). Guest/decomposition comparisons
+        only exist for reports generated from this feature's ship date
+        forward -- deliberately NOT backfilled by regenerating older
+        reports (that would risk changing numbers already shown to
+        Omar). guest_metrics_available_from documents this plainly
+        rather than silently showing fewer rows with no explanation.
+
+        "Season" here means "every other ready report for this tenant to
+        date" -- the same scope the Portfolio KPI strip's lifetime
+        aggregates already use. There is no calendar-quarter/season
+        boundary defined anywhere else in this codebase to reuse.
+        """
+        prev_stmt = (
+            select(Report.data_json, Event.name, Event.scheduled_at)
+            .join(Event, Event.id == Report.event_id)
+            .where(
+                Report.tenant_id == tenant_id,
+                Report.status == "ready",
+                Report.language == language,
+                Report.event_id != event_id,
+                Event.scheduled_at < event.scheduled_at,
+            )
+            .order_by(desc(Event.scheduled_at))
+            .limit(1)
+        )
+        prev_row = (await self.db.execute(prev_stmt)).first()
+
+        revenue_text = Report.data_json["revenue_kpis"]["total_revenue"].astext
+        revenue_numeric = func.cast(revenue_text, sa.Numeric(14, 2))
+        season_stmt = select(
+            func.count(), func.coalesce(func.avg(revenue_numeric), 0),
+        ).where(
+            Report.tenant_id == tenant_id, Report.status == "ready",
+            Report.language == language, Report.event_id != event_id,
+        )
+        season_n, season_avg_revenue = (await self.db.execute(season_stmt)).one()
+
+        if prev_row is None and not season_n:
+            return ReportComparison(
+                available=False, unavailable_reason="no prior events to compare against",
+                guest_metrics_available_from=GUEST_METRICS_AVAILABLE_FROM,
+            )
+
+        metrics: list[ReportComparisonMetric] = []
+        current_revenue = float(revenue_kpis.total_revenue)
+
+        def _pct_delta(current: float, other: float | None) -> float | None:
+            if other is None or other == 0:
+                return None
+            return round(100.0 * (current - other) / other, 1)
+
+        prev_data = prev_row[0] if prev_row else None
+        prev_revenue = (
+            float(prev_data["revenue_kpis"]["total_revenue"]) if prev_data else None
+        )
+        metrics.append(ReportComparisonMetric(
+            label="Total Revenue",
+            current_value=current_revenue,
+            previous_event_value=prev_revenue,
+            previous_event_delta_pct=_pct_delta(current_revenue, prev_revenue),
+            season_avg_value=float(season_avg_revenue) if season_n else None,
+            season_avg_delta_pct=_pct_delta(current_revenue, float(season_avg_revenue) if season_n else None),
+        ))
+
+        if guests.available:
+            prev_guests = (
+                float(prev_data["guests"]["identified_total"])
+                if prev_data and prev_data.get("guests") else None
+            )
+            guest_season_stmt = select(
+                func.count(),
+                func.coalesce(func.avg(func.cast(
+                    Report.data_json["guests"]["identified_total"].astext, sa.Numeric(10, 2),
+                )), 0),
+            ).where(
+                Report.tenant_id == tenant_id, Report.status == "ready",
+                Report.language == language, Report.event_id != event_id,
+                Report.data_json["guests"].isnot(None),
+            )
+            guest_season_n, guest_season_avg = (await self.db.execute(guest_season_stmt)).one()
+            metrics.append(ReportComparisonMetric(
+                label="Identified Guests",
+                current_value=float(guests.identified_total),
+                previous_event_value=prev_guests,
+                previous_event_delta_pct=_pct_delta(float(guests.identified_total), prev_guests),
+                season_avg_value=float(guest_season_avg) if guest_season_n else None,
+                season_avg_delta_pct=_pct_delta(
+                    float(guests.identified_total), float(guest_season_avg) if guest_season_n else None,
+                ),
+            ))
+
+        return ReportComparison(
+            available=True,
+            previous_event_name=prev_row[1] if prev_row else None,
+            previous_event_date=prev_row[2] if prev_row else None,
+            season_avg_n_events=season_n or 0,
+            metrics=metrics,
+            guest_metrics_available_from=GUEST_METRICS_AVAILABLE_FROM,
+        )
+
+    # ─── Section E: Top and Lowest-Selling Products ──────────────────────────
+
+    async def _build_product_performance(
+        self, tenant_id: UUID, event_id: UUID,
+    ) -> ReportProductPerformance:
+        """ReportProductPerformance: reuses _build_revenue_kpis' top-
+        product query shape (aggregator.py's original single-row LIMIT 1
+        lookup), generalized to a full ranked list plus category share.
+
+        "lowest_selling", not "bottom"/"underperforming": excludes
+        products with zero units sold entirely (never listed is a
+        different situation from selling weakly -- a product with zero
+        sales may simply not have been on this event's menu). The
+        narrative raises a lowest-selling product as a question, not a
+        verdict -- see templates_next.py.
+        """
+        revenue_filter = and_(
+            StockTransaction.tenant_id == tenant_id,
+            StockTransaction.event_id == event_id,
+            StockTransaction.source.in_(REVENUE_SOURCES),
+            StockTransaction.price_cents.is_not(None),
+        )
+        stmt = (
+            select(
+                Product.id, Product.name, Product.category,
+                func.sum(StockTransaction.qty).label("units"),
+                (func.sum(StockTransaction.qty * StockTransaction.price_cents)).label("revenue_cents"),
+            )
+            .join(Product, Product.id == StockTransaction.product_id)
+            .where(revenue_filter)
+            .group_by(Product.id, Product.name, Product.category)
+        )
+        rows = (await self.db.execute(stmt)).all()
+        if not rows:
+            return ReportProductPerformance()
+
+        category_totals: dict[str | None, int] = {}
+        for _id, _name, category, _units, revenue_cents in rows:
+            category_totals[category] = category_totals.get(category, 0) + int(revenue_cents or 0)
+
+        def _to_row(r) -> ReportProductRow:
+            product_id, name, category, units, revenue_cents = r
+            cat_total = category_totals.get(category, 0)
+            share = round(100.0 * int(revenue_cents or 0) / cat_total, 1) if cat_total > 0 else None
+            return ReportProductRow(
+                product_id=product_id, product_name=name, category=category,
+                units_sold=int(units or 0), revenue_cents=int(revenue_cents or 0),
+                category_revenue_share_pct=share,
+            )
+
+        ranked_by_revenue = sorted(rows, key=lambda r: r[4] or 0, reverse=True)
+        sold_only = [r for r in rows if (r[3] or 0) > 0]
+        ranked_lowest = sorted(sold_only, key=lambda r: r[3] or 0)
+
+        return ReportProductPerformance(
+            top_products=[_to_row(r) for r in ranked_by_revenue[:5]],
+            lowest_selling_products=[_to_row(r) for r in ranked_lowest[:5]],
+        )

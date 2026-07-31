@@ -156,6 +156,46 @@ async def _enqueue_demand_retrain(tenant_id: UUID, event_id: UUID) -> None:
         )
 
 
+async def _enqueue_customer_features_population(tenant_id: UUID, event_id: UUID) -> None:
+    """Best-effort: queue customer_sessions/customer_purchases population
+    (see app/workers/tasks.py::populate_customer_features) after this
+    tenant's event completes. Same isolation contract as
+    _enqueue_nowcast_retrain/_enqueue_demand_retrain — a third,
+    independent consumer of this same trigger point.
+
+    Keyed by (tenant_id, event_id), not tenant alone — unlike the two
+    retrain jobs above (which always rebuild from ALL completed events
+    regardless of which one fired them), this job is scoped to exactly
+    one event, so two events completing close together must each get
+    their own job, not collide on a shared dedup key.
+
+    Reports depend on this finishing before the report-generation cron's
+    grace window elapses (see reports/repository.py's
+    list_events_needing_reports) — but the report path degrades
+    gracefully and generates anyway past a hard cutoff if this is ever
+    slow or fails, so a failure here is never fatal to reporting.
+    """
+    try:
+        from arq.connections import RedisSettings, create_pool
+
+        from app.core.config import settings
+
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        try:
+            await redis.enqueue_job(
+                "populate_customer_features",
+                str(tenant_id), str(event_id),
+                _job_id=f"customer-features:{tenant_id}:{event_id}",
+            )
+        finally:
+            await redis.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Failed to enqueue customer-features population for tenant=%s event=%s: %s",
+            tenant_id, event_id, e,
+        )
+
+
 # ─── Service ──────────────────────────────────────────────────────────────────
 
 class EventService:
@@ -698,6 +738,12 @@ class EventService:
         # Day 3: same trigger, second independent model (drinks demand
         # per bar/hour/category — see predictions/demand/retrain.py).
         await _enqueue_demand_retrain(tenant_id, event_id)
+        # Reports feature improvement: third independent consumer of this
+        # trigger — populate customer_sessions/customer_purchases so the
+        # post-event report's Guests/Comparison/Decomposition sections
+        # have data by the time the report cron fires (see
+        # reports/repository.py::list_events_needing_reports).
+        await _enqueue_customer_features_population(tenant_id, event_id)
         return event
 
     # ─── Response building ────────────────────────────────────────────────────

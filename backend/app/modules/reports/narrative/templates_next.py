@@ -145,6 +145,42 @@ TEMPLATES_NEXT = [
         },
     },
 
+    # ─── 8. Lowest-selling product — a question, not a verdict ───────────
+    # Per plan approval: weak sales may mean new item, high price, or a
+    # quiet bar placement. The narrative raises it, it never accuses.
+    {
+        "key": "lowest_selling_question",
+        "priority": 45,
+        "condition": lambda d: (
+            d.product_performance is not None
+            and len(d.product_performance.lowest_selling_products) > 0
+        ),
+        "it": "{product} ha venduto solo {units} unità — vale la pena chiedersi se è un prodotto nuovo, se il prezzo lo penalizza, o se la sua postazione ha avuto poco traffico.",
+        "en": "{product} sold only {units} units — worth asking whether it's a new item, priced too high, or placed at a quiet bar.",
+        "extract": lambda d: {
+            "product": d.product_performance.lowest_selling_products[0].product_name,
+            "units": d.product_performance.lowest_selling_products[0].units_sold,
+        },
+    },
+
+    # ─── 9. Forecast missed the band more than half the time (Section B) ──
+    {
+        "key": "forecast_poorly_calibrated",
+        "priority": 38,
+        "condition": lambda d: (
+            d.forecast_accuracy is not None
+            and d.forecast_accuracy.available
+            and d.forecast_accuracy.band_hours_total
+            and d.forecast_accuracy.band_hits < d.forecast_accuracy.band_hours_total / 2
+        ),
+        "it": "Le previsioni di consumo hanno mancato la fascia attesa in oltre metà delle ore monitorate ({hits}/{total}) — valuta di rivedere il modello con dati più recenti.",
+        "en": "Demand forecasts missed the predicted range in more than half the monitored hours ({hits}/{total}) — consider reviewing the model with more recent data.",
+        "extract": lambda d: {
+            "hits": d.forecast_accuracy.band_hits,
+            "total": d.forecast_accuracy.band_hours_total,
+        },
+    },
+
     # ─── 7. Baseline fallback (always fires) ─────────────────────────────
     {
         "key": "baseline_recommendation",

@@ -18,6 +18,7 @@ from sqlalchemy import and_, desc, exists, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.modules.customer_analytics.models import CustomerSession
 from app.modules.events.models import Event, EventStatus
 from app.modules.reports.models import Report
 
@@ -133,6 +134,7 @@ class ReportRepository:
     async def list_events_needing_reports(
         self,
         grace_minutes: int = 15,
+        force_after_minutes: int = 30,
     ) -> Sequence[Event]:
         """Events whose auto-trigger window has elapsed and have no report yet.
 
@@ -144,8 +146,28 @@ class ReportRepository:
           - status = COMPLETED
           - ended_at is not null AND ended_at < (now - grace_minutes)
           - NOT EXISTS any report row for this event (any language, any version)
+          - AND (customer_sessions exist for this event OR ended_at < now - force_after_minutes)
+
+        That last condition is the ordering guarantee for the Guests/
+        Comparison/Decomposition report sections, which read
+        customer_sessions/customer_purchases (populated by a separate
+        arq job enqueued at the same end_event() moment — see
+        EventService._enqueue_customer_features_population). Between
+        grace_minutes and force_after_minutes, an event whose population
+        job hasn't finished yet is simply not returned this tick — the
+        next tick (5 min later) checks again, so a slow population job
+        gets retried "for free" by the existing cron cadence, no new
+        infrastructure needed. Past force_after_minutes the report
+        generates regardless, with those sections gracefully degraded —
+        this is a hard cutoff, not an optional nicety: a stuck/failed
+        population job must never permanently block a report.
         """
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=grace_minutes)
+        force_cutoff = datetime.now(timezone.utc) - timedelta(minutes=force_after_minutes)
+        population_ready = exists().where(
+            CustomerSession.tenant_id == Event.tenant_id,
+            CustomerSession.event_id == Event.id,
+        )
         stmt = (
             select(Event)
             .where(
@@ -153,6 +175,7 @@ class ReportRepository:
                 Event.ended_at.is_not(None),
                 Event.ended_at < cutoff,
                 ~exists().where(Report.event_id == Event.id),
+                sa.or_(population_ready, Event.ended_at < force_cutoff),
             )
             .order_by(Event.ended_at.asc())
         )

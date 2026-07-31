@@ -38,6 +38,18 @@ def _fmt_hm(dt) -> str:
     return dt.strftime("%H:%M") if dt else "—"
 
 
+def _revenue_delta_pct(d: ReportData) -> float | None:
+    """previous_event_delta_pct off the "Total Revenue" comparison row, or
+    None if comparison data / that row isn't available. Computed once so
+    condition and extract never risk disagreeing on which row they mean."""
+    if d.comparison is None or not d.comparison.available:
+        return None
+    for m in d.comparison.metrics:
+        if m.label == "Total Revenue":
+            return m.previous_event_delta_pct
+    return None
+
+
 TEMPLATES_HAPPENED = [
     # ─── 1. Opening summary (always fires) ────────────────────────────────
     {
@@ -134,6 +146,80 @@ TEMPLATES_HAPPENED = [
                 else 0,
                 digits=2,
             ),
+        },
+    },
+
+    # ─── 6a. Event-over-event revenue comparison (Section C) ─────────────
+    # Placed early (right after the opening summary) so the headline
+    # comparison reads before the play-by-play detail. Only fires when a
+    # previous event's revenue figure is available — comparison.available
+    # is False for a tenant's very first event, and revenue is the one
+    # comparison metric that has always been in every historical
+    # data_json (see ReportComparison's docstring).
+    {
+        "key": "revenue_vs_previous_event",
+        "priority": 5,
+        "condition": lambda d: _revenue_delta_pct(d) is not None,
+        "it": "Rispetto a {prev_name}, il fatturato è {direction_it} del {pct}%.",
+        "en": "Compared to {prev_name}, revenue {direction_en} {pct}%.",
+        "extract": lambda d: {
+            "prev_name": d.comparison.previous_event_name or "—",
+            "direction_it": "aumentato" if _revenue_delta_pct(d) >= 0 else "diminuito",
+            "direction_en": "increased" if _revenue_delta_pct(d) >= 0 else "decreased",
+            "pct": abs(round(_revenue_delta_pct(d), 1)),
+        },
+    },
+
+    # ─── 6b. Guest floor (Section A) ──────────────────────────────────────
+    # identified_total is explicitly framed as a FLOOR, never as "how many
+    # people were here" — see ReportGuestKpis docstring and CAVEAT 2.
+    {
+        "key": "guest_floor",
+        "priority": 42,
+        "condition": lambda d: (
+            d.guests is not None and d.guests.available and d.guests.identified_total > 0
+        ),
+        "it": "Sono stati identificati almeno {n} ospiti tramite gli acquisti registrati — un valore minimo, non il conteggio totale dei partecipanti.",
+        "en": "At least {n} guests were identified through recorded purchases — a floor, not a total attendance count.",
+        "extract": lambda d: {"n": d.guests.identified_total},
+    },
+
+    # ─── 6c. Estimated purchase rate (Section D) ──────────────────────────
+    # CAVEAT 2: the uncertainty must live IN the sentence ("of an estimated
+    # N attendees"), never stated as a measured conversion rate.
+    {
+        "key": "estimated_purchase_rate",
+        "priority": 44,
+        "condition": lambda d: (
+            d.revenue_decomposition is not None
+            and d.revenue_decomposition.available
+            and d.revenue_decomposition.purchase_rate_pct is not None
+        ),
+        "it": "Di una stima di {attendance} partecipanti, il {pct}% ha effettuato almeno un acquisto — una cifra derivata da una stima di pianificazione, non da una misurazione.",
+        "en": "Of an estimated {attendance} attendees, {pct}% made at least one purchase — a figure derived from a planning estimate, not a measurement.",
+        "extract": lambda d: {
+            "attendance": d.revenue_decomposition.estimated_attendance,
+            "pct": round(d.revenue_decomposition.purchase_rate_pct, 1),
+        },
+    },
+
+    # ─── 6d. Forecast band hit rate (Section B) ───────────────────────────
+    # "Actual fell within the predicted range in N of M hours" — the
+    # single honest forecast-quality statement, deliberately not an error
+    # percentage (per plan approval).
+    {
+        "key": "forecast_band_hit_rate",
+        "priority": 46,
+        "condition": lambda d: (
+            d.forecast_accuracy is not None
+            and d.forecast_accuracy.available
+            and d.forecast_accuracy.band_hours_total
+        ),
+        "it": "Le previsioni di consumo hanno azzeccato la fascia attesa in {hits} delle {total} ore monitorate.",
+        "en": "Demand forecasts landed within the predicted range in {hits} of {total} monitored hours.",
+        "extract": lambda d: {
+            "hits": d.forecast_accuracy.band_hits,
+            "total": d.forecast_accuracy.band_hours_total,
         },
     },
 

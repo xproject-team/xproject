@@ -215,6 +215,55 @@ async def retrain_demand_predictor(ctx: dict, tenant_id: str, event_id: str | No
             return {"status": "error", "reason": str(e)[:200]}
 
 
+# ─── Customer-features population (Reports improvement) ──────────────────────
+
+async def populate_customer_features(ctx: dict, tenant_id: str, event_id: str) -> dict:
+    """Build customer_sessions/customer_purchases for one just-completed
+    event (see app/scripts/build_customer_features.py::build_event).
+
+    Enqueued by EventService.end_event() right after LIVE -> COMPLETED
+    commits, alongside the nowcast/demand retrain triggers -- same
+    isolation contract, never raises out to arq, never rolls back the
+    event completion that triggered it.
+
+    Called with expected_customers=None: the manual-backfill drift-
+    protection anchor doesn't exist for an automatic trigger on a brand
+    new event, so the write always proceeds (see build_event's
+    docstring for why that's safe here and not for the manual path).
+
+    The report-generation cron does not hard-depend on this finishing in
+    time -- it prefers to wait for this job (customer_sessions existing
+    for the event) but generates the report anyway past a hard cutoff
+    even if this never completes (see reports/repository.py's
+    list_events_needing_reports). A failure here degrades the report's
+    Guests/Comparison/Decomposition sections, never blocks it.
+    """
+    try:
+        tenant_uuid = UUID(tenant_id)
+        event_uuid = UUID(event_id)
+    except (TypeError, ValueError) as e:
+        logger.warning("populate_customer_features: bad UUID args %s %s: %s",
+                       tenant_id, event_id, e)
+        return {"status": "error", "reason": "invalid_uuid"}
+
+    from app.scripts.build_customer_features import build_event
+
+    try:
+        report = await build_event(tenant_id=tenant_uuid, event_id=event_uuid)
+        return {
+            "status": "ok" if report.sanity_passed else "error",
+            "sessions_created": report.sessions_created,
+            "purchases_created": report.purchases_created,
+            "distinct_customers": report.distinct_customers,
+        }
+    except Exception as e:  # noqa: BLE001
+        logger.exception(
+            "populate_customer_features failed: tenant=%s event=%s: %s",
+            tenant_id, event_id, e,
+        )
+        return {"status": "error", "reason": str(e)[:200]}
+
+
 # ─── Customer intelligence refresh (Day 4) ────────────────────────────────────
 
 async def refresh_customer_intelligence(ctx: dict, tenant_id: str, event_id: str) -> dict:

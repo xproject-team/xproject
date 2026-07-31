@@ -99,6 +99,105 @@ export interface ReportNarrative {
   what_next: string[]
 }
 
+// Section A — Guests. identified_total is a FLOOR on attendance (guests who
+// made an identified purchase), never a headcount — see backend
+// ReportGuestKpis docstring. available=false is the normal state whenever
+// customer_sessions hasn't been populated for this event yet.
+export interface ReportGuestKpis {
+  available: boolean
+  unavailable_reason: string | null
+  identified_total: number
+  registered_count: number
+  guest_count: number
+  unknown_count: number
+  whale_count: number
+  regular_count: number
+  light_count: number
+  whale_threshold_cents: number
+  light_threshold_cents: number
+  returning_count: number
+  new_count: number
+}
+
+export interface ReportForecastHourRow {
+  hour_of_event: number
+  predicted: number
+  actual: number
+  lower: number
+  upper: number
+  within_band: boolean
+}
+
+// Section B — Forecast vs. Actual. band_hits/band_hours_total power the
+// "actual fell within the predicted range in N of M hours" headline —
+// deliberately shown instead of an error percentage.
+export interface ReportForecastAccuracy {
+  available: boolean
+  unavailable_reason: string | null
+  predicted_final_total: number | null
+  actual_final_total: number | null
+  hours: ReportForecastHourRow[]
+  band_hits: number | null
+  band_hours_total: number | null
+}
+
+export interface ReportComparisonMetric {
+  label: string
+  current_value: number | null
+  previous_event_value: number | null
+  previous_event_delta_pct: number | null
+  season_avg_value: number | null
+  season_avg_delta_pct: number | null
+}
+
+// Section C — Event-over-Event Comparison. guest_metrics_available_from is
+// set (e.g. "August 2026") whenever this event predates guest-comparison
+// data — NOT backfilled onto older reports, so say so plainly instead of
+// silently omitting rows.
+export interface ReportComparison {
+  available: boolean
+  unavailable_reason: string | null
+  previous_event_name: string | null
+  previous_event_date: string | null
+  season_avg_n_events: number
+  metrics: ReportComparisonMetric[]
+  guest_metrics_available_from: string | null
+}
+
+// Section D — Revenue Decomposition. estimated_attendance is
+// expected_guest_count VERBATIM — a planning figure, never a measurement.
+// purchase_rate_pct is therefore also an estimate and MUST be labeled as
+// such everywhere it's rendered (CAVEAT 2) — never shown as a measured
+// conversion rate.
+export interface ReportRevenueDecomposition {
+  available: boolean
+  unavailable_reason: string | null
+  estimated_attendance: number | null
+  purchasers: number | null
+  purchase_rate_pct: number | null
+  orders_per_purchaser: number | null
+  average_order_value_cents: number | null
+  implied_revenue_cents: number | null
+  actual_revenue_cents: number | null
+}
+
+export interface ReportProductRow {
+  product_id: string
+  product_name: string
+  category: string | null
+  units_sold: number
+  revenue_cents: number
+  category_revenue_share_pct: number | null
+}
+
+// Section E — top and lowest-selling products. "lowest_selling", never
+// "bottom"/"worst" — present as a question (new item? priced high? quiet
+// bar?), never a verdict.
+export interface ReportProductPerformance {
+  top_products: ReportProductRow[]
+  lowest_selling_products: ReportProductRow[]
+}
+
 export interface ReportData {
   report_id: string
   version: number
@@ -110,6 +209,14 @@ export interface ReportData {
   stock_rows: ReportStockRow[]
   alerts: ReportAlertRow[]
   narrative: ReportNarrative
+  // Optional: absent (null) on reports generated before this feature
+  // shipped — every consumer must treat null the same as available=false,
+  // never as an error.
+  guests: ReportGuestKpis | null
+  forecast_accuracy: ReportForecastAccuracy | null
+  comparison: ReportComparison | null
+  revenue_decomposition: ReportRevenueDecomposition | null
+  product_performance: ReportProductPerformance | null
 }
 
 export interface ReportSummary {

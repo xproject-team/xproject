@@ -109,4 +109,36 @@ TEMPLATES_WORKED = [
         "en": "A silent night — no system interventions required.",
         "extract": lambda d: {},
     },
+
+    # ─── 7. Perfect forecast calibration (Section B) ──────────────────────
+    {
+        "key": "forecast_fully_calibrated",
+        "priority": 60,
+        "condition": lambda d: (
+            d.forecast_accuracy is not None
+            and d.forecast_accuracy.available
+            and d.forecast_accuracy.band_hours_total
+            and d.forecast_accuracy.band_hits == d.forecast_accuracy.band_hours_total
+        ),
+        "it": "Il modello di previsione della domanda è stato preciso — il consumo reale è rimasto nella fascia attesa per tutta la serata.",
+        "en": "The demand forecast held up well — actual consumption stayed within the predicted range all night.",
+        "extract": lambda d: {},
+    },
+
+    # ─── 8. Loyal returning audience (Section A) ──────────────────────────
+    {
+        "key": "loyal_returning_guests",
+        "priority": 65,
+        "condition": lambda d: (
+            d.guests is not None
+            and d.guests.available
+            and d.guests.identified_total > 0
+            and (d.guests.returning_count / d.guests.identified_total) >= 0.3
+        ),
+        "it": "Il {pct}% degli ospiti identificati aveva già partecipato a un evento precedente — un pubblico fedele.",
+        "en": "{pct}% of identified guests had attended a previous event — a loyal audience.",
+        "extract": lambda d: {
+            "pct": round(100 * d.guests.returning_count / d.guests.identified_total),
+        },
+    },
 ]

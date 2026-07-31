@@ -530,3 +530,39 @@ async def test_build_event_sanity_gate_blocks_write_on_mismatch():
 
         await delete_tenant_cascade(session, tenant.id)
         await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_build_event_expected_customers_none_skips_gate_and_always_writes():
+    """The automatic post-event-completion trigger (see
+    workers/tasks.py::populate_customer_features) has no human-verified
+    anchor to check distinct_customers against — expected_customers=None
+    must skip the gate entirely and always write, regardless of count.
+    Manual backfill callers are unaffected: passing an explicit
+    expected_customers still gates on an exact match (see
+    test_build_event_sanity_gate_blocks_write_on_mismatch)."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        event = await make_event(session, tenant.id)
+
+        await _make_identified_order(
+            session, tenant_id=tenant.id, event_id=event.id, slesh_order_id="o-1", user_id="mongo-user-1",
+        )
+        await _make_identified_order(
+            session, tenant_id=tenant.id, event_id=event.id, slesh_order_id="o-2", user_id="mongo-user-2",
+        )
+        await session.commit()
+
+    report = await build_event(tenant_id=tenant.id, event_id=event.id)
+    assert report.sanity_passed is True
+    assert report.distinct_customers == 2
+    assert report.sessions_created == 2
+
+    async with TestSessionLocal() as session:
+        sessions = (await session.execute(
+            select(CustomerSession).where(CustomerSession.event_id == event.id)
+        )).scalars().all()
+        assert len(sessions) == 2
+
+        await delete_tenant_cascade(session, tenant.id)
+        await session.commit()
