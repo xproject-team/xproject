@@ -37,6 +37,7 @@ import ReportPage            from '@/pages/reports/ReportPage'
 import ReportDetailPage      from '@/pages/reports/ReportDetailPage'
 import SettingsPage         from '@/pages/settings/SettingsPage'
 import ChatPage              from '@/pages/chat/ChatPage'
+import DesignSystemPage      from '@/design-system/DesignSystemPage'
 
 // ─── Permission flag type ─────────────────────────────────────────────────────
 // Extracts only the boolean keys from Permissions so RequirePermission is type-safe.
@@ -118,6 +119,9 @@ export function AppRoutes() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<LoginPage />} />
+
+        {/* Design system preview — standalone, no AppShell/auth. Day 1 of UI redesign. */}
+        <Route path="/design-system" element={<DesignSystemPage />} />
 
         {/* All authenticated routes wrapped in AppShell */}
         <Route
