@@ -45,7 +45,7 @@
   /* Glass — sidebar / header / modals / dropdowns ONLY. Never on data
      cards, list rows, or anything that repeats or scrolls. */
   --v-glass-bg: rgba(20, 22, 29, 0.62);
-  --v-glass-blur: blur(18px);
+  --v-glass-blur: blur(24px);
 
   background-color: var(--v-bg-base);
   color: var(--v-text);

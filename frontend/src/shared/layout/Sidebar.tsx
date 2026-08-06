@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/useAuth'
 import type { MockUser } from '@/lib/mockUsers'
+import '@/design-system/components/components.css'
 
 // ─── Role presentation ────────────────────────────────────────────────────────
 
@@ -213,11 +214,11 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-60 bg-[#1E5A8D] text-white flex flex-col flex-shrink-0 shadow-xl">
+    <aside className="v-glass w-60 text-[var(--v-text)] flex flex-col flex-shrink-0 relative z-10">
       {/* Logo */}
       <div className="px-6 py-5 border-b border-white/10">
-        <span className="text-xl font-bold tracking-tight">XProject</span>
-        <p className="text-blue-200 text-xs mt-0.5">Operations Platform</p>
+        <span className="text-xl font-bold tracking-tight text-[var(--v-text)]">Vera Event</span>
+        <p className="text-[10px] tracking-[0.14em] mt-0.5 text-[var(--v-cyan)]">LIVE OPS</p>
       </div>
 
       {/* Nav */}
@@ -229,10 +230,10 @@ export function Sidebar() {
               key={item.path + item.label}
               to={item.path}
               className={[
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-3 px-3 py-2.5 rounded-[var(--v-radius-sm)] text-sm font-medium transition-all border-l-2',
                 active
-                  ? 'bg-[#6C63FF] text-white shadow-sm'
-                  : 'text-blue-100 hover:bg-white/10 hover:text-white',
+                  ? 'text-[var(--v-cyan)] bg-[rgba(0,229,212,0.12)] border-l-[var(--v-cyan)]'
+                  : 'text-[var(--v-text-muted)] hover:text-[var(--v-text)] hover:bg-white/[0.04] border-l-transparent',
               ].join(' ')}
             >
               {item.icon}
@@ -256,7 +257,7 @@ export function Sidebar() {
 
             {/* Identity info */}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white leading-tight truncate">
+              <p className="text-sm font-semibold text-[var(--v-text)] leading-tight truncate">
                 {user?.full_name ?? ROLE_LABEL[role]}
               </p>
               <span
@@ -274,7 +275,7 @@ export function Sidebar() {
               onClick={handleSwitch}
               title="Sign out"
               aria-label="Sign out"
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--v-text-dim)] hover:text-[var(--v-text)] hover:bg-white/[0.04] transition-colors shrink-0"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />

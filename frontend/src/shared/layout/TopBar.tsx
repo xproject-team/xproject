@@ -4,6 +4,7 @@ import { useAuth } from '@/features/auth/useAuth'
 import type { UserRole } from '@/features/auth/AuthContext'
 import { MentionBell } from '@/features/chat/MentionBell'
 import { useLiveEvent } from '@/features/dashboard/hooks'
+import '@/design-system/components/components.css'
 
 const ROLE_BADGE: Record<
   UserRole,
@@ -83,7 +84,10 @@ export function TopBar() {
   }
 
   return (
-    <header className="h-14 bg-white border-b border-[#E2E8F0] flex items-center px-6 justify-between flex-shrink-0 shadow-sm gap-4">
+    <header
+      className="v-glass h-14 text-[var(--v-text)] flex items-center px-6 justify-between flex-shrink-0 gap-4 relative z-10"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+    >
 
       <div className="flex items-center gap-2.5 shrink-0">
         <div className={
@@ -91,9 +95,9 @@ export function TopBar() {
             ? "w-2 h-2 rounded-full bg-[#38A169] animate-pulse"
             : "w-2 h-2 rounded-full bg-[#CBD5E0]"
         } />
-        <span className="text-sm font-semibold text-[#1A202C]">XProject</span>
-        <span className="text-[#CBD5E0]">·</span>
-        <span className="text-sm text-[#4A5568]">{eventLabel}</span>
+        <span className="text-sm font-semibold text-[var(--v-text)]">Vera Event</span>
+        <span className="text-[var(--v-text-dim)]">·</span>
+        <span className="text-sm text-[var(--v-text-muted)]">{eventLabel}</span>
         {eventIsLive && (
           <span className="bg-[#38A169]/10 text-[#38A169] text-[10px] font-semibold px-2 py-0.5 rounded-full border border-[#38A169]/20 tracking-wide">
             LIVE
@@ -103,9 +107,9 @@ export function TopBar() {
 
       {role === 'bartender' && (
         <div className="flex items-center gap-2 text-xs">
-          <span className="flex items-center gap-1.5 bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full text-[#4A5568]">
+          <span className="flex items-center gap-1.5 bg-white/[0.04] border border-[var(--v-border)] px-3 py-1.5 rounded-full text-[var(--v-text-muted)]">
             Bottles opened today:
-            <span className="font-bold text-[#1A202C]">12</span>
+            <span className="font-bold text-[var(--v-text)]">12</span>
           </span>
         </div>
       )}
@@ -125,7 +129,7 @@ export function TopBar() {
           aria-expanded={menuOpen}
           aria-label="Open profile menu"
           title="Profile menu"
-          className="w-8 h-8 flex items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F7FAFC] text-[#4A5568] hover:text-[#1A202C] hover:border-[#CBD5E0] hover:bg-[#EDF2F7] focus:outline-none focus:border-[#1E5A8D] transition-colors text-[11px] font-bold"
+          className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--v-border)] bg-white/[0.04] text-[var(--v-text-muted)] hover:text-[var(--v-text)] hover:border-[var(--v-border-hover)] hover:bg-white/[0.08] focus:outline-none focus:border-[var(--v-cyan)] transition-colors text-[11px] font-bold"
         >
           {initials}
         </button>
