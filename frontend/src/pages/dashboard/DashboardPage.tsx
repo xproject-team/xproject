@@ -866,6 +866,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
       <BarDetailOverlay
         bar={selectedBar}
         onClose={() => setSelectedBar(null)}
+        eventId={eventId}
+        eventStartMs={eventStartMs}
+        nowMs={nowMs}
+        isLive={isLive}
       />
     </div>
   )

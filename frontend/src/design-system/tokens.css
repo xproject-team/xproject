@@ -27,6 +27,19 @@
   --v-amber: #ffd84d;
   --v-green: #3dffa3;
 
+  /* Categorical chart palette — fixed neon set, 8 slots. Used for stacked/
+     multi-series charts where each series needs a distinct, stable color
+     (e.g. per-drink-product stacked bars). Map a category to a color via
+     design-system/categoricalPalette.ts, never by hand. */
+  --v-cat-1: #00e5d4;
+  --v-cat-2: #b14bff;
+  --v-cat-3: #ff3d71;
+  --v-cat-4: #ffd84d;
+  --v-cat-5: #3dffa3;
+  --v-cat-6: #4da6ff;
+  --v-cat-7: #ff8a3d;
+  --v-cat-8: #e84dff;
+
   /* Radii */
   --v-radius-sm: 8px;
   --v-radius: 12px;

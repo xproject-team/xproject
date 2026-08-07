@@ -230,13 +230,6 @@ export function FoodBarCard({
         </div>
       </div>
 
-      {/* Alerts feed placeholder (v1.1) — same as BarCard */}
-      <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text-dim)' }}>
-        <span className="flex items-center gap-1.5 italic">
-          <span>ⓘ</span>
-          <span>Alerts feed arrives in v1.1</span>
-        </span>
-      </div>
     </button>
   )
 }
