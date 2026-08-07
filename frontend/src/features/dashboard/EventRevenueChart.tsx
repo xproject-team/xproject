@@ -2,9 +2,9 @@
  * EventRevenueChart — big top-of-dashboard chart.
  *
  * Shows event-total cumulative revenue:
- *   - Actual (solid navy): live event-total, summed across ALL bars,
+ *   - Actual (solid cyan): live event-total, summed across ALL bars,
  *                          cumulative over hour buckets
- *   - ML Predicted (dashed purple): real values from the Phase D
+ *   - ML Predicted (dashed violet): real values from the Phase D
  *                                   nowcast endpoint (see
  *                                   useRevenueForecast), merged onto
  *                                   the chart's buckets by
@@ -17,6 +17,11 @@
  * Design (locked May 27 2026 with Hesam):
  *   - Event-TOTAL, not per-bar (per-bar charts live inside bar cards)
  *   - Goal: "are we beating our prediction tonight?" at a glance
+ *
+ * X-axis (Day 3 restyle): ticks are derived from the actual time RANGE
+ * of the data (min/max time_ms), not from row count — a sparse event
+ * with only 1-2 buckets no longer repeats the same label across the
+ * whole axis width. Targets 6-8 evenly spaced, deduplicated ticks.
  */
 import { useMemo } from 'react'
 
@@ -24,29 +29,60 @@ import {
   MultiLineChart,
   type SeriesSpec,
 } from '@/shared/charts/MultiLineChart'
-import { buildEventRevenuePoints, mergePredictedCurve } from '@/features/dashboard/chart-buckets'
+import { buildEventRevenuePoints, mergePredictedCurve, type ChartPoint } from '@/features/dashboard/chart-buckets'
 import type { StockTransactionRow } from '@/lib/mockData'
 import type { PredictedCurvePoint } from '@/features/predictions/useRevenueForecast'
+import { EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 
 // Two-line spec. Order matters for Recharts: "actual" drawn first
-// underneath, "predicted" overlays. Both use the same color tokens as
-// the original overlay chart for visual continuity.
+// underneath, "predicted" overlays. Cyan = actual/live data, violet =
+// prediction — the Vera design system's chart-color convention.
 const _SERIES: SeriesSpec[] = [
   {
     key:         'actual',
     name:        'Actual (live)',
-    color:       '#1E5A8D',
-    strokeWidth: 3,
+    color:       'var(--v-cyan)',
+    strokeWidth: 2,
   },
   {
     key:         'predicted',
     name:        'ML Predicted',
-    color:       '#6C63FF',
+    color:       'var(--v-violet)',
     strokeWidth: 2,
     dashed:      true,
   },
 ]
+
+function formatHM(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
+/**
+ * Derive evenly-spaced x-axis tick VALUES from the actual time range of
+ * the data (first bucket -> last bucket), independent of how many rows
+ * exist. Targets `targetCount` ticks, deduplicated by rendered label so
+ * a short/sparse window never repeats the same "HH:MM" twice.
+ */
+function deriveTimeTicks(points: ChartPoint[], targetCount = 7): number[] {
+  if (points.length === 0) return []
+  const minMs = points[0].time_ms
+  const maxMs = points[points.length - 1].time_ms
+  if (minMs === maxMs) return [minMs]
+
+  const ticks: number[] = []
+  const seenLabels = new Set<string>()
+  for (let i = 0; i < targetCount; i++) {
+    const ms = Math.round(minMs + ((maxMs - minMs) * i) / (targetCount - 1))
+    const label = formatHM(ms)
+    if (seenLabels.has(label)) continue
+    seenLabels.add(label)
+    ticks.push(ms)
+  }
+  return ticks
+}
 
 
 interface EventRevenueChartProps {
@@ -82,35 +118,45 @@ export function EventRevenueChart({
     return mergePredictedCurve(points, predictedCurve, eventStartMs, currentRevenueEur, hourOffsetFromStart)
   }, [transactions, eventStartMs, nowMs, predictedCurve, currentRevenueEur, hourOffsetFromStart])
 
+  const ticks = useMemo(() => deriveTimeTicks(data), [data])
+
   if (data.length === 0) {
     return (
-      <div
-        style={{ height }}
-        className="flex items-center justify-center text-sm text-[#A0AEC0] italic
-                    border border-[#E2E8F0] rounded-lg bg-white"
-      >
-        Awaiting first transaction
+      <div className="v-card p-4 h-full flex items-center justify-center" style={{ minHeight: height }}>
+        <EmptyState
+          headline="Awaiting first transaction"
+          body="Revenue will appear once orders start streaming in from Slesh POS."
+        />
       </div>
     )
   }
 
   return (
-    <div className="border border-[#E2E8F0] rounded-lg bg-white p-4 shadow-sm">
+    <div className="v-card p-4 h-full">
       <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-sm font-semibold text-[#2E4B7A]">
+        <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'var(--v-text-muted)' }}>
           Event Revenue
-        </h2>
-        <span className="text-xs text-[#A0AEC0]">
+        </span>
+        <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>
           Actual vs ML Predicted
         </span>
       </div>
       <MultiLineChart
         data={data}
-        labelKey="time_label"
+        labelKey="time_ms"
         series={_SERIES}
         height={height}
         showLegend={true}
         showYAxis={true}
+        xAxisType="number"
+        xTicks={ticks}
+        xDomain={[data[0].time_ms, data[data.length - 1].time_ms]}
+        xTickFormatter={formatHM}
+        tooltipLabelFormatter={(v) => formatHM(Number(v))}
+        axisColor="var(--v-text-dim)"
+        axisFontSize={10}
+        gridColor="var(--v-border)"
+        gridOpacity={0.5}
       />
     </div>
   )

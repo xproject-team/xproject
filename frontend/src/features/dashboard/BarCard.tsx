@@ -16,7 +16,8 @@ import type { BarKpi, BarRow, BarStatus, StockTransactionRow } from '@/lib/mockD
 
 import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
 import { FoodBarCard } from '@/features/dashboard/FoodBarCard'
-import type { ProductLike } from '@/features/dashboard/category-resolver' 
+import type { ProductLike } from '@/features/dashboard/category-resolver'
+import '@/design-system/components/components.css'
 
 interface BarCardProps {
   bar: BarKpi
@@ -48,16 +49,16 @@ interface BarCardProps {
   }
 }
 
-export const STATUS_CFG: Record<BarStatus, { dot: string; label: string; labelColor: string }> = {
-  healthy:  { dot: 'bg-[#38A169]',              label: 'Healthy',   labelColor: 'text-[#38A169]' },
-  warning:  { dot: 'bg-[#D69E2E]',              label: 'Low Stock', labelColor: 'text-[#D69E2E]' },
-  critical: { dot: 'bg-[#E53E3E] animate-pulse', label: 'Critical',  labelColor: 'text-[#E53E3E]' },
+export const STATUS_CFG: Record<BarStatus, { dot: string; label: string; accent: string }> = {
+  healthy:  { dot: 'var(--v-green)', label: 'Healthy',   accent: 'var(--v-green)' },
+  warning:  { dot: 'var(--v-amber)', label: 'Low Stock', accent: 'var(--v-amber)' },
+  critical: { dot: 'var(--v-pink)',  label: 'Critical',  accent: 'var(--v-pink)' },
 }
 
 function stockBarColor(pct: number) {
-  if (pct > 60) return 'bg-[#38A169]'
-  if (pct > 30) return 'bg-[#D69E2E]'
-  return 'bg-[#E53E3E]'
+  if (pct > 60) return 'var(--v-green)'
+  if (pct > 30) return 'var(--v-amber)'
+  return 'var(--v-pink)'
 }
 
 // ─── Small "not yet available" pill used by placeholder fields ──────────────
@@ -66,7 +67,7 @@ function stockBarColor(pct: number) {
 
 export function Placeholder({ label }: { label: string }) {
   return (
-    <span className="text-[#A0AEC0] italic" title={`${label} — coming soon`}>
+    <span className="italic" style={{ color: 'var(--v-text-dim)' }} title={`${label} — coming soon`}>
       —
     </span>
   )
@@ -116,35 +117,30 @@ export function BarCard({
   return (
     <button
       onClick={() => onClick(bar.id)}
-      className={[
-        'rounded-xl p-5 shadow-sm hover:shadow-md transition-all text-left w-full border',
-        // Auto-created stubs (ingester-minted for unmapped Slesh shops) get
-        // a distinct dashed amber treatment so they pop out of the grid as
-        // "needs reconciliation". Overrides the status-based bg/border.
-        bar.auto_created
-          ? 'border-2 border-dashed border-amber-400 bg-amber-50'
-          : bar.status === 'critical' ? 'bg-red-50 border-red-200' :
-            bar.status === 'warning'  ? 'bg-yellow-50 border-yellow-200' :
-                                        'bg-green-50/60 border-green-200',
-      ].join(' ')}
+      className="v-card w-full h-full text-left p-4 relative overflow-hidden"
+      style={{
+        borderLeft: bar.auto_created ? '2px dashed var(--v-amber)' : `2px solid ${cfg.accent}`,
+      }}
     >
       {/* 1+3 — Bar name + status dot + revenue */}
       <div className="flex items-start justify-between mb-1">
         <div className="flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
-          <h3 className="font-bold text-[#1A202C] text-base leading-tight">{bar.name}</h3>
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cfg.dot }} />
+          <h3 className="font-medium text-base leading-tight" style={{ color: 'var(--v-text)' }}>{bar.name}</h3>
           {criticalAlertCount > 0 && (
             <span
-              className="flex items-center gap-1 text-[10px] font-bold bg-red-100 text-[#E53E3E] border border-red-200 px-1.5 py-0.5 rounded-full shrink-0"
+              className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ background: 'rgba(255, 61, 113, 0.12)', color: 'var(--v-pink)', border: '0.5px solid var(--v-pink)' }}
               title={`${criticalAlertCount} active critical alert${criticalAlertCount === 1 ? '' : 's'}`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--v-pink)' }} />
               {criticalAlertCount}
             </span>
           )}
           {bar.auto_created && (
             <span
-              className="flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded-full shrink-0"
+              className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+              style={{ background: 'rgba(255, 216, 77, 0.12)', color: 'var(--v-amber)', border: '0.5px solid var(--v-amber)' }}
               title="Auto-created from an unmapped Slesh shop_id — open this card to merge it into a properly named bar"
             >
               <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
@@ -155,27 +151,27 @@ export function BarCard({
           )}
         </div>
         <div className="text-right shrink-0 ml-3">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Revenue</p>
-          <p className="text-xl font-bold text-[#1A202C]">€{revenueEuros.toLocaleString()}</p>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Revenue</p>
+          <p className="text-xl font-medium" style={{ color: 'var(--v-text)' }}>€{revenueEuros.toLocaleString()}</p>
         </div>
       </div>
 
       {/* 2 — Status label */}
-      <p className={`text-xs font-semibold mb-3 ${cfg.labelColor}`}>{cfg.label}</p>
+      <p className="text-xs font-semibold mb-3" style={{ color: cfg.accent }}>{cfg.label}</p>
 
       {/* Warehouse storage line — shows what's been dispatched from the
           event's storage pool to this bar. Only renders when at least
           one item has been dispatched, to keep empty bars clean. */}
       {storage && storage.itemCount > 0 && (
-        <div className="flex items-center gap-1.5 mb-3 text-[11px] text-[#4A5568]">
-          <svg className="w-3 h-3 text-[#3182CE] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <div className="flex items-center gap-1.5 mb-3 text-[11px]" style={{ color: 'var(--v-text-muted)' }}>
+          <svg className="w-3 h-3 shrink-0" style={{ color: 'var(--v-cyan)' }} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
           </svg>
           <span>
-            <span className="font-semibold text-[#1A202C]">{storage.itemCount}</span>{' '}
+            <span className="font-semibold" style={{ color: 'var(--v-text)' }}>{storage.itemCount}</span>{' '}
             {storage.itemCount === 1 ? 'item' : 'items'}
             {' · '}
-            <span className="font-semibold text-[#1A202C]">{storage.totalUnits}</span>{' '}
+            <span className="font-semibold" style={{ color: 'var(--v-text)' }}>{storage.totalUnits}</span>{' '}
             units in warehouse
           </span>
         </div>
@@ -185,7 +181,8 @@ export function BarCard({
           line is suppressed for them. */}
       {bar.slesh_negozio_id && !bar.auto_created && (
         <p
-          className="text-[10px] font-mono text-[#A0AEC0] -mt-2 mb-3 truncate"
+          className="text-[10px] font-mono -mt-2 mb-3 truncate"
+          style={{ color: 'var(--v-text-dim)' }}
           title={`Slesh shop_id: ${bar.slesh_negozio_id}`}
         >
           shop · {bar.slesh_negozio_id.slice(0, 8)}…{bar.slesh_negozio_id.slice(-4)}
@@ -200,11 +197,12 @@ export function BarCard({
           doesn't trigger the card-level BarDetailOverlay underneath. */}
       {bar.auto_created && mergeOptions && mergeOptions.available.length > 0 && (
         <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-          <label className="text-[10px] font-semibold text-amber-900 uppercase tracking-wide block mb-1">
+          <label className="text-[10px] font-semibold uppercase tracking-wide block mb-1" style={{ color: 'var(--v-amber)' }}>
             Map this shop to
           </label>
           <select
-            className="w-full text-sm border border-amber-300 rounded-lg px-2 py-1.5 bg-white text-[#1A202C] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full text-sm rounded-lg px-2 py-1.5 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{ background: 'var(--v-surface-raised)', border: '1px solid var(--v-amber)', color: 'var(--v-text)' }}
             value={pickedDstId}
             onChange={(e) => {
               const dstId = e.target.value
@@ -239,8 +237,8 @@ export function BarCard({
           top of this function, so this block is drinks-only. */}
       <div className="mb-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <p className="text-xs text-[#4A5568]">Drinks Sold</p>
-          <p className="text-sm font-bold text-[#1A202C]">{bar.drinks_sold}</p>
+          <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>Drinks Sold</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>{bar.drinks_sold}</p>
         </div>
         <BarMiniChart
           barId={bar.id}
@@ -255,67 +253,67 @@ export function BarCard({
       {/* 5 — Stock Level (REAL) */}
       <div className="mb-3">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-xs text-[#4A5568]">Stock Level</p>
-          <p className="text-xs font-semibold text-[#1A202C]">
+          <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>Stock Level</p>
+          <p className="text-xs font-semibold" style={{ color: 'var(--v-text)' }}>
             {bar.current_stock}/{bar.initial_stock} units
           </p>
         </div>
-        <div className="h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--v-border)' }}>
           <div
-            className={`h-full rounded-full ${stockBarColor(stockPct)}`}
-            style={{ width: `${stockPct}%` }}
+            className="h-full rounded-full"
+            style={{ width: `${stockPct}%`, background: stockBarColor(stockPct) }}
           />
         </div>
-        <p className="text-[10px] text-[#4A5568] mt-0.5">{stockPct}% remaining</p>
+        <p className="text-[10px] mt-0.5" style={{ color: 'var(--v-text-dim)' }}>{stockPct}% remaining</p>
       </div>
 
       {/* 6+7+8 — Burn Rate / Time to Depletion / Staff — PLACEHOLDERS (v1.1) */}
       <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Burn Rate</p>
-          <p className="text-sm font-bold mt-0.5">
+        <div className="rounded-[var(--v-radius-sm)] px-2.5 py-2 text-center" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Burn Rate</p>
+          <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--v-text)' }}>
             {bar.burn_rate === null ? <Placeholder label="Burn rate — no recent sales" /> : bar.burn_rate.toFixed(1)}
           </p>
-          <p className="text-[9px] text-[#4A5568]">btl/hr</p>
+          <p className="text-[9px]" style={{ color: 'var(--v-text-dim)' }}>btl/hr</p>
         </div>
 
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Depletion</p>
-          <p className="text-sm font-bold mt-0.5">
+        <div className="rounded-[var(--v-radius-sm)] px-2.5 py-2 text-center" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Depletion</p>
+          <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--v-text)' }}>
             {bar.time_to_depletion_min === null ? <Placeholder label="Depletion — needs data" /> : bar.time_to_depletion_min < 60 ? Math.round(bar.time_to_depletion_min) + "m" : Math.floor(bar.time_to_depletion_min / 60) + "h" + (Math.round(bar.time_to_depletion_min % 60)) + "m"}
           </p>
-          <p className="text-[9px] text-[#4A5568]">remaining</p>
+          <p className="text-[9px]" style={{ color: 'var(--v-text-dim)' }}>remaining</p>
         </div>
 
         {/* Staff tile — Phase 2 (Jun 21 2026): real device data.
              Format: {active}/{total}, e.g. "7/9" — one Slesh device per bartender.
              Active goes green when any device is logged in; subtitle adapts. */}
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Staff</p>
-          <p className="text-sm font-bold mt-0.5 flex items-center justify-center gap-0.5">
-            <svg className="w-3.5 h-3.5 text-[#4A5568]" fill="currentColor" viewBox="0 0 20 20">
+        <div className="rounded-[var(--v-radius-sm)] px-2.5 py-2 text-center" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Staff</p>
+          <p className="text-sm font-medium mt-0.5 flex items-center justify-center gap-0.5" style={{ color: 'var(--v-text)' }}>
+            <svg className="w-3.5 h-3.5" style={{ color: 'var(--v-text-dim)' }} fill="currentColor" viewBox="0 0 20 20">
               <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
             </svg>
             {bar.devices_total === 0 ? (
               <Placeholder label="No devices configured" />
             ) : (
               <span>
-                <span className={bar.devices_active > 0 ? 'text-[#38A169]' : 'text-[#A0AEC0]'}>
+                <span style={{ color: bar.devices_active > 0 ? 'var(--v-green)' : 'var(--v-text-dim)' }}>
                   {bar.devices_active}
                 </span>
-                <span className="text-[#A0AEC0]">/</span>
+                <span style={{ color: 'var(--v-text-dim)' }}>/</span>
                 {bar.devices_total}
               </span>
             )}
           </p>
-          <p className="text-[9px] text-[#4A5568]">
+          <p className="text-[9px]" style={{ color: 'var(--v-text-dim)' }}>
             {bar.devices_total === 0 ? 'unconfigured' : 'active'}
           </p>
         </div>
       </div>
 
       {/* 9 — Last Alert — PLACEHOLDER (v1.1 alerts backend) */}
-      <div className="rounded-lg px-3 py-2 text-xs bg-[#F7FAFC] border border-[#E2E8F0] text-[#A0AEC0]">
+      <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text-dim)' }}>
         <span className="flex items-center gap-1.5 italic">
           <span>ⓘ</span>
           <span>Alerts feed arrives in v1.1</span>

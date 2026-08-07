@@ -29,6 +29,7 @@ import {
 } from '@/features/dashboard/chart-buckets'
 import { buildCategoryByProductId, type ProductLike } from '@/features/dashboard/category-resolver'
 import type { StockTransactionRow } from '@/lib/mockData'
+import { EmptyState } from '@/design-system/components'
 
 
 // Frontend category buckets that count as drinks. Food and other (deposits
@@ -100,11 +101,8 @@ export function BarMiniChart({
   // Empty placeholder so the card height stays consistent across bars.
   if (points.length === 0 || productOrder.length === 0) {
     return (
-      <div
-        style={{ height }}
-        className="flex items-center justify-center text-xs text-[#A0AEC0] italic"
-      >
-        No drink sales yet
+      <div style={{ height }} className="flex items-center justify-center">
+        <EmptyState headline="No drink sales yet" body="Sales will appear here once orders start streaming in." />
       </div>
     )
   }
@@ -112,14 +110,14 @@ export function BarMiniChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={points} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--v-border)" vertical={false} />
         <XAxis
           dataKey="time_label"
-          tick={{ fontSize: 10, fill: '#718096' }}
+          tick={{ fontSize: 10, fill: 'var(--v-text-dim)' }}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fontSize: 10, fill: '#718096' }}
+          tick={{ fontSize: 10, fill: 'var(--v-text-dim)' }}
           tickFormatter={(v: number) => `€${v}`}
           width={45}
         />
