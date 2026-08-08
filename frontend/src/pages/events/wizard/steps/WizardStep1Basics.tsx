@@ -34,19 +34,12 @@ import { useEffect, useMemo } from "react"
 
 import { useVenues } from "@/features/venues/hooks"
 import type { WizardState } from "../types"
+import { inputCls, dateInputCls, Label, HelperText, stepCardCls, warningBannerCls, warningBannerStyle } from "@/design-system/wizardForm"
+import "@/design-system/components/components.css"
 
 interface Props {
   state: WizardState
   onChange: (next: Partial<WizardState>) => void
-}
-
-// Styling constants pulled from EventCreatePage so the wizard form
-// looks identical to the rest of the app.
-const inputCls =
-  "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]"
-
-function Label({ children }: { children: React.ReactNode }) {
-  return <label className="block text-xs font-semibold text-[#4A5568] mb-1">{children}</label>
 }
 
 // ── Date helpers ───────────────────────────────────────────────────
@@ -168,10 +161,19 @@ export function WizardStep1Basics({ state, onChange }: Props) {
   const fromExcel = state.parsed_plan !== null
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+    <div className={stepCardCls}>
       {fromExcel && (
-        <div className="mb-4 p-3 bg-[#F0F4F8] rounded-lg text-xs text-[#4A5568]">
-          Some fields below have been pre-filled from the uploaded plan. You can edit anything.
+        <div
+          className="relative overflow-hidden mb-4 px-4 py-3 rounded-[var(--v-radius)] flex items-start gap-2"
+          style={{ background: "var(--v-surface-raised)", border: "0.5px solid var(--v-border)" }}
+        >
+          <span className="absolute left-0 top-0 bottom-0 w-[2px]" style={{ background: "var(--v-cyan)" }} />
+          <svg className="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--v-cyan)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
+          </svg>
+          <span className="text-[13px]" style={{ color: "var(--v-text-muted)" }}>
+            Some fields below have been pre-filled from the uploaded plan. You can edit anything.
+          </span>
         </div>
       )}
 
@@ -189,7 +191,7 @@ export function WizardStep1Basics({ state, onChange }: Props) {
         <div>
           <Label>Venue</Label>
           <select
-            className={`${inputCls} bg-white`}
+            className={inputCls}
             value={state.venue_id ?? ""}
             onChange={(e) => setVenueId(e.target.value)}
           >
@@ -201,9 +203,9 @@ export function WizardStep1Basics({ state, onChange }: Props) {
             ))}
           </select>
           {state.parsed_plan?.venue_name && !state.venue_id && (
-            <p className="text-xs text-[#A0AEC0] mt-1">
-              Plan says “{state.parsed_plan.venue_name}” — not found in your venues list. Pick one above.
-            </p>
+            <HelperText>
+              Plan says "{state.parsed_plan.venue_name}" — not found in your venues list. Pick one above.
+            </HelperText>
           )}
         </div>
 
@@ -223,7 +225,7 @@ export function WizardStep1Basics({ state, onChange }: Props) {
           <Label>Start</Label>
           <input
             type="datetime-local"
-            className={inputCls}
+            className={dateInputCls}
             value={toLocalInput(state.scheduled_at)}
             onChange={(e) => setStartLocal(e.target.value)}
           />
@@ -233,14 +235,14 @@ export function WizardStep1Basics({ state, onChange }: Props) {
           <Label>End</Label>
           <input
             type="datetime-local"
-            className={inputCls}
+            className={dateInputCls}
             value={toLocalInput(state.scheduled_end_at)}
             onChange={(e) => setEndLocal(e.target.value)}
           />
         </div>
 
         <div className="sm:col-span-2">
-          <Label>Food revenue share — owner’s % (default 30)</Label>
+          <Label>Food revenue share — owner's % (default 30)</Label>
           <input
             type="number"
             min={0}
@@ -250,16 +252,16 @@ export function WizardStep1Basics({ state, onChange }: Props) {
             onChange={(e) => setFoodShare(e.target.value)}
             placeholder="e.g. 30"
           />
-          <p className="text-xs text-[#A0AEC0] mt-1">
-            What percent of food-vendor gross revenue Omar keeps. Drives the FoodBarCard’s “Omar’s Cut” tile.
-          </p>
+          <HelperText>
+            What percent of food-vendor gross revenue Omar keeps. Drives the FoodBarCard's "Omar's Cut" tile.
+          </HelperText>
         </div>
       </div>
 
       {errors.length > 0 && (
-        <div className="mt-5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-xs font-semibold text-amber-900 mb-1">Still to fill in:</p>
-          <ul className="text-xs text-amber-900 space-y-0.5">
+        <div className={`mt-5 ${warningBannerCls}`} style={warningBannerStyle}>
+          <p className="text-xs font-semibold mb-1" style={{ color: "var(--v-amber)" }}>Still to fill in:</p>
+          <ul className="text-xs space-y-0.5" style={{ color: "var(--v-text-muted)" }}>
             {errors.map((e, i) => (
               <li key={i}>• {e}</li>
             ))}

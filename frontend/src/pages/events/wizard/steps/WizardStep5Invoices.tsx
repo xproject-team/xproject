@@ -23,6 +23,9 @@ import { useState } from "react"
 
 import { UploadInvoiceModal } from "@/features/warehouse/invoice_upload"
 import type { WizardState } from "../types"
+import { stepCardCls } from "@/design-system/wizardForm"
+import { Button, EmptyState } from "@/design-system/components"
+import "@/design-system/components/components.css"
 
 interface UploadedInvoice {
   id?: string
@@ -61,54 +64,51 @@ export function WizardStep5Invoices({ state }: Props) {
   }
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+    <div className={stepCardCls}>
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <h2 className="text-lg font-bold text-[#1A202C]">Warehouse invoices</h2>
-          <p className="mt-1 text-sm text-[#718096]">
+          <h2 className="text-lg font-medium" style={{ color: "var(--v-text)" }}>Warehouse invoices</h2>
+          <p className="mt-1 text-sm" style={{ color: "var(--v-text-muted)" }}>
             Upload supplier fatture (PDF) to grow the tenant warehouse pool.
             Items added here are available to every event going forward, not
             just this Sundance.
           </p>
-          <p className="mt-1 text-xs text-[#A0AEC0]">
+          <p className="mt-1 text-xs" style={{ color: "var(--v-text-dim)" }}>
             This step is optional. You can also upload invoices from the
             standalone Warehouse page any time.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-[#1ABC9C] hover:bg-[#17a589] px-4 py-2 text-sm font-semibold text-white"
-        >
-          <span className="text-base leading-none">+</span> Upload Invoice
-        </button>
+        <Button variant="primary" onClick={() => setModalOpen(true)}>
+          <span className="flex items-center gap-1.5">
+            <span className="text-base leading-none">+</span> Upload Invoice
+          </span>
+        </Button>
       </div>
 
       {/* Uploaded list — empty state vs filled */}
       {uploaded.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-[#CBD5E0] p-8 text-center">
-          <p className="text-sm text-[#718096]">No invoices uploaded yet.</p>
-          <p className="text-xs text-[#A0AEC0] mt-1">Click “+ Upload Invoice” to drop a PDF.</p>
+        <div className="rounded-[var(--v-radius)] p-8" style={{ border: "1px dashed var(--v-border)" }}>
+          <EmptyState headline="No invoices uploaded yet" body='Click "+ Upload Invoice" to drop a PDF.' />
         </div>
       ) : (
-        <div className="border border-[#E2E8F0] rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-[var(--v-radius)]" style={{ border: "0.5px solid var(--v-border)" }}>
           <table className="w-full text-sm">
-            <thead className="bg-[#F7FAFC] text-[#4A5568] text-xs uppercase">
+            <thead style={{ background: "var(--v-surface-raised)" }}>
               <tr>
-                <th className="px-4 py-2 text-left font-semibold">Invoice</th>
-                <th className="px-4 py-2 text-right font-semibold w-32">Uploaded at</th>
+                <th className="px-4 py-2 text-left text-xs uppercase font-semibold" style={{ color: "var(--v-text-muted)" }}>Invoice</th>
+                <th className="px-4 py-2 text-right text-xs uppercase font-semibold w-32" style={{ color: "var(--v-text-muted)" }}>Uploaded at</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#E2E8F0]">
+            <tbody>
               {uploaded.map((inv, i) => (
-                <tr key={`${inv.id ?? i}`}>
-                  <td className="px-4 py-2 text-[#1A202C]">
+                <tr key={`${inv.id ?? i}`} style={{ borderTop: "0.5px solid var(--v-border)" }}>
+                  <td className="px-4 py-2" style={{ color: "var(--v-text)" }}>
                     {inv.supplier_name}
                     {inv.invoice_number && (
-                      <span className="ml-2 text-xs text-[#718096]">#{inv.invoice_number}</span>
+                      <span className="ml-2 text-xs" style={{ color: "var(--v-text-muted)" }}>#{inv.invoice_number}</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-right text-xs text-[#718096]">{inv.uploaded_at}</td>
+                  <td className="px-4 py-2 text-right text-xs" style={{ color: "var(--v-text-muted)" }}>{inv.uploaded_at}</td>
                 </tr>
               ))}
             </tbody>
