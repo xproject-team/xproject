@@ -104,6 +104,38 @@ function PortfolioStrip({ kpis }: { kpis: PortfolioKpis | undefined }) {
   )
 }
 
+// ─── Latest-version grouping ──────────────────────────────────────────────────
+//
+// The list endpoint (GET /reports) returns every version of every report,
+// each with `version` but no `superseded_by` (that flag only exists on the
+// single-report detail response). So "latest per event+language" has to be
+// derived here: group by (event_id, language), keep the highest version as
+// the visible row, and collapse the rest behind a "superseded" toggle.
+
+interface ReportGroupData {
+  latest: ReportSummary
+  older: ReportSummary[]
+}
+
+function groupReportsByLatest(reports: ReportSummary[]): ReportGroupData[] {
+  const groups = new Map<string, ReportGroupData>()
+  const order: string[] = []
+  for (const r of reports) {
+    const key = `${r.event_id}::${r.language}`
+    const existing = groups.get(key)
+    if (!existing) {
+      groups.set(key, { latest: r, older: [] })
+      order.push(key)
+    } else if (r.version > existing.latest.version) {
+      existing.older.push(existing.latest)
+      existing.latest = r
+    } else {
+      existing.older.push(r)
+    }
+  }
+  return order.map((key) => groups.get(key)!)
+}
+
 // ─── Report Card (one per row in Past Reports list) ──────────────────────────
 
 function StatusBadge({ status }: { status: ReportSummary['status'] }) {
@@ -124,27 +156,42 @@ function StatusBadge({ status }: { status: ReportSummary['status'] }) {
   )
 }
 
-function ReportCard({ report }: { report: ReportSummary }) {
+function ReportCard({ report, superseded = false }: { report: ReportSummary; superseded?: boolean }) {
   return (
     <Link
       to={`/reports/${report.id}`}
-      className="block bg-white border border-[#E2E8F0] rounded-xl p-5 hover:shadow-md hover:border-[#CBD5E0] transition-all"
+      className={`block bg-white border border-[#E2E8F0] rounded-xl p-5 hover:shadow-md hover:border-[#CBD5E0] transition-all ${
+        superseded ? 'opacity-70' : ''
+      }`}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Left: event info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <h3 className="font-semibold text-[#1A202C] truncate">{report.event_name}</h3>
+            <h3
+              className="font-semibold truncate"
+              style={{ color: superseded ? 'var(--v-text-muted)' : '#1A202C' }}
+            >
+              {report.event_name}
+            </h3>
             <span className="text-[11px] text-[#A0AEC0] uppercase tracking-widest">
               {report.language}
             </span>
-            {report.version > 1 && (
+            {(report.version > 1 || superseded) && (
               <span className="text-[11px] px-1.5 rounded bg-[#EDF2F7] text-[#4A5568]">
                 v{report.version}
               </span>
             )}
+            {superseded && (
+              <span
+                className="text-[11px] px-1.5 rounded"
+                style={{ color: 'var(--v-text-muted)', background: 'rgba(155, 163, 180, 0.12)' }}
+              >
+                Superseded
+              </span>
+            )}
           </div>
-          <p className="text-xs text-[#718096]">
+          <p className="text-xs" style={{ color: superseded ? 'var(--v-text-muted)' : '#718096' }}>
             Event: {fmtDate(report.event_started_at)} · Generated: {fmtDate(report.generated_at)}
           </p>
 
@@ -177,6 +224,38 @@ function ReportCard({ report }: { report: ReportSummary }) {
         </div>
       </div>
     </Link>
+  )
+}
+
+// ─── Report Group (latest version + collapsed superseded versions) ───────────
+
+function ReportGroup({ group }: { group: ReportGroupData }) {
+  const [expanded, setExpanded] = useState(false)
+  const olderSorted = [...group.older].sort((a, b) => b.version - a.version)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <ReportCard report={group.latest} />
+      {olderSorted.length > 0 && (
+        <div className="pl-1">
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            className="text-xs hover:underline"
+            style={{ color: 'var(--v-text-muted)' }}
+          >
+            {expanded ? '▾' : '▸'} {olderSorted.length} superseded version
+            {olderSorted.length === 1 ? '' : 's'}
+          </button>
+          {expanded && (
+            <div className="flex flex-col gap-2 mt-2">
+              {olderSorted.map((r) => (
+                <ReportCard key={r.id} report={r} superseded />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -369,8 +448,8 @@ export default function ReportPage() {
 
         {reports && reports.length > 0 && (
           <div className="flex flex-col gap-3">
-            {reports.map((r) => (
-              <ReportCard key={r.id} report={r} />
+            {groupReportsByLatest(reports).map((g) => (
+              <ReportGroup key={`${g.latest.event_id}::${g.latest.language}`} group={g} />
             ))}
           </div>
         )}
