@@ -4,14 +4,17 @@
  * Omar builds a local "pending" list (bottle + qty rows), then clicks
  * "Charge {BAR NAME}" to fire one dispatch POST per row. Rows that
  * succeed disappear; rows that fail stay with a red error so Omar can
- * retry just those. Styling matches the wizard/Catalog card
- * conventions (WizardStep3Bars.tsx, RecipeCard.tsx).
+ * retry just those. Uses the same Card shell, padding and typography as
+ * the dashboard's BarCard so a bar reads identically wherever it appears.
  */
 import { useState } from 'react'
 
 import type { BarRow } from '@/lib/mockData'
 import type { SupplierProduct } from '@/features/event_storage/types'
 import { useChargeBarDispatch } from '@/features/event_storage/useChargeBars'
+import { inputCls, Label } from '@/design-system/wizardForm'
+import { Badge, Button } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 interface PendingCharge {
   client_id: string
@@ -27,9 +30,6 @@ interface Props {
   readOnly: boolean
   onToast: (message: string) => void
 }
-
-const inputCls =
-  'w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]'
 
 function makeClientId(): string {
   try {
@@ -113,24 +113,25 @@ export function ChargeBarCard({ bar, eventId, supplierProducts, readOnly, onToas
   }
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-4">
+    <div
+      className="v-card p-4"
+      style={{ borderLeft: `2px solid ${bar.slesh_negozio_id ? 'var(--v-cyan)' : 'var(--v-amber)'}` }}
+    >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-[#1A202C]">{bar.name}</h3>
+        <h3 className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>{bar.name}</h3>
         {bar.slesh_negozio_id ? (
-          <span className="text-xs text-[#718096]">Slesh shop: {bar.slesh_negozio_id}</span>
+          <span className="text-xs" style={{ color: 'var(--v-text-muted)' }}>Slesh shop: {bar.slesh_negozio_id}</span>
         ) : (
-          <span className="text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded">
-            No Slesh shop linked
-          </span>
+          <Badge variant="warning">No Slesh shop linked</Badge>
         )}
       </div>
 
       {!readOnly && (
         <div className="grid grid-cols-12 gap-2 items-end mb-3">
           <div className="col-span-7">
-            <label className="block text-xs font-semibold text-[#4A5568] mb-1">Bottle</label>
+            <Label>Bottle</Label>
             <select
-              className={`${inputCls} bg-white`}
+              className={inputCls}
               value={selectedBottleId}
               onChange={(e) => setSelectedBottleId(e.target.value)}
             >
@@ -141,7 +142,7 @@ export function ChargeBarCard({ bar, eventId, supplierProducts, readOnly, onToas
             </select>
           </div>
           <div className="col-span-3">
-            <label className="block text-xs font-semibold text-[#4A5568] mb-1">Qty</label>
+            <Label>Qty</Label>
             <input
               type="number"
               min={1}
@@ -155,7 +156,8 @@ export function ChargeBarCard({ bar, eventId, supplierProducts, readOnly, onToas
             <button
               onClick={addRow}
               disabled={!selectedBottleId}
-              className="w-full h-[38px] text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-3 py-2 border border-dashed border-[#CBD5E0] rounded-lg hover:bg-[#F7FAFC] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full h-[38px] text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ color: 'var(--v-cyan)', border: '1px dashed var(--v-border)' }}
             >
               + Add row
             </button>
@@ -164,43 +166,42 @@ export function ChargeBarCard({ bar, eventId, supplierProducts, readOnly, onToas
       )}
 
       {pending.length > 0 && (
-        <div className="mb-3 rounded-lg border border-[#E2E8F0] bg-[#F7FAFC] p-3 space-y-1.5">
-          <p className="text-xs font-semibold text-[#718096]">Pending charges (unsaved)</p>
+        <div className="mb-3 rounded-[var(--v-radius)] p-3 space-y-1.5" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--v-text-muted)' }}>Pending charges (unsaved)</p>
           {pending.map((p) => (
             <div key={p.client_id}>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-[#1A202C]">
+                <span style={{ color: 'var(--v-text)' }}>
                   {bottleName(p.supplier_product_id)} × {p.qty}
                 </span>
                 {!readOnly && (
                   <button
                     onClick={() => removeRow(p.client_id)}
-                    className="text-[#E53E3E] hover:bg-red-50 rounded px-2 py-0.5 text-sm"
+                    className="rounded px-2 py-0.5 text-sm transition-colors"
+                    style={{ color: 'var(--v-pink)' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 61, 113, 0.08)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                     aria-label={`Remove ${bottleName(p.supplier_product_id)}`}
                   >
                     ×
                   </button>
                 )}
               </div>
-              {p.error && <p className="text-xs text-red-700">{p.error}</p>}
+              {p.error && <p className="text-xs" style={{ color: 'var(--v-pink)' }}>{p.error}</p>}
             </div>
           ))}
         </div>
       )}
 
       {!readOnly && (
-        <button
+        <Button
+          variant="primary"
           onClick={handleCharge}
           disabled={pending.length === 0 || isCharging}
-          className={[
-            'w-full px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors',
-            pending.length === 0 || isCharging
-              ? 'bg-[#CBD5E0] cursor-not-allowed'
-              : 'bg-[#1ABC9C] hover:bg-[#17a589]',
-          ].join(' ')}
+          style={{ width: '100%' }}
         >
           {isCharging ? 'Charging…' : `Charge ${bar.name}`}
-        </button>
+        </Button>
       )}
     </div>
   )

@@ -155,6 +155,11 @@
   color: var(--v-text-muted);
 }
 
+.v-badge--violet {
+  background: rgba(177, 75, 255, 0.12);
+  color: var(--v-violet);
+}
+
 /* ── Button ─────────────────────────────────────────────────────────────── */
 
 .v-btn {

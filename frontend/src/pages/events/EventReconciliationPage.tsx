@@ -23,13 +23,18 @@
  *   4. Severity-mapped Badge colors mirror business priority
  *   5. Empty states are discrete render paths, never null-deref
  *   6. Standard semantic table — prints reasonably on A4 paper
+ *
+ * Day 7A restyle: converted from the legacy `@/shared/ui/{Badge,Card,
+ * EmptyState}` trio to the Vera design system. Financial figures follow
+ * the same semantic color rule as the revenue breakdown modal: retained/
+ * matched/positive -> green, discrepancies/missing/negative -> pink,
+ * neutral -> plain text.
  */
 import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { Badge } from '@/shared/ui/Badge'
-import { Card } from '@/shared/ui/Card'
-import { EmptyState } from '@/shared/ui/EmptyState'
+import { Badge, Card, EmptyState, type BadgeVariant } from '@/design-system/components'
+import '@/design-system/components/components.css'
 import {
   useReconciliationReport,
   type DeliveryGapFlag,
@@ -50,28 +55,39 @@ function fmtQty(s: string): string {
   return trimmed ? `${whole}.${trimmed}` : whole
 }
 
+/** Decimal-as-string sign check — pure string inspection, no parseFloat.
+ *  "0", "0.00", "-0.00" all read as zero. */
+function qtySign(s: string): 'negative' | 'zero' | 'positive' {
+  const n = s.trim()
+  if (n.startsWith('-') && /[1-9]/.test(n)) return 'negative'
+  if (/[1-9]/.test(n)) return 'positive'
+  return 'zero'
+}
+
+/** Financial semantic color for a quantity string: matched(0) -> green,
+ *  any discrepancy (nonzero) -> pink, per the revenue-breakdown convention. */
+function qtyDiscrepancyColor(s: string): string {
+  return qtySign(s) === 'zero' ? 'var(--v-green)' : 'var(--v-pink)'
+}
+
 /**
- * PosStatusPill — small colored badge mapping PosVarianceStatus values
- * to Tailwind color classes.  Color choice mirrors business priority:
- * red is "investigate today", green is "all good".
+ * PosStatusPill — maps PosVarianceStatus values to the Badge component.
+ * Color choice mirrors business priority: pink is "investigate today",
+ * green is "all good", amber is "watch it", neutral is "no signal yet".
  */
 function PosStatusPill({ status }: { status: string }) {
-  const cfg: Record<string, { label: string; classes: string }> = {
-    NO_POS_DATA:          { label: 'No POS data',  classes: 'bg-gray-100 text-gray-500' },
-    NEEDS_RECIPE:         { label: 'Needs recipe', classes: 'bg-slate-100 text-slate-600 border border-slate-300' },
-    OK_WITHIN_THRESHOLD:  { label: 'OK',           classes: 'bg-emerald-100 text-emerald-700' },
-    OVER_POUR_MINOR:      { label: 'Over-pour',    classes: 'bg-amber-100 text-amber-700' },
-    OVER_POUR_MODERATE:   { label: 'Over-pour',    classes: 'bg-orange-100 text-orange-800' },
-    OVER_POUR_MAJOR:      { label: 'Over-pour!',   classes: 'bg-red-100 text-red-700 font-semibold' },
-    UNDER_SCAN_MINOR:     { label: 'Under-scan',   classes: 'bg-sky-100 text-sky-700' },
-    UNDER_SCAN_MAJOR:     { label: 'Under-scan!',  classes: 'bg-blue-200 text-blue-800 font-semibold' },
+  const cfg: Record<string, { label: string; variant: BadgeVariant }> = {
+    NO_POS_DATA:          { label: 'No POS data',  variant: 'neutral' },
+    NEEDS_RECIPE:         { label: 'Needs recipe', variant: 'neutral' },
+    OK_WITHIN_THRESHOLD:  { label: 'OK',            variant: 'success' },
+    OVER_POUR_MINOR:      { label: 'Over-pour',     variant: 'warning' },
+    OVER_POUR_MODERATE:   { label: 'Over-pour',     variant: 'danger' },
+    OVER_POUR_MAJOR:      { label: 'Over-pour!',    variant: 'danger' },
+    UNDER_SCAN_MINOR:     { label: 'Under-scan',    variant: 'warning' },
+    UNDER_SCAN_MAJOR:     { label: 'Under-scan!',   variant: 'danger' },
   }
-  const entry = cfg[status] ?? { label: status, classes: 'bg-gray-100 text-gray-500' }
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] ${entry.classes}`}>
-      {entry.label}
-    </span>
-  )
+  const entry = cfg[status] ?? { label: status, variant: 'neutral' as BadgeVariant }
+  return <Badge variant={entry.variant}>{entry.label}</Badge>
 }
 
 /** Format an ISO date for display: "Apr 17, 2026 at 10:29" */
@@ -90,10 +106,8 @@ function fmtDateTime(iso: string | null): string {
   }
 }
 
-/** Map a backend flag to a Badge color. Defensive default for unknown values. */
-function flagColor(
-  flag: DeliveryGapFlag,
-): 'danger' | 'warning' | 'neutral' {
+/** Map a backend flag to a Badge variant. Defensive default for unknown values. */
+function flagColor(flag: DeliveryGapFlag): BadgeVariant {
   switch (flag) {
     case 'DELIVERY_GAP_MAJOR':
       return 'danger'
@@ -128,23 +142,16 @@ function StatCard({
   emphasis?: 'normal' | 'danger' | 'success' | 'warning'
 }) {
   const valueColor =
-    emphasis === 'danger'  ? 'text-[#E53E3E]'
-    : emphasis === 'success' ? 'text-[#047857]'
-    : emphasis === 'warning' ? 'text-[#B45309]'
-    : 'text-[#1A202C]'
-  const borderColor =
-    emphasis === 'danger'  ? 'border-[#FEB2B2]'
-    : emphasis === 'success' ? 'border-[#A7F3D0]'
-    : emphasis === 'warning' ? 'border-[#FCD34D]'
-    : 'border-[#E2E8F0]'
+    emphasis === 'danger'  ? 'var(--v-pink)'
+    : emphasis === 'success' ? 'var(--v-green)'
+    : emphasis === 'warning' ? 'var(--v-amber)'
+    : 'var(--v-text)'
   return (
-    <div
-      className={`bg-white border ${borderColor} rounded-lg p-4 flex-1 min-w-[160px]`}
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-widest text-[#718096] mb-1">
+    <div className="v-card p-4 flex-1 min-w-[160px]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-1" style={{ color: 'var(--v-text-muted)' }}>
         {label}
       </p>
-      <p className={`text-2xl font-bold ${valueColor} tabular-nums`}>{value}</p>
+      <p className="text-2xl font-medium tabular-nums" style={{ color: valueColor }}>{value}</p>
     </div>
   )
 }
@@ -153,7 +160,7 @@ function AtAGlanceSection({ report }: { report: ReconciliationReport }) {
   const { totals } = report.summary
   return (
     <section className="mb-6">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-[#4A5568] mb-3">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: 'var(--v-text-muted)' }}>
         At a glance
       </h2>
       <div className="flex flex-wrap gap-3">
@@ -197,12 +204,12 @@ function AtAGlanceSection({ report }: { report: ReconciliationReport }) {
       )}
       {/* S6: honest contextual messaging about POS state */}
       {totals.missing_pos_data ? (
-        <p className="mt-2 text-[11px] italic text-[#A0AEC0]">
+        <p className="mt-2 text-[11px] italic" style={{ color: 'var(--v-text-dim)' }}>
           POS sales data not yet wired — sold-vs-arrived signal will appear
           when Slesh integration produces data for this event.
         </p>
       ) : totals.pos_pending_recipes_count > 0 && totals.pos_ok_count === 0 ? (
-        <p className="mt-2 text-[11px] italic text-[#A0AEC0]">
+        <p className="mt-2 text-[11px] italic" style={{ color: 'var(--v-text-dim)' }}>
           POS data is being received but {totals.pos_pending_recipes_count}{' '}
           {totals.pos_pending_recipes_count === 1 ? 'row needs' : 'rows need'} a recipe
           to decompose menu sales into bottle-level variance.
@@ -217,18 +224,18 @@ function AtAGlanceSection({ report }: { report: ReconciliationReport }) {
 function GapRow({ gap }: { gap: EventProductGap }) {
   if (!gap.flag) return null
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[#EDF2F7] last:border-b-0">
+    <div className="flex items-center gap-3 py-3" style={{ borderBottom: '0.5px solid var(--v-border)' }}>
       <div className="w-[88px] flex-shrink-0">
-        <Badge label={flagLabel(gap.flag)} color={flagColor(gap.flag)} />
+        <Badge variant={flagColor(gap.flag)}>{flagLabel(gap.flag)}</Badge>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-[#1A202C] truncate">
+        <p className="text-sm font-semibold truncate" style={{ color: 'var(--v-text)' }}>
           {gap.product_name}
         </p>
-        <p className="text-xs text-[#4A5568] tabular-nums">
+        <p className="text-xs tabular-nums" style={{ color: 'var(--v-text-muted)' }}>
           Dispatched: {fmtQty(gap.dispatched_qty)}
           {' · '}Arrived: {fmtQty(gap.total_arrived_at_event)}
-          {' · '}Gap: {fmtQty(gap.delivery_gap)}
+          {' · '}Gap: <span style={{ color: 'var(--v-pink)' }}>{fmtQty(gap.delivery_gap)}</span>
           {gap.gap_pct !== null && ` (${gap.gap_pct.toFixed(1)}%)`}
         </p>
       </div>
@@ -243,13 +250,13 @@ function DeliveryGapsSection({ report }: { report: ReconciliationReport }) {
   if (report.event_started_at === null) {
     return (
       <section className="mb-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-[#4A5568] mb-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: 'var(--v-text-muted)' }}>
           Delivery gaps
         </h2>
-        <Card className="bg-[#F7FAFC]">
+        <Card>
           <div className="flex items-center gap-3">
             <span className="text-2xl" aria-hidden>⏸</span>
-            <p className="text-sm text-[#4A5568]">
+            <p className="text-sm" style={{ color: 'var(--v-text-muted)' }}>
               Reconciliation will populate after this event goes live.
             </p>
           </div>
@@ -262,15 +269,15 @@ function DeliveryGapsSection({ report }: { report: ReconciliationReport }) {
   if (event_level_gaps.length === 0) {
     return (
       <section className="mb-6">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-[#4A5568] mb-3">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: 'var(--v-text-muted)' }}>
           Delivery gaps
         </h2>
-        <div className="bg-[#D1FAE5] border border-[#10B981] rounded-lg p-4">
+        <div className="rounded-[var(--v-radius)] p-4" style={{ background: 'rgba(61, 255, 163, 0.08)', border: '0.5px solid var(--v-green)' }}>
           <div className="flex items-center gap-3">
             <span className="text-2xl" aria-hidden>✅</span>
             <div>
-              <p className="text-sm font-semibold text-[#065F46]">All clear</p>
-              <p className="text-xs text-[#047857]">
+              <p className="text-sm font-semibold" style={{ color: 'var(--v-green)' }}>All clear</p>
+              <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
                 No delivery gaps detected.{' '}
                 {fmtQty(report.summary.totals.total_arrived)} bottles arrived,
                 all accounted for in the warehouse-to-bar transfer.
@@ -286,18 +293,18 @@ function DeliveryGapsSection({ report }: { report: ReconciliationReport }) {
   // server-side; we just render in order)
   return (
     <section className="mb-6">
-      <h2 className="text-xs font-semibold uppercase tracking-widest text-[#4A5568] mb-3">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: 'var(--v-text-muted)' }}>
         Delivery gaps
-        <span className="ml-2 text-[#E53E3E] normal-case font-normal tracking-normal">
+        <span className="ml-2 normal-case font-normal tracking-normal" style={{ color: 'var(--v-pink)' }}>
           ({event_level_gaps.length} found)
         </span>
       </h2>
-      <Card className="!p-0">
-        <div className="px-4 py-3 bg-[#FED7D7] border-b border-[#FEB2B2] rounded-t-lg">
-          <p className="text-sm font-semibold text-[#742A2A]">
+      <Card padded={false}>
+        <div className="px-4 py-3 rounded-t-[var(--v-radius)]" style={{ background: 'rgba(255, 61, 113, 0.08)', borderBottom: '0.5px solid var(--v-pink)' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--v-pink)' }}>
             ⚠ Warehouse dispatched stock that didn&apos;t fully arrive at bars
           </p>
-          <p className="text-xs text-[#742A2A] mt-0.5 opacity-90">
+          <p className="text-xs mt-0.5" style={{ color: 'var(--v-text-muted)' }}>
             Sorted by severity. MAJOR means dispatched but no arrivals
             scanned — review urgent.
           </p>
@@ -384,13 +391,16 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
     <button
       type="button"
       onClick={() => toggleSort(col)}
-      className={`flex items-center gap-1 text-[11px] font-semibold uppercase tracking-widest text-[#4A5568] hover:text-[#1A202C] ${
+      className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.06em] transition-colors ${
         numeric ? 'justify-end' : ''
       }`}
+      style={{ color: 'var(--v-text-muted)' }}
+      onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--v-text)')}
+      onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--v-text-muted)')}
     >
       {label}
       {sortCol === col && (
-        <span aria-hidden>{sortDir === 'asc' ? '↑' : '↓'}</span>
+        <span aria-hidden style={{ color: 'var(--v-cyan)' }}>{sortDir === 'asc' ? '↑' : '↓'}</span>
       )}
     </button>
   )
@@ -398,14 +408,15 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-[#4A5568]">
+        <h2 className="text-xs font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>
           Bar × product activity
         </h2>
         {uniqueBars.length > 1 && (
           <div className="flex items-center gap-2">
             <label
               htmlFor="filter-bar"
-              className="text-xs text-[#718096]"
+              className="text-xs"
+              style={{ color: 'var(--v-text-muted)' }}
             >
               Filter:
             </label>
@@ -413,8 +424,8 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
               id="filter-bar"
               value={filterBarId}
               onChange={(e) => setFilterBarId(e.target.value)}
-              className="text-sm border border-[#E2E8F0] rounded px-2 py-1
-                         focus:outline-none focus:border-[#1E5A8D]"
+              className="text-sm rounded-[var(--v-radius-sm)] px-2 py-1 focus:outline-none transition-colors"
+              style={{ background: 'var(--v-bg-base)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)' }}
             >
               <option value="all">All bars</option>
               {uniqueBars.map((b) => (
@@ -430,7 +441,8 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
       {visibleRows.length === 0 ? (
         <Card>
           <EmptyState
-            message={
+            headline={report.rows.length === 0 ? 'No scanning activity yet' : 'No rows match'}
+            body={
               report.rows.length === 0
                 ? 'No scanning activity yet for this event.'
                 : 'No rows match the current filter.'
@@ -438,9 +450,9 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
           />
         </Card>
       ) : (
-        <div className="bg-white border border-[#E2E8F0] rounded-lg overflow-x-auto">
+        <div className="overflow-x-auto v-card">
           <table className="w-full text-sm">
-            <thead className="bg-[#F7FAFC] border-b border-[#E2E8F0]">
+            <thead style={{ background: 'var(--v-surface-raised)', borderBottom: '0.5px solid var(--v-border)' }}>
               <tr>
                 <th className="text-left px-3 py-2"><SortHeader col="bar" label="Bar" /></th>
                 <th className="text-left px-3 py-2"><SortHeader col="product" label="Product" /></th>
@@ -448,28 +460,49 @@ function BarProductGrid({ report }: { report: ReconciliationReport }) {
                 <th className="text-right px-3 py-2"><SortHeader col="consumed" label="Consumed" numeric /></th>
                 <th className="text-right px-3 py-2"><SortHeader col="net" label="Net" numeric /></th>
                 {/* S6: POS columns.  Always rendered; cells use "—" for no-data. */}
-                <th className="text-right px-3 py-2 text-[#4A5568]">POS sold</th>
-                <th className="text-right px-3 py-2 text-[#4A5568]">Variance</th>
-                <th className="text-left  px-3 py-2 text-[#4A5568]">Status</th>
+                <th className="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>POS sold</th>
+                <th className="text-right px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Variance</th>
+                <th className="text-left  px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((r) => (
                 <tr
                   key={`${r.bar_id}:${r.product_id}`}
-                  className="border-b border-[#EDF2F7] last:border-b-0"
+                  className="transition-colors"
+                  style={{ borderBottom: '0.5px solid var(--v-border)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <td className="px-3 py-2 text-[#1A202C]">{r.bar_name}</td>
-                  <td className="px-3 py-2 text-[#1A202C]">{r.product_name}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">{fmtQty(r.arrived_qty)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">{fmtQty(r.consumed_qty)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold text-[#1A202C]">{fmtQty(r.net_qty)}</td>
-                  {/* S6: POS columns — render "—" when the field is null. */}
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">
-                    {r.consumed_via_pos_qty === null ? <span className="text-[#A0AEC0]">—</span> : fmtQty(r.consumed_via_pos_qty)}
+                  <td className="px-3 py-2" style={{ color: 'var(--v-text)' }}>{r.bar_name}</td>
+                  <td className="px-3 py-2" style={{ color: 'var(--v-text)' }}>{r.product_name}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--v-text)' }}>{fmtQty(r.arrived_qty)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--v-text)' }}>{fmtQty(r.consumed_qty)}</td>
+                  {/* Net going negative means more was consumed than arrived —
+                      a genuine discrepancy, made unmistakable in pink. Zero/
+                      positive is just remaining stock, plain text. */}
+                  <td
+                    className="px-3 py-2 text-right tabular-nums font-semibold"
+                    style={{ color: qtySign(r.net_qty) === 'negative' ? 'var(--v-pink)' : 'var(--v-text)' }}
+                  >
+                    {fmtQty(r.net_qty)}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-[#1A202C]">
-                    {r.pos_variance_qty === null ? <span className="text-[#A0AEC0]">—</span> : fmtQty(r.pos_variance_qty)}
+                  {/* S6: POS columns — render "—" when the field is null. */}
+                  <td className="px-3 py-2 text-right tabular-nums" style={{ color: 'var(--v-text)' }}>
+                    {r.consumed_via_pos_qty === null ? <span style={{ color: 'var(--v-text-dim)' }}>—</span> : fmtQty(r.consumed_via_pos_qty)}
+                  </td>
+                  {/* Variance sign made unmistakable: 0 = matched (green),
+                      nonzero = discrepancy (pink), with an explicit +/- sign
+                      so the direction is legible at a glance. */}
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                    {r.pos_variance_qty === null ? (
+                      <span style={{ color: 'var(--v-text-dim)' }}>—</span>
+                    ) : (
+                      <span style={{ color: qtyDiscrepancyColor(r.pos_variance_qty) }}>
+                        {qtySign(r.pos_variance_qty) === 'positive' ? '+' : ''}
+                        {fmtQty(r.pos_variance_qty)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-left">
                     <PosStatusPill status={r.pos_variance_status} />
@@ -499,19 +532,20 @@ function ReconciliationContent({ report }: { report: ReconciliationReport }) {
       <header className="mb-6">
         <Link
           to={`/events/${report.event_id}`}
-          className="text-sm text-[#1E5A8D] hover:underline mb-2 inline-block"
+          className="text-sm hover:underline mb-2 inline-block"
+          style={{ color: 'var(--v-cyan)' }}
         >
           ← Back to event
         </Link>
-        <h1 className="text-2xl font-bold text-[#1A202C] leading-tight">
+        <h1 className="text-2xl font-medium leading-tight" style={{ color: 'var(--v-text)' }}>
           Reconciliation report
         </h1>
-        <p className="text-sm text-[#718096] mt-0.5">
+        <p className="text-sm mt-0.5" style={{ color: 'var(--v-text-muted)' }}>
           {report.event_name}
-          <span className="mx-1 text-[#CBD5E0]">·</span>
+          <span className="mx-1" style={{ color: 'var(--v-text-dim)' }}>·</span>
           {eventWindow}
         </p>
-        <p className="text-[11px] text-[#A0AEC0] mt-0.5">
+        <p className="text-[11px] mt-0.5" style={{ color: 'var(--v-text-dim)' }}>
           Generated {fmtDateTime(report.generated_at)}
         </p>
       </header>
@@ -532,7 +566,7 @@ export function EventReconciliationPage() {
   if (!event_id) {
     return (
       <div className="max-w-2xl mx-auto p-6">
-        <p className="text-sm text-[#E53E3E]">Event ID missing from URL.</p>
+        <p className="text-sm" style={{ color: 'var(--v-pink)' }}>Event ID missing from URL.</p>
       </div>
     )
   }
@@ -540,7 +574,7 @@ export function EventReconciliationPage() {
   if (query.isLoading) {
     return (
       <div className="max-w-5xl mx-auto p-6">
-        <p className="text-sm text-[#718096]">Loading reconciliation report…</p>
+        <p className="text-sm" style={{ color: 'var(--v-text-muted)' }}>Loading reconciliation report…</p>
       </div>
     )
   }
@@ -552,15 +586,16 @@ export function EventReconciliationPage() {
       <div className="max-w-2xl mx-auto p-6">
         <Link
           to="/events"
-          className="text-sm text-[#1E5A8D] hover:underline mb-4 inline-block"
+          className="text-sm hover:underline mb-4 inline-block"
+          style={{ color: 'var(--v-cyan)' }}
         >
           ← Back to events
         </Link>
-        <div className="bg-[#FEE2E2] border border-[#EF4444] rounded-lg p-4">
-          <p className="text-sm font-semibold text-[#991B1B] mb-1">
+        <div className="rounded-[var(--v-radius)] p-4" style={{ background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)' }}>
+          <p className="text-sm font-semibold mb-1" style={{ color: 'var(--v-pink)' }}>
             Couldn&apos;t load the report
           </p>
-          <p className="text-xs text-[#991B1B] opacity-90">
+          <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
             {isForbidden
               ? 'You don\'t have permission to view this report.'
               : isNotFound

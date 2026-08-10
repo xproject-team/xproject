@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import './components.css'
 
-export type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
+export type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'violet'
 
 interface BadgeProps {
   children: ReactNode
