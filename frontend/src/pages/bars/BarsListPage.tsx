@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { useBars } from '@/features/bars/hooks'
-import { useEvents } from '@/features/events/hooks'
+import { useBars, useUpdateBar } from '@/features/bars/hooks'
+import { useEvents, useSleshShops } from '@/features/events/hooks'
 import type { BarRow, BarType, Event } from '@/lib/mockData'
+import type { SleshShop } from '@/lib/eventPlan'
 import { Badge, Button, EmptyState, PageHeader } from '@/design-system/components'
 import '@/design-system/components/components.css'
+import { rowCardCls } from '@/design-system/wizardForm'
 
 // ─── DATA SOURCE ──────────────────────────────────────────────────────────────
 // Bars are fetched via useBars(eventId) — TanStack Query → /api/v1/bars.
@@ -97,13 +99,9 @@ function CheckIcon() {
   )
 }
 
-function SleshIdCell({ value }: { value: string | null }) {
+/** Truncated monospace id + copy-to-clipboard, full value on hover via title. */
+function CopyableId({ value, className = '' }: { value: string; className?: string }) {
   const [copied, setCopied] = useState(false)
-
-  if (!value) {
-    return <Badge variant="warning">Not linked</Badge>
-  }
-
   const truncated = value.length > 14 ? `${value.slice(0, 14)}…` : value
 
   const handleCopy = async () => {
@@ -118,14 +116,14 @@ function SleshIdCell({ value }: { value: string | null }) {
 
   return (
     <span
-      className="inline-flex items-center gap-1.5 font-mono text-xs"
+      className={`inline-flex items-center gap-1.5 font-mono text-xs shrink-0 ${className}`}
       style={{ color: 'var(--v-text-muted)' }}
       title={value}
     >
       {truncated}
       <button
         onClick={handleCopy}
-        aria-label="Copy Slesh ID"
+        aria-label="Copy id"
         title={copied ? 'Copied' : 'Copy'}
         className="transition-opacity opacity-60 hover:opacity-100"
         style={{ color: copied ? 'var(--v-green)' : 'var(--v-text-dim)' }}
@@ -133,6 +131,283 @@ function SleshIdCell({ value }: { value: string | null }) {
         {copied ? <CheckIcon /> : <ClipboardIcon />}
       </button>
     </span>
+  )
+}
+
+function SleshIdCell({ value }: { value: string | null }) {
+  if (!value) {
+    return <Badge variant="warning">Not linked</Badge>
+  }
+  return <CopyableId value={value} />
+}
+
+// ─── POS connection panel ───────────────────────────────────────────────────
+// Compares this event's bars against the live Slesh shop list. The shop list
+// is BRAND-WIDE (see useSleshShops), so an unclaimed shop is framed as a
+// neutral fact, not an error — most belong to other events. The panel shows
+// PROBLEMS (unlinked bars), not inventory (all shops) — one entry per bar
+// that needs attention, never one per shop. Matching for the "is this bar
+// linked" check is exact id equality only. Matching for a *suggestion* is a
+// client-side name comparison (normalised + edit distance <= 2) — informational
+// only, never sent anywhere; only an explicit "Link" click writes anything,
+// via the existing PATCH /bars/{id} (useUpdateBar), which already accepts
+// slesh_negozio_id (BarDetailPage.tsx uses it the same way today).
+
+function normalizeShopName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** Plain Levenshtein edit distance — small inputs (shop/bar names), no need for a library. */
+function editDistance(a: string, b: string): number {
+  if (a === b) return 0
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const curr = [i]
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+    }
+    prev = curr
+  }
+  return prev[n]
+}
+
+interface BarSuggestion {
+  shop: SleshShop
+  kind: 'exact' | 'near'
+}
+
+/** Only ever searches shops with no bar pointing at them — never suggests an already-claimed shop. */
+function findSuggestion(barName: string, unclaimedShops: SleshShop[]): BarSuggestion | null {
+  const normBar = normalizeShopName(barName)
+  let best: BarSuggestion | null = null
+  let bestDist = Infinity
+  for (const shop of unclaimedShops) {
+    const dist = editDistance(normBar, normalizeShopName(shop.name))
+    if (dist <= 2 && dist < bestDist) {
+      bestDist = dist
+      best = { shop, kind: dist === 0 ? 'exact' : 'near' }
+    }
+  }
+  return best
+}
+
+interface BarProblem {
+  bar: BarRow
+  reason: 'never_linked' | 'shop_missing'
+  suggestion: BarSuggestion | null
+}
+
+interface PosComparison {
+  linkedCount: number
+  problems: BarProblem[]
+  unclaimedShops: SleshShop[]
+}
+
+function comparePosState(bars: BarRow[], shops: SleshShop[]): PosComparison {
+  const shopIds = new Set(shops.map((s) => s.id))
+  const barShopIds = new Set(
+    bars.filter((b): b is BarRow & { slesh_negozio_id: string } => Boolean(b.slesh_negozio_id))
+      .map((b) => b.slesh_negozio_id),
+  )
+
+  let linkedCount = 0
+  const rawProblems: { bar: BarRow; reason: BarProblem['reason'] }[] = []
+  for (const bar of bars) {
+    if (!bar.slesh_negozio_id) {
+      rawProblems.push({ bar, reason: 'never_linked' })
+    } else if (shopIds.has(bar.slesh_negozio_id)) {
+      linkedCount += 1
+    } else {
+      rawProblems.push({ bar, reason: 'shop_missing' })
+    }
+  }
+
+  const unclaimedShops = shops.filter((s) => !barShopIds.has(s.id))
+  const problems: BarProblem[] = rawProblems.map(({ bar, reason }) => ({
+    bar,
+    reason,
+    suggestion: findSuggestion(bar.name, unclaimedShops),
+  }))
+
+  return { linkedCount, problems, unclaimedShops }
+}
+
+const posPanelCardStyle = {
+  background: 'var(--v-surface)',
+  border: '0.5px solid var(--v-border)',
+  borderRadius: 'var(--v-radius-lg)',
+} as const
+
+function ProblemRow({
+  problem,
+  linkingShopIds,
+  onLink,
+}: {
+  problem: BarProblem
+  linkingShopIds: Set<string>
+  onLink: (barId: string, shopId: string) => void
+}) {
+  const { bar, reason, suggestion } = problem
+  const reasonText = reason === 'shop_missing' ? 'its POS shop no longer exists' : 'no POS shop set'
+  const isLinking = suggestion !== null && linkingShopIds.has(suggestion.shop.id)
+
+  return (
+    <div className={rowCardCls}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>{bar.name}</span>
+        <span className="text-xs shrink-0" style={{ color: 'var(--v-amber)' }}>{reasonText}</span>
+      </div>
+      {suggestion && (
+        <div
+          className="mt-2.5 pt-2.5 flex items-center justify-between gap-3 flex-wrap"
+          style={{ borderTop: '0.5px solid var(--v-border)' }}
+        >
+          <span className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
+            A shop named "{suggestion.shop.name}" is unclaimed
+            {suggestion.kind === 'near' ? ' — likely the same' : ''}
+          </span>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <CopyableId value={suggestion.shop.id} />
+            <Button
+              variant="secondary"
+              onClick={() => onLink(bar.id, suggestion.shop.id)}
+              disabled={isLinking}
+            >
+              {isLinking ? 'Linking…' : 'Link'}
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UnclaimedShopsFootnote({ shops }: { shops: SleshShop[] }) {
+  const [expanded, setExpanded] = useState(false)
+  if (shops.length === 0) return null
+
+  return (
+    <div className="pt-3" style={{ borderTop: '0.5px solid var(--v-border)' }}>
+      <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
+        {shops.length} shop{shops.length === 1 ? '' : 's'} in your POS {shops.length === 1 ? 'is' : 'are'} not
+        linked to a bar in this event. Most belong to other events.{' '}
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="hover:opacity-80"
+          style={{ color: 'var(--v-text-muted)', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+        >
+          {expanded ? 'Hide' : 'View all'}
+        </button>
+      </p>
+      {expanded && (
+        <ul className="mt-2.5 space-y-1.5">
+          {shops.map((shop) => (
+            <li key={shop.id} className="flex items-center justify-between gap-3 text-xs">
+              <span style={{ color: 'var(--v-text-muted)' }}>{shop.name}</span>
+              <CopyableId value={shop.id} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function PosConnectionPanel({ bars }: { bars: BarRow[] }) {
+  const { data: shopsResp, isLoading, isError } = useSleshShops()
+  const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null)
+  const updateBar = useUpdateBar()
+  const [linkingShopIds, setLinkingShopIds] = useState<Set<string>>(new Set())
+  const [linkError, setLinkError] = useState<string | null>(null)
+
+  if (isLoading) {
+    return (
+      <div className="mb-4 px-5 py-3 text-xs" style={{ ...posPanelCardStyle, color: 'var(--v-text-muted)' }}>
+        Checking POS connection…
+      </div>
+    )
+  }
+
+  const isOffline = isError || shopsResp?.source === 'offline'
+  if (isOffline || !shopsResp) {
+    return (
+      <div className="mb-4 px-5 py-3 text-xs" style={{ ...posPanelCardStyle, color: 'var(--v-text-dim)' }}>
+        POS shop list unavailable right now — bar/shop comparison can't be shown.
+      </div>
+    )
+  }
+
+  const comparison = comparePosState(bars, shopsResp.shops)
+  const isAllLinked = comparison.problems.length === 0
+  const isExpanded = expandedOverride ?? !isAllLinked
+
+  const handleLink = async (barId: string, shopId: string) => {
+    setLinkingShopIds((prev) => new Set(prev).add(shopId))
+    setLinkError(null)
+    try {
+      await updateBar.mutateAsync({ id: barId, payload: { slesh_negozio_id: shopId } })
+    } catch (err) {
+      setLinkError((err as Error)?.message ?? 'Failed to link — try again.')
+    } finally {
+      setLinkingShopIds((prev) => {
+        const next = new Set(prev)
+        next.delete(shopId)
+        return next
+      })
+    }
+  }
+
+  return (
+    <div className="mb-4" style={posPanelCardStyle}>
+      <button
+        onClick={() => setExpandedOverride(!isExpanded)}
+        className="w-full flex items-center justify-between px-5 py-3 text-left"
+      >
+        <span className="text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>
+          POS Connection
+        </span>
+        <span className="flex items-center gap-2 text-xs">
+          <span style={{ color: isAllLinked ? 'var(--v-text-muted)' : 'var(--v-amber)' }}>
+            {isAllLinked
+              ? `✓ ${comparison.linkedCount} of ${bars.length} bars linked`
+              : `${comparison.problems.length} bar${comparison.problems.length === 1 ? '' : 's'} need${
+                  comparison.problems.length === 1 ? 's' : ''
+                } attention`}
+          </span>
+          <span style={{ color: 'var(--v-text-dim)' }}>{isExpanded ? '▾' : '▸'}</span>
+        </span>
+      </button>
+
+      {isExpanded && (
+        <div className="px-5 pb-5 pt-3 space-y-3" style={{ borderTop: '0.5px solid var(--v-border)' }}>
+          {isAllLinked ? (
+            <p className="text-xs" style={{ color: 'var(--v-text-dim)' }}>All bars in this event are linked.</p>
+          ) : (
+            <div className="space-y-2">
+              {comparison.problems.map((problem) => (
+                <ProblemRow
+                  key={problem.bar.id}
+                  problem={problem}
+                  linkingShopIds={linkingShopIds}
+                  onLink={handleLink}
+                />
+              ))}
+            </div>
+          )}
+
+          {linkError && (
+            <p className="text-xs" style={{ color: 'var(--v-pink)' }}>{linkError}</p>
+          )}
+
+          <UnclaimedShopsFootnote shops={comparison.unclaimedShops} />
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -248,6 +523,11 @@ export default function BarsListPage() {
           ))}
         </div>
       </div>
+
+      {/* POS connection panel — only meaningful when scoped to one event, and
+          only once that event's bars have actually loaded (avoids a flash of
+          "all shops unclaimed" against an empty bars array). */}
+      {eventId && !isLoading && !isError && <PosConnectionPanel bars={bars} />}
 
       {/* Table */}
       <div
