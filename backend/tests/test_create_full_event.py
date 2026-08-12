@@ -13,13 +13,20 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
 
 from app.modules.bar_stock.models import BarStock
 from app.modules.bars.models import Bar
+from app.modules.chat.models import Channel, ChatMessage
 from app.modules.event_products.models import EventProduct
+from app.modules.event_storage.models import (
+    EventCategoryIngredient,
+    EventStockBarAllocation,
+    SupplierProduct,
+)
 from app.modules.events.schemas import (
     EventCreate,
     FullEventAllocation,
@@ -84,6 +91,21 @@ async def _count(session, model, tenant_id) -> int:
             )
         )
     ).scalar_one()
+
+
+async def _make_supplier_product(session, tenant_id) -> SupplierProduct:
+    sp = SupplierProduct(
+        tenant_id=tenant_id,
+        supplier_name="Partesa",
+        supplier_sku=f"SKU-{uuid.uuid4().hex[:8]}",
+        item_name=f"Test Item {uuid.uuid4().hex[:6]}",
+        category="gin",
+        default_unit="BO",
+        units_per_pack=1,
+    )
+    session.add(sp)
+    await session.flush()
+    return sp
 
 
 @pytest.mark.asyncio
@@ -292,6 +314,288 @@ async def test_update_full_rejects_non_draft():
                     bars=[FullEventBar(name="Bar B")],
                     products=[_drink("Vodka 1L")],
                 ))
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+# ─── Day 9B: update-in-place (bug fix for silent recipe/dispatch/chat loss) ──
+
+@pytest.mark.asyncio
+async def test_update_full_preserves_recipes_for_matched_bar():
+    """A bar with the same (normalised) name across an edit keeps its id,
+    so its event_category_ingredients rows are never touched — this is
+    the Day 9B fix: editing bars used to CASCADE-delete these silently."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+            event_id = created["event"].id
+            bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            original_bar_id = bar.id
+
+            sp = await _make_supplier_product(session, tenant.id)
+            eci = EventCategoryIngredient(
+                tenant_id=tenant.id, event_id=event_id, slesh_category="SPRITZ",
+                supplier_product_id=sp.id, bar_id=original_bar_id,
+                ml_per_sale=Decimal("40.00"),
+            )
+            session.add(eci)
+            await session.flush()
+            eci_id = eci.id
+
+            # Edit-mode save changing an unrelated field, same bar name.
+            ev = _event_create(venue.id)
+            ev.expected_guest_count = 2000
+            await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=ev,
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+
+            surviving_bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            assert surviving_bar.id == original_bar_id  # updated in place, not recreated
+
+            surviving_eci = (
+                await session.execute(
+                    select(EventCategoryIngredient).where(EventCategoryIngredient.id == eci_id)
+                )
+            ).scalar_one_or_none()
+            assert surviving_eci is not None
+            assert surviving_eci.bar_id == original_bar_id
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_preserves_dispatch_for_matched_bar():
+    """Same shape as the recipes test, for event_stock_bar_allocations
+    (warehouse dispatch) — the second table this bug was silently destroying."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+            event_id = created["event"].id
+            bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            original_bar_id = bar.id
+
+            sp = await _make_supplier_product(session, tenant.id)
+            dispatch = EventStockBarAllocation(
+                tenant_id=tenant.id, event_id=event_id,
+                supplier_product_id=sp.id, bar_id=original_bar_id,
+                qty_allocated=Decimal("24.00"),
+            )
+            session.add(dispatch)
+            await session.flush()
+            dispatch_id = dispatch.id
+
+            ev = _event_create(venue.id)
+            ev.expected_guest_count = 2000
+            await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=ev,
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+
+            surviving = (
+                await session.execute(
+                    select(EventStockBarAllocation).where(
+                        EventStockBarAllocation.id == dispatch_id
+                    )
+                )
+            ).scalar_one_or_none()
+            assert surviving is not None
+            assert surviving.bar_id == original_bar_id
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_preserves_chat_and_does_not_duplicate_channel():
+    """A matched bar's chat channel (auto-created by create_full) and its
+    messages survive an edit; the edit must not create a second channel
+    for the same bar."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+            event_id = created["event"].id
+            bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            original_bar_id = bar.id
+
+            channel = (
+                await session.execute(
+                    select(Channel).where(Channel.bar_id == original_bar_id)
+                )
+            ).scalar_one()
+            message = ChatMessage(
+                tenant_id=tenant.id, channel_id=channel.id, body="hello team",
+            )
+            session.add(message)
+            await session.flush()
+            message_id = message.id
+
+            ev = _event_create(venue.id)
+            ev.expected_guest_count = 2000
+            await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=ev,
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+
+            channels = (
+                await session.execute(
+                    select(Channel).where(Channel.bar_id == original_bar_id)
+                )
+            ).scalars().all()
+            assert len(channels) == 1  # no duplicate
+
+            surviving_message = (
+                await session.execute(
+                    select(ChatMessage).where(ChatMessage.id == message_id)
+                )
+            ).scalar_one_or_none()
+            assert surviving_message is not None
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_removed_bar_deletes_its_recipes():
+    """A bar genuinely absent from the new payload is deleted, and its
+    event_category_ingredients rows correctly cascade away with it — that
+    data belongs to a bar that no longer exists."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar"), FullEventBar(name="Beer Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+            event_id = created["event"].id
+            bars = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().all()
+            beer_bar = next(b for b in bars if b.name == "Beer Bar")
+
+            sp = await _make_supplier_product(session, tenant.id)
+            eci = EventCategoryIngredient(
+                tenant_id=tenant.id, event_id=event_id, slesh_category="BEER",
+                supplier_product_id=sp.id, bar_id=beer_bar.id,
+                ml_per_sale=Decimal("330.00"),
+            )
+            session.add(eci)
+            await session.flush()
+            eci_id = eci.id
+
+            # Beer Bar is genuinely removed from the new payload.
+            await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L")],
+            ))
+
+            assert await _count(session, Bar, tenant.id) == 1
+            surviving = (
+                await session.execute(
+                    select(EventCategoryIngredient).where(EventCategoryIngredient.id == eci_id)
+                )
+            ).scalar_one_or_none()
+            assert surviving is None  # correctly cascaded away with its bar
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@pytest.mark.asyncio
+async def test_update_full_rebuilds_menu_and_allocations_for_matched_bar():
+    """event_products/bar_stock are still fully replaced on every save for a
+    matched (kept) bar — only the unintended cascades were prevented."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            venue = await _make_venue(session, tenant.id)
+            svc = EventService(session)
+            created = await svc.create_full(tenant.id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L"), _drink("Vodka 1L")],
+                menu=[FullEventMenuItem(bar_index=0, product_index=0, price_cents=1200)],
+                allocations=[FullEventAllocation(bar_index=0, product_index=0, qty=10)],
+            ))
+            event_id = created["event"].id
+            bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            original_bar_id = bar.id
+
+            old_menu = (
+                await session.execute(
+                    select(EventProduct).where(EventProduct.bar_id == original_bar_id)
+                )
+            ).scalars().all()
+            assert len(old_menu) == 1
+            old_menu_id = old_menu[0].id
+
+            # Same bar, different menu/allocation content.
+            res = await svc.update_full(tenant.id, event_id, FullEventCreate(
+                event=_event_create(venue.id),
+                bars=[FullEventBar(name="Main Bar")],
+                products=[_drink("Gin 1L"), _drink("Vodka 1L")],
+                menu=[FullEventMenuItem(bar_index=0, product_index=1, price_cents=1500)],
+                allocations=[FullEventAllocation(bar_index=0, product_index=1, qty=6)],
+            ))
+
+            surviving_bar = (
+                await session.execute(select(Bar).where(Bar.event_id == event_id))
+            ).scalars().one()
+            assert surviving_bar.id == original_bar_id  # still matched, not recreated
+
+            new_menu = (
+                await session.execute(
+                    select(EventProduct).where(EventProduct.bar_id == original_bar_id)
+                )
+            ).scalars().all()
+            assert len(new_menu) == 1
+            assert new_menu[0].id != old_menu_id  # rebuilt, not the same row
+            assert new_menu[0].price_cents == 1500
+
+            new_stock = (
+                await session.execute(
+                    select(BarStock).where(BarStock.bar_id == original_bar_id)
+                )
+            ).scalars().all()
+            assert len(new_stock) == 1
+            assert new_stock[0].allocated_qty == 6
+            assert res["bars_updated"] == 1
+            assert res["bars_created"] == 0
         finally:
             await delete_tenant_cascade(session, tenant.id)
 
