@@ -12,6 +12,7 @@ The service layer:
      those into HTTP status codes.
 """
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Sequence
 from uuid import UUID
@@ -196,6 +197,17 @@ async def _enqueue_customer_features_population(tenant_id: UUID, event_id: UUID)
         )
 
 
+def _normalize_bar_name(name: str) -> str:
+    """Trim, collapse internal whitespace runs, lowercase.
+
+    Used by update_full to match a payload bar against an existing bar
+    (see EventService.update_full / EventService._create_children) so an
+    unrelated edit doesn't get treated as "delete this bar, create a new
+    one" just because of a stray double space or a casing difference.
+    """
+    return re.sub(r"\s+", " ", name.strip()).lower()
+
+
 # ─── Service ──────────────────────────────────────────────────────────────────
 
 class EventService:
@@ -290,8 +302,18 @@ class EventService:
         _check("allocations", data.allocations)
         return errors
 
-    async def _create_children(self, tenant_id, event, data) -> dict:
-        """Create bars + products + menu + allocations for an event. No commit."""
+    async def _create_children(self, tenant_id, event, data, existing_bars_by_name=None) -> dict:
+        """Create/update bars, then create products + menu + allocations. No commit.
+
+        `existing_bars_by_name`: optional dict of normalised bar name ->
+        existing Bar ORM object (see `_normalize_bar_name`), passed by
+        `update_full` for its match-in-place path (see that method's
+        docstring for why: matching keeps the bar's id stable, so nothing
+        that CASCADEs on bars.id — recipes, warehouse dispatch, chat, etc —
+        is destroyed for a bar that's still in the payload). `create_full`
+        never passes this, so every bar there is always newly inserted,
+        identical to this method's behaviour before update-in-place existed.
+        """
         from sqlalchemy import func, select
 
         from app.modules.bar_stock.models import BarStock
@@ -301,19 +323,38 @@ class EventService:
         from app.modules.products.models import Product
         from app.modules.products.service import derive_tier_rank
 
+        existing_bars_by_name = existing_bars_by_name or {}
+
         bar_rows = []
+        bars_created = 0
+        bars_updated = 0
         chat = ChatService(self.db)
         for b in data.bars:
-            bar = Bar(
-                tenant_id=tenant_id, event_id=event.id, name=b.name,
-                slesh_negozio_id=b.slesh_negozio_id, bar_type=b.bar_type,
-                device_count=b.device_count, slesh_category=b.slesh_category,
-                is_active=b.is_active,
-            )
-            self.db.add(bar)
-            await self.db.flush()
+            matched = existing_bars_by_name.get(_normalize_bar_name(b.name))
+            if matched is not None:
+                matched.name = b.name
+                matched.slesh_negozio_id = b.slesh_negozio_id
+                matched.bar_type = b.bar_type
+                matched.device_count = b.device_count
+                matched.slesh_category = b.slesh_category
+                matched.is_active = b.is_active
+                bar = matched
+                bars_updated += 1
+            else:
+                bar = Bar(
+                    tenant_id=tenant_id, event_id=event.id, name=b.name,
+                    slesh_negozio_id=b.slesh_negozio_id, bar_type=b.bar_type,
+                    device_count=b.device_count, slesh_category=b.slesh_category,
+                    is_active=b.is_active,
+                )
+                self.db.add(bar)
+                await self.db.flush()
+                bars_created += 1
             bar_rows.append(bar)
             try:
+                # create_bar_channel already returns the existing channel for
+                # this bar_id instead of duplicating it (see chat/service.py)
+                # — safe to call unconditionally for both matched and new bars.
                 await chat.create_bar_channel(
                     bar_id=bar.id, bar_name=bar.name, tenant_id=tenant_id,
                 )
@@ -378,7 +419,8 @@ class EventService:
         await self.db.flush()
 
         return {
-            "bars_created": len(bar_rows),
+            "bars_created": bars_created,
+            "bars_updated": bars_updated,
             "products_created": products_created,
             "products_reused": products_reused,
             "menu_items_created": len(data.menu),
@@ -399,14 +441,38 @@ class EventService:
         return {"event": event, **counts}
 
     async def update_full(self, tenant_id: UUID, event_id: UUID, data) -> dict:
-        """Restructure a DRAFT event from the wizard. Replace semantics:
-        update scalar fields, delete bars (cascades event_products +
-        bar_stock), recreate from payload. DRAFT-only — restructuring a
-        LIVE event would orphan transactions.
-        """
-        from sqlalchemy import delete as sa_delete
+        """Restructure a DRAFT event from the wizard. Update-in-place
+        semantics for bars: update scalar fields, then match each payload
+        bar against the event's existing bars by normalised name.
 
+        A matched bar is updated in place — same id, so nothing that
+        CASCADEs on bars.id survives untouched: recipes
+        (event_category_ingredients), warehouse dispatch
+        (event_stock_bar_allocations), the bar's chat channel + messages,
+        POS devices, and alerts all stay exactly as they were. Only its
+        event_products (menu) and bar_stock (allocations) rows are
+        explicitly deleted and rebuilt here, because those two are meant to
+        be replaced from the payload on every save, same as before.
+
+        A bar present in the existing event but absent from the payload is
+        deleted — its cascades are correct in that case, since that data
+        belongs to a bar the user removed. A bar in the payload matching no
+        existing bar is inserted fresh, as before.
+
+        Before 2026-08-12, this method unconditionally deleted every bar and
+        recreated them with new ids on every save — which silently destroyed
+        all eight of the above CASCADE-linked tables' rows for a bar that
+        was, from the user's perspective, unchanged. That is the bug this
+        method now fixes; see the Day 9B investigation for the full list of
+        affected tables and the incident it caused.
+
+        DRAFT-only — restructuring a LIVE event would orphan transactions.
+        """
+        from sqlalchemy import delete as sa_delete, select
+
+        from app.modules.bar_stock.models import BarStock
         from app.modules.bars.models import Bar
+        from app.modules.event_products.models import EventProduct
         from app.modules.events.models import EventStatus
 
         event = await self.get_event(tenant_id, event_id)
@@ -442,10 +508,60 @@ class EventService:
         event.food_revenue_share_pct = e.food_revenue_share_pct
         event.version = event.version + 1
 
-        # Replace children: delete bars cascades event_products + bar_stock
-        await self.db.execute(sa_delete(Bar).where(Bar.event_id == event.id))
+        # Match existing bars against the payload by normalised name, so a
+        # bar that's still in the payload keeps its id (see docstring for
+        # why that matters — it's what stops recipes/dispatch/chat/etc from
+        # cascading away on an unrelated edit).
+        existing_bars = (
+            await self.db.execute(
+                select(Bar)
+                .where(Bar.event_id == event.id)
+                .order_by(Bar.created_at.asc())
+            )
+        ).scalars().all()
+
+        existing_by_norm_name: dict[str, Bar] = {}
+        for bar in existing_bars:
+            norm = _normalize_bar_name(bar.name)
+            if norm in existing_by_norm_name:
+                logger.warning(
+                    "update_full: event %s has multiple bars named %r "
+                    "(normalised); matching against the oldest (id=%s), "
+                    "bar id=%s is treated as unmatched and will be deleted "
+                    "if no other payload row claims it",
+                    event.id, bar.name, existing_by_norm_name[norm].id, bar.id,
+                )
+                continue
+            existing_by_norm_name[norm] = bar
+
+        matched_ids = {
+            existing_by_norm_name[norm].id
+            for b in data.bars
+            if (norm := _normalize_bar_name(b.name)) in existing_by_norm_name
+        }
+
+        bars_to_delete = [bar for bar in existing_bars if bar.id not in matched_ids]
+        if bars_to_delete:
+            await self.db.execute(
+                sa_delete(Bar).where(Bar.id.in_([b.id for b in bars_to_delete]))
+            )
+
+        # event_products/bar_stock on bars we're KEEPING are legitimately
+        # rebuilt from the payload on every save (menu/allocations are meant
+        # to fully replace, unlike everything else CASCADE-tied to a bar).
+        # Bars we're deleting above already cascade these away for free.
+        if matched_ids:
+            await self.db.execute(
+                sa_delete(EventProduct).where(EventProduct.bar_id.in_(matched_ids))
+            )
+            await self.db.execute(
+                sa_delete(BarStock).where(BarStock.bar_id.in_(matched_ids))
+            )
+
         await self.db.flush()
-        counts = await self._create_children(tenant_id, event, data)
+        counts = await self._create_children(
+            tenant_id, event, data, existing_bars_by_name=existing_by_norm_name,
+        )
         await self.db.commit()
         return {"event": event, **counts}
 
