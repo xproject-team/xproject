@@ -338,7 +338,7 @@ export function EventRecipesTab() {
               />
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
             {drinkProducts.map((product) => {
               const savedRows = (recipesQuery.data?.rows ?? []).filter(
                 (r) => r.drink_name.trim().toLowerCase() === product.name.trim().toLowerCase(),
@@ -351,6 +351,7 @@ export function EventRecipesTab() {
                   savedRows={savedRows}
                   draftRows={rowsForDrink}
                   draftRowErrors={draftRowErrors}
+                  dirtyEdits={dirtyEdits}
                   bars={menuBars}
                   bottleOptions={bottleOptions}
                   readOnly={!isDraft}
