@@ -37,6 +37,10 @@ import {
   type EventRecipePatch,
 } from '@/features/event-recipes/hooks'
 import { RecipeCard, type BarOption, type BottleOption, type DraftRow } from './RecipeCard'
+import { CopyRecipesModal, type CandidateSourceEvent } from './CopyRecipesModal'
+import { Badge, Button, EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { warningBannerCls, warningBannerStyle } from '@/design-system/wizardForm'
 
 function makeClientId(): string {
   try {
@@ -49,11 +53,11 @@ function makeClientId(): string {
   return `dr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-const STATUS_PILL: Record<string, string> = {
-  draft: 'bg-[#EDF2F7] text-[#4A5568]',
-  active: 'bg-blue-50 text-blue-700',
-  live: 'bg-green-50 text-green-700',
-  completed: 'bg-[#F7FAFC] text-[#A0AEC0]',
+const STATUS_BADGE_VARIANT: Record<string, 'neutral' | 'info' | 'success' | 'violet'> = {
+  draft: 'neutral',
+  active: 'info',
+  live: 'success',
+  completed: 'violet',
 }
 
 export function EventRecipesTab() {
@@ -92,6 +96,21 @@ export function EventRecipesTab() {
   const updateMutation = useUpdateEventRecipe(selectedEventId)
   const deleteMutation = useDeleteEventRecipe(selectedEventId)
   const bulkMutation = useBulkCreateEventRecipes(selectedEventId)
+
+  // Copy-from-previous-event (Day 10 Part B). Default source: most recent
+  // completed or draft event other than the target; any other event can
+  // still be picked in the modal itself.
+  const [showCopyModal, setShowCopyModal] = useState(false)
+  const candidateSourceEvents: CandidateSourceEvent[] = useMemo(
+    () => sortedEvents
+      .filter((e) => e.id !== selectedEventId)
+      .map((e) => ({ id: e.id, name: e.name, status: e.status })),
+    [sortedEvents, selectedEventId],
+  )
+  const defaultSourceEventId = useMemo(() => {
+    const preferred = candidateSourceEvents.find((e) => e.status === 'completed' || e.status === 'draft')
+    return (preferred ?? candidateSourceEvents[0])?.id ?? null
+  }, [candidateSourceEvents])
 
   const menuBars: BarOption[] = useMemo(
     () => (barsQuery.data ?? [])
@@ -238,17 +257,20 @@ export function EventRecipesTab() {
     }
   }
 
+  const hasAnyRecipeRows = (recipesQuery.data?.rows.length ?? 0) > 0 || draftRows.length > 0
+
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="p-6 max-w-6xl mx-auto">
       {/* 1. Event selector + save-all row */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <label className="text-sm font-semibold text-[#4A5568]" htmlFor="recipe-event-select">
+          <label className="text-sm font-medium" style={{ color: 'var(--v-text-muted)' }} htmlFor="recipe-event-select">
             Editing recipes for event:
           </label>
           <select
             id="recipe-event-select"
-            className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm bg-white text-[#1A202C]"
+            className="text-sm rounded-[var(--v-radius-sm)] px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[var(--v-cyan)]/30"
+            style={{ background: 'var(--v-bg-base)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)' }}
             value={selectedEventId ?? ''}
             onChange={(e) => setSelectedEventId(e.target.value || null)}
           >
@@ -259,31 +281,27 @@ export function EventRecipesTab() {
             ))}
           </select>
           {selectedEvent && (
-            <span className={`text-xs font-semibold px-2 py-1 rounded ${STATUS_PILL[selectedEvent.status] ?? 'bg-[#EDF2F7] text-[#4A5568]'}`}>
+            <Badge variant={STATUS_BADGE_VARIANT[selectedEvent.status] ?? 'neutral'}>
               {selectedEvent.status.toUpperCase()}
-            </span>
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-3">
-          {isDirty && <span className="text-xs text-[#A0AEC0]">Unsaved changes</span>}
-          <button
-            onClick={handleSaveAll}
-            disabled={!isDraft || !isDirty || isSaving}
-            className={[
-              'px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors',
-              !isDraft || !isDirty || isSaving
-                ? 'bg-[#CBD5E0] cursor-not-allowed'
-                : 'bg-[#1ABC9C] hover:bg-[#17a589]',
-            ].join(' ')}
-          >
+          {isDirty && <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>Unsaved changes</span>}
+          {isDraft && candidateSourceEvents.length > 0 && (
+            <Button variant="secondary" onClick={() => setShowCopyModal(true)}>
+              Copy from previous event
+            </Button>
+          )}
+          <Button variant="primary" onClick={handleSaveAll} disabled={!isDraft || !isDirty || isSaving}>
             {isSaving ? 'Saving…' : 'Save all changes'}
-          </button>
+          </Button>
         </div>
       </div>
 
       {!hasDraftEvent && selectedEvent && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-xs text-amber-900">
+        <div className={`${warningBannerCls} mb-4`} style={warningBannerStyle}>
+          <p className="text-xs" style={{ color: 'var(--v-amber)' }}>
             No DRAFT events exist. Showing the most recent event for reference.
           </p>
         </div>
@@ -291,8 +309,8 @@ export function EventRecipesTab() {
 
       {/* 2. read-only banner */}
       {selectedEvent && !isDraft && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-sm text-amber-900">
+        <div className={`${warningBannerCls} mb-4`} style={warningBannerStyle}>
+          <p className="text-sm" style={{ color: 'var(--v-amber)' }}>
             This event is {selectedEvent.status.toUpperCase()}. Recipes are locked.
             Go to a DRAFT event to make changes.
           </p>
@@ -300,50 +318,79 @@ export function EventRecipesTab() {
       )}
 
       {saveError && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-900">{saveError}</p>
+        <div className="mb-4 rounded-[var(--v-radius)] p-3" style={{ background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)' }}>
+          <p className="text-sm" style={{ color: 'var(--v-pink)' }}>{saveError}</p>
         </div>
       )}
 
       {/* 3. recipe cards */}
       {!selectedEventId ? (
-        <p className="text-sm text-[#A0AEC0]">No events yet.</p>
+        <EmptyState headline="No events yet" body="Create an event first — recipes are defined per event." />
       ) : drinkProducts.length === 0 ? (
-        <p className="text-sm text-[#A0AEC0]">This event has no drink products yet.</p>
+        <EmptyState headline="This event has no drink products yet" body="Add drinks in the Products tab, or via the event wizard, before defining recipes." />
       ) : (
-        <div className="space-y-4">
-          {drinkProducts.map((product) => {
-            const savedRows = (recipesQuery.data?.rows ?? []).filter(
-              (r) => r.drink_name.trim().toLowerCase() === product.name.trim().toLowerCase(),
-            )
-            const rowsForDrink = draftRows.filter((r) => r.drink_name === product.name)
-            return (
-              <RecipeCard
-                key={product.name}
-                drinkName={product.name}
-                savedRows={savedRows}
-                draftRows={rowsForDrink}
-                draftRowErrors={draftRowErrors}
-                bars={menuBars}
-                bottleOptions={bottleOptions}
-                readOnly={!isDraft}
-                onAddDraftRow={(section, overrides) =>
-                  addDraftRow(product.name, section === 'optional', overrides)
-                }
-                onUpdateDraftRow={updateDraftRow}
-                onRemoveDraftRow={removeDraftRow}
-                onEditSavedRow={editSavedRow}
-                onDeleteSavedRow={deleteSavedRow}
+        <>
+          {!hasAnyRecipeRows && (
+            <div className="mb-4">
+              <EmptyState
+                headline="No recipes yet for this event"
+                body="Stock depletion will not be tracked for any drink until bar and bottle pairings are added below."
               />
-            )
-          })}
-        </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+            {drinkProducts.map((product) => {
+              const savedRows = (recipesQuery.data?.rows ?? []).filter(
+                (r) => r.drink_name.trim().toLowerCase() === product.name.trim().toLowerCase(),
+              )
+              const rowsForDrink = draftRows.filter((r) => r.drink_name === product.name)
+              return (
+                <RecipeCard
+                  key={product.name}
+                  drinkName={product.name}
+                  savedRows={savedRows}
+                  draftRows={rowsForDrink}
+                  draftRowErrors={draftRowErrors}
+                  bars={menuBars}
+                  bottleOptions={bottleOptions}
+                  readOnly={!isDraft}
+                  onAddDraftRow={(section, overrides) =>
+                    addDraftRow(product.name, section === 'optional', overrides)
+                  }
+                  onUpdateDraftRow={updateDraftRow}
+                  onRemoveDraftRow={removeDraftRow}
+                  onEditSavedRow={editSavedRow}
+                  onDeleteSavedRow={deleteSavedRow}
+                />
+              )
+            })}
+          </div>
+        </>
       )}
 
       {toast && (
-        <div className="fixed bottom-6 right-6 bg-[#1A202C] text-white text-sm px-4 py-2 rounded-lg shadow-lg">
+        <div
+          className="fixed bottom-6 right-6 text-sm px-4 py-2 rounded-lg shadow-lg"
+          style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)' }}
+        >
           {toast}
         </div>
+      )}
+
+      {showCopyModal && selectedEventId && selectedEvent && (
+        <CopyRecipesModal
+          targetEventId={selectedEventId}
+          targetEventName={selectedEvent.name}
+          candidateEvents={candidateSourceEvents}
+          defaultSourceEventId={defaultSourceEventId}
+          targetRecipeRows={recipesQuery.data?.rows ?? []}
+          targetBars={menuBars}
+          onClose={() => setShowCopyModal(false)}
+          onCopied={(count) => {
+            setShowCopyModal(false)
+            setToast(`${count} recipe${count === 1 ? '' : 's'} added.`)
+          }}
+        />
       )}
     </div>
   )

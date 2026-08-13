@@ -13,17 +13,24 @@
  *     and flushed on "Save all changes".
  *   - LEGACY rows (bar_id === null — seeded before the Sundance 15
  *     editor, meant "applies to every bar"): fully read-only, no ml
- *     edit either. Badged "All bars (legacy)". Omar deletes + re-adds
- *     per-bar if he wants to touch one.
+ *     edit either. Badged "legacy". Omar deletes + re-adds per-bar if
+ *     he wants to touch one.
  *   - DRAFT (new, unsaved) rows: bar dropdown, bottle picker, and ml
  *     input are all editable; removing one is a pure client-side undo
  *     (no API call — it was never saved).
  *
- * Styling matches WizardStep3Bars.tsx / WizardStep3Products.tsx tokens.
+ * NOTE (Day 10 Part A): the backend's EventRecipeRow response has no
+ * product_id field, so a per-row "no product linked" signal (the silent
+ * depletion gap flagged in the Day 10 brief) cannot be surfaced here
+ * without a backend schema change — out of scope for this UI-only pass.
+ * See the Day 10 report for what that change would need to be.
  */
 import { useEffect, useRef } from 'react'
 
 import type { EventRecipePatch, EventRecipeRow } from '@/features/event-recipes/hooks'
+import { Badge } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls } from '@/design-system/wizardForm'
 
 export interface DraftRow {
   client_id: string
@@ -61,9 +68,6 @@ interface Props {
   onEditSavedRow: (rowId: string, patch: EventRecipePatch) => void
   onDeleteSavedRow: (rowId: string) => void
 }
-
-const inputCls =
-  'w-full rounded-lg border border-[#E2E8F0] px-2 py-1.5 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]'
 
 // ─── Auto-suggest keyword matching ─────────────────────────────────────
 // Tokenize both the drink name and each candidate bottle's item_name,
@@ -137,10 +141,13 @@ export function RecipeCard({
   }, [])
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-4">
+    <div
+      className="flex flex-col h-full p-4"
+      style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius)' }}
+    >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-[#1A202C]">{drinkName}</h3>
-        <span className="text-xs text-[#718096]">{totalCount} ingredient{totalCount === 1 ? '' : 's'}</span>
+        <h3 className="text-sm font-semibold" style={{ color: 'var(--v-text)' }}>{drinkName}</h3>
+        <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>{totalCount} ingredient{totalCount === 1 ? '' : 's'}</span>
       </div>
 
       <Section
@@ -171,7 +178,8 @@ export function RecipeCard({
         {!readOnly && (
           <button
             onClick={() => onAddDraftRow('required')}
-            className="mt-1 text-xs font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-3 py-1.5 border border-dashed border-[#CBD5E0] rounded-lg hover:bg-[#F7FAFC] w-full"
+            className="mt-1 text-xs font-semibold px-3 py-1.5 rounded-[var(--v-radius-sm)] w-full transition-colors"
+            style={{ color: 'var(--v-cyan)', border: '1px dashed var(--v-border)' }}
           >
             + Add alcohol
           </button>
@@ -207,7 +215,8 @@ export function RecipeCard({
           {!readOnly && (
             <button
               onClick={() => onAddDraftRow('optional')}
-              className="mt-1 text-xs font-semibold text-[#718096] hover:text-[#4A5568] px-3 py-1.5 border border-dashed border-[#CBD5E0] rounded-lg hover:bg-[#F7FAFC] w-full"
+              className="mt-1 text-xs font-semibold px-3 py-1.5 rounded-[var(--v-radius-sm)] w-full transition-colors"
+              style={{ color: 'var(--v-text-muted)', border: '1px dashed var(--v-border)' }}
             >
               + Add mixer
             </button>
@@ -229,14 +238,14 @@ function Section({
 }) {
   return (
     <div
-      className={[
-        'rounded-lg p-3 space-y-2',
-        emptyHighlight ? 'bg-amber-50 border border-amber-200'
-          : muted ? 'bg-[#F7FAFC] border border-[#E2E8F0]'
-          : 'bg-white border border-[#E2E8F0]',
-      ].join(' ')}
+      className="rounded-[var(--v-radius-sm)] p-3 space-y-2"
+      style={
+        emptyHighlight
+          ? { background: 'rgba(255, 216, 77, 0.08)', border: '0.5px solid var(--v-amber)' }
+          : { background: muted ? 'var(--v-surface-raised)' : 'transparent', border: '0.5px solid var(--v-border)' }
+      }
     >
-      <p className={['text-xs font-semibold', muted ? 'text-[#718096]' : 'text-[#4A5568]'].join(' ')}>
+      <p className="text-xs font-semibold" style={{ color: muted ? 'var(--v-text-dim)' : 'var(--v-text-muted)' }}>
         {title}
       </p>
       {children}
@@ -257,20 +266,18 @@ function SavedRow({
 
   return (
     <div className="grid grid-cols-12 gap-2 items-center">
-      <div className="col-span-4 text-sm text-[#1A202C] truncate" title={row.bar_name}>
-        {row.bar_name}
-        {isLegacy && (
-          <span className="ml-1.5 inline-block text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-            legacy
-          </span>
-        )}
+      <div className="col-span-5 flex items-center gap-1.5 min-w-0">
+        <Badge variant="neutral">
+          <span className="truncate max-w-[8rem] inline-block align-bottom" title={row.bar_name}>{row.bar_name}</span>
+        </Badge>
+        {isLegacy && <Badge variant="warning">legacy</Badge>}
       </div>
-      <div className="col-span-5 text-sm text-[#4A5568] truncate" title={row.supplier_product_name}>
+      <div className="col-span-4 text-sm truncate" style={{ color: 'var(--v-text)' }} title={row.supplier_product_name}>
         {row.supplier_product_name}
       </div>
       <div className="col-span-2">
         {isLegacy ? (
-          <span className="text-sm text-[#4A5568]">{row.ml_per_sale} ml</span>
+          <span className="text-sm" style={{ color: 'var(--v-text-muted)' }}>{row.ml_per_sale} ml</span>
         ) : (
           <input
             type="number"
@@ -287,7 +294,10 @@ function SavedRow({
         {!readOnly && (
           <button
             onClick={onDelete}
-            className="text-[#E53E3E] hover:bg-red-50 rounded px-2 py-1 text-sm"
+            className="rounded px-2 py-1 text-sm transition-colors"
+            style={{ color: 'var(--v-pink)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 61, 113, 0.08)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             title={isLegacy ? 'Delete this legacy rule' : 'Delete'}
             aria-label={`Remove ${row.supplier_product_name}`}
           >
@@ -315,7 +325,7 @@ function DraftRowView({
       <div className="grid grid-cols-12 gap-2 items-center">
         <div className="col-span-4">
           <select
-            className={`${inputCls} bg-white`}
+            className={inputCls}
             value={row.bar_id}
             onChange={(e) => onUpdate({ bar_id: e.target.value })}
           >
@@ -327,7 +337,7 @@ function DraftRowView({
         </div>
         <div className="col-span-5">
           <select
-            className={`${inputCls} bg-white`}
+            className={inputCls}
             value={row.supplier_product_id}
             onChange={(e) => onUpdate({ supplier_product_id: e.target.value })}
           >
@@ -350,14 +360,17 @@ function DraftRowView({
         <div className="col-span-1 flex justify-end">
           <button
             onClick={onRemove}
-            className="text-[#E53E3E] hover:bg-red-50 rounded px-2 py-1 text-sm"
+            className="rounded px-2 py-1 text-sm transition-colors"
+            style={{ color: 'var(--v-pink)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 61, 113, 0.08)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             aria-label="Remove unsaved row"
           >
             ×
           </button>
         </div>
       </div>
-      {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
+      {error && <p className="text-xs mt-1" style={{ color: 'var(--v-pink)' }}>{error}</p>}
     </div>
   )
 }
