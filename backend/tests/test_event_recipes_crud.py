@@ -19,6 +19,7 @@ from app.modules.auth.models import Tenant
 from app.modules.bars.models import Bar
 from app.modules.event_storage.models import EventCategoryIngredient, SupplierProduct
 from app.modules.events.models import Event, EventStatus
+from app.modules.products.models import Product, ProductCategory, ProductType, ProductUnit
 from app.modules.venues.models import Venue
 
 
@@ -89,6 +90,23 @@ async def _create_supplier_product(
     db.add(sp)
     await db.flush()
     return sp
+
+
+async def _create_product(
+    db: AsyncSession, tenant_id: UUID, name: str,
+) -> Product:
+    p = Product(
+        tenant_id=tenant_id,
+        name=name,
+        product_type=ProductType.DRINK,
+        category=ProductCategory.BASIC_COCKTAIL,
+        unit=ProductUnit.GLASS,
+        default_price_cents=1000,
+        is_archived=False,
+    )
+    db.add(p)
+    await db.flush()
+    return p
 
 
 async def _login_in_isolation(client: AsyncClient) -> dict[str, str]:
@@ -294,6 +312,8 @@ async def test_bulk_create_atomic(
     event = await _create_event(db_session, tenant.id, venue.id)
     bar = await _create_bar(db_session, tenant.id, event.id)
     sps = [await _create_supplier_product(db_session, tenant.id, f"Item {i}") for i in range(10)]
+    for i in range(9):
+        await _create_product(db_session, tenant.id, f"DRINK {i}")
     await db_session.flush()
 
     headers = await _login_in_isolation(isolated_client)

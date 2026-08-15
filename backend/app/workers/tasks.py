@@ -801,8 +801,22 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
         start_event, end_event). They handle assert_transition,
         idempotency, the one-live-per-tenant invariant, and commit
         the transaction. Cron stays a thin orchestrator.
-      - Each event\'s transition is wrapped in its own try/except so
-        one failure doesn't poison the whole tick.
+      - F-02 (2026-08): each event is processed in its OWN freshly
+        opened session, not a session shared across the whole tick.
+        Previously, one event's session.rollback() (e.g. on
+        LiveEventConflictError) expired every ORM object tracked by
+        the shared session — including OTHER, not-yet-processed
+        events still sitting in the due_events/stale_live list — and
+        the next iteration's very first attribute access on one of
+        those expired objects crashed with MissingGreenlet, uncaught,
+        killing the rest of the tick. A separate session per event
+        means a rollback can only ever affect that one event's own
+        (otherwise-empty) transaction; nothing about it reaches any
+        other event's processing. due_events is also now explicitly
+        ordered by scheduled_at so a stuck/conflicting event can't
+        occupy the same list position every tick — though with the
+        per-event session fix, no other event is at risk of being
+        starved by it either way.
       - On Sundance night, this is the safety net for Omar forgetting
         to click "Start" at 7pm. The 5-min cadence means a worst-case
         delay of ~5 min from scheduled_at to actual LIVE.
@@ -824,66 +838,70 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
         "errors":      0,
     }
 
-    async with async_session_factory() as session:
-        # ── Responsibility 1+2: promote DRAFT/ACTIVE -> LIVE ─────────
-        try:
-            stmt = select(Event).where(
-                and_(
-                    Event.status.in_([EventStatus.DRAFT, EventStatus.ACTIVE]),
-                    Event.scheduled_at <= now,
+    # ── Responsibility 1+2: promote DRAFT/ACTIVE -> LIVE ─────────────
+    try:
+        async with async_session_factory() as session:
+            stmt = (
+                select(Event)
+                .where(
+                    and_(
+                        Event.status.in_([EventStatus.DRAFT, EventStatus.ACTIVE]),
+                        Event.scheduled_at <= now,
+                    )
                 )
+                .order_by(Event.scheduled_at.asc())
             )
             due_events = (await session.execute(stmt)).scalars().all()
-        except Exception as e:  # noqa: BLE001
-            logger.exception("cron_auto_transition: failed to list due events: %s", e)
-            return {"status": "error", **counters}
+            # Snapshot everything the loop below needs while these objects
+            # are still live — each event is then processed in its own
+            # fresh session (F-02), so nothing after this point should
+            # touch these ORM objects again.
+            due_snapshots = [
+                (event.id, event.tenant_id, event.name, event.status)
+                for event in due_events
+            ]
+    except Exception as e:  # noqa: BLE001
+        logger.exception("cron_auto_transition: failed to list due events: %s", e)
+        return {"status": "error", **counters}
 
-        for event in due_events:
-            # Snapshot identifiers BEFORE any service call. After a
-            # session.rollback() the ORM expires loaded attributes; the
-            # subsequent log statement would trigger a lazy reload from
-            # outside an async context and explode with MissingGreenlet,
-            # masking the original (informative) exception.
-            event_id_str = str(event.id)
-            event_name = event.name
-            event_tenant_id = event.tenant_id
-            event_status_snapshot = event.status
-
+    for event_id, event_tenant_id, event_name, event_status_snapshot in due_snapshots:
+        async with async_session_factory() as event_session:
             try:
-                # Build a service for this tenant. Reuse the same session
-                # so cron writes commit through one connection per tick.
-                service = EventService(db=session)
+                service = EventService(db=event_session)
 
                 if event_status_snapshot == EventStatus.DRAFT:
-                    await service.activate_event(event_tenant_id, event.id)
+                    await service.activate_event(event_tenant_id, event_id)
                     counters["activated"] += 1
                     # Now ACTIVE — chain into start
-                    await service.start_event(event_tenant_id, event.id)
+                    await service.start_event(event_tenant_id, event_id)
                     counters["started"] += 1
                     logger.info(
                         "cron_auto_transition: DRAFT->LIVE event=%s (%s)",
-                        event_id_str, event_name,
+                        event_id, event_name,
                     )
                 elif event_status_snapshot == EventStatus.ACTIVE:
-                    await service.start_event(event_tenant_id, event.id)
+                    await service.start_event(event_tenant_id, event_id)
                     counters["started"] += 1
                     logger.info(
                         "cron_auto_transition: ACTIVE->LIVE event=%s (%s)",
-                        event_id_str, event_name,
+                        event_id, event_name,
                     )
             except Exception as e:  # noqa: BLE001
                 # Most likely cause: LiveEventConflictError (another live
                 # event in this tenant). Log and continue — owner gets
-                # notified via the existing 409 flow when they retry manually.
-                await session.rollback()
+                # notified via the existing 409 flow when they retry
+                # manually. This rollback is scoped to event_session only
+                # (F-02) — it cannot affect any other event's processing.
+                await event_session.rollback()
                 counters["errors"] += 1
                 logger.warning(
                     "cron_auto_transition: promotion failed for event=%s (%s): %s",
-                    event_id_str, event_name, e,
+                    event_id, event_name, e,
                 )
 
-        # ── Responsibility 3: end stale LIVE events ──────────────────
-        try:
+    # ── Responsibility 3: end stale LIVE events ──────────────────────
+    try:
+        async with async_session_factory() as session:
             stmt = select(Event).where(
                 and_(
                     Event.status == EventStatus.LIVE,
@@ -891,11 +909,16 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
                 )
             )
             stale_live = (await session.execute(stmt)).scalars().all()
-        except Exception as e:  # noqa: BLE001
-            logger.exception("cron_auto_transition: failed to list stale live events: %s", e)
-            return {"status": "partial_error", **counters}
+            stale_snapshots = [
+                (event.id, event.tenant_id, event.name)
+                for event in stale_live
+            ]
+    except Exception as e:  # noqa: BLE001
+        logger.exception("cron_auto_transition: failed to list stale live events: %s", e)
+        return {"status": "partial_error", **counters}
 
-        for event in stale_live:
+    for event_id, event_tenant_id, event_name in stale_snapshots:
+        async with async_session_factory() as event_session:
             try:
                 # 60-min silence guard: only end if no recent stock tx
                 # Tighter silence query: filter by THIS event's id.
@@ -905,33 +928,34 @@ async def cron_auto_transition_event_statuses(ctx: dict) -> dict:
                 # invariant as a proxy.
                 last_tx_stmt = (
                     select(func.max(StockTransaction.created_at))
-                    .where(StockTransaction.tenant_id == event.tenant_id)
-                    .where(StockTransaction.event_id == event.id)
+                    .where(StockTransaction.tenant_id == event_tenant_id)
+                    .where(StockTransaction.event_id == event_id)
                 )
-                last_tx = (await session.execute(last_tx_stmt)).scalar()
+                last_tx = (await event_session.execute(last_tx_stmt)).scalar()
 
                 if last_tx is not None and last_tx >= silence_threshold:
                     counters["skipped_silence"] += 1
                     logger.info(
                         "cron_auto_transition: NOT ending event=%s (%s) "
                         "— last tx at %s, within 60-min window",
-                        event.id, event.name, last_tx,
+                        event_id, event_name, last_tx,
                     )
                     continue
 
-                service = EventService(db=session)
-                await service.end_event(event.tenant_id, event.id)
+                service = EventService(db=event_session)
+                await service.end_event(event_tenant_id, event_id)
                 counters["completed"] += 1
                 logger.info(
                     "cron_auto_transition: LIVE->COMPLETED event=%s (%s)",
-                    event.id, event.name,
+                    event_id, event_name,
                 )
             except Exception as e:  # noqa: BLE001
-                await session.rollback()
+                # Scoped to event_session only (F-02) — see note above.
+                await event_session.rollback()
                 counters["errors"] += 1
                 logger.warning(
                     "cron_auto_transition: ending failed for event=%s: %s",
-                    event.id, e,
+                    event_id, e,
                 )
 
     # Final log if anything happened

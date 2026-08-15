@@ -1,18 +1,37 @@
 """Event-level KPI aggregator for the redesigned dashboard top strip.
 
 Sibling of category_totals_service (which is PER-BAR for the bar cards).
-This one rolls the SAME revenue-producing StockTransaction rows up to the
-EVENT level and shapes them for the headline KPIs:
+This one rolls revenue up to the EVENT level and shapes it for the
+headline KPIs:
 
   - Drinks: units + revenue (100% Omar), broken into 4 families
     (cocktails / beer / wine / soft) + an "other" catch-all.
   - Food: units + GROSS revenue, broken by FoodType, with the event's
-    revenue-share % applied once to yield Omar's NET cut.
-  - Total Revenue = drinks revenue + food NET = Omar's take.
+    revenue-share % applied once to yield Omar's NET cut (net_revenue_eur,
+    a side figure — see below).
+  - Total Revenue = GROSS drinks + food revenue (drink_rev + food_gross),
+    NOT net of the food-vendor split. This was previously undocumented
+    drift from this file's own docstring, which claimed NET — fixed
+    2026-08 alongside F-01. Owner net take-home (after deposits
+    returned, VAT, and the food-vendor share) is a separate, clearly
+    labelled figure in the Revenue Breakdown modal
+    (RevenueBreakdownService.OwnerWaterfall.net_takehome_eur) — this
+    endpoint does not attempt to reproduce it.
+  - unmapped_revenue_eur: confirmed EventOrder revenue whose POS shop
+    has not yet been mapped to a Bar (bar_id IS NULL). Until 2026-08
+    this was silently dropped from total_revenue_eur entirely (an
+    inner join to Bar excluded it) — that was the original bug.
+    total_revenue_eur now includes it; this field surfaces the amount
+    explicitly rather than leaving it invisible. It is NOT included in
+    drinks.revenue_eur or food.gross_revenue_eur, since attributing it
+    to drinks vs. food requires knowing which bar it belongs to.
 
-Single source of truth for revenue (shared with category_totals_service
-and reports/aggregator): SUM(qty * price_cents) / 100 over rows whose
-source is in REVENUE_SOURCES and price_cents IS NOT NULL.
+Units + the drinks/food-family breakdown still come from
+StockTransaction (SUM(qty * price_cents) / 100 over rows whose source
+is in REVENUE_SOURCES and price_cents IS NOT NULL) — unchanged. The
+euro totals come from EventOrder.fiscal_gross_cents (see fiscal_stmt
+below) — the money-of-record from Slesh, correct for food-truck sales
+and no-recipe drinks that StockTransaction misses.
 """
 from __future__ import annotations
 
@@ -139,12 +158,49 @@ class EventKpiSummaryService:
         )
         rows = (await self.db.execute(stmt)).all()
 
-        # 2b. Fiscal totals from event_orders (2026-07-05).
-        # WHY: stock_transactions only reflects drinks WITH recipes at recipe-
-        # enabled bars — it MISSES food-truck sales and drinks like acqua/
-        # bicchiere that have no recipe. event_orders is the money-of-record
-        # from Slesh (every wristband tap). Depletion tracking (stock section,
-        # alerts) still uses stock_transactions — unchanged.
+        # 2b. Fiscal totals from event_orders (2026-07-05, corrected 2026-08
+        # for F-01: refund exclusion + unmapped-order visibility).
+        # WHY event_orders, not stock_transactions: stock_transactions only
+        # reflects drinks WITH recipes at recipe-enabled bars — it MISSES
+        # food-truck sales and drinks like acqua/bicchiere that have no
+        # recipe. event_orders is the money-of-record from Slesh (every
+        # wristband tap). Depletion tracking (stock section, alerts) still
+        # uses stock_transactions — unchanged.
+        #
+        # confirmed_line_count > 0 excludes fully-refunded orders — the
+        # same filter RevenueBreakdownService already applies (see
+        # docs/revenue-calculation-bible.md). Previously absent here, which
+        # meant a refunded order's fiscal amount stayed counted on this
+        # tile after the Breakdown modal had already excluded it.
+        #
+        # Two queries:
+        #  - unsplit: the TRUE event total, every confirmed order,
+        #    regardless of whether its shop has been mapped to a bar yet.
+        #    This is what total_revenue_eur is built from.
+        #  - fiscal_stmt: the same confirmed orders, but inner-joined to
+        #    Bar and grouped by bar_type so the drinks/food split (needed
+        #    for the food-vendor share) can be computed. This join
+        #    structurally cannot include bar_id IS NULL orders — there is
+        #    no bar_type to attribute them to — so it stays scoped to
+        #    drinks/food only, same as before.
+        #  - unmapped: confirmed orders with bar_id IS NULL specifically,
+        #    queried directly (not derived by subtraction, so it can never
+        #    disagree with reality due to rounding or an unrelated
+        #    bar_type like "mixed"/"merch"/"service" that isn't drinks or
+        #    food either).
+        confirmed_filter = (
+            EventOrder.tenant_id == tenant_id,
+            EventOrder.event_id == event_id,
+            EventOrder.confirmed_line_count > 0,
+        )
+
+        unsplit_stmt = (
+            select(func.sum(EventOrder.fiscal_gross_cents).label("gross_cents"))
+            .select_from(EventOrder)
+            .where(*confirmed_filter)
+        )
+        unsplit_total_cents = (await self.db.execute(unsplit_stmt)).scalar() or 0
+
         fiscal_stmt = (
             select(
                 Bar.bar_type.label("bar_type"),
@@ -152,23 +208,29 @@ class EventKpiSummaryService:
             )
             .select_from(EventOrder)
             .join(Bar, Bar.id == EventOrder.bar_id)
-            .where(
-                EventOrder.tenant_id == tenant_id,
-                EventOrder.event_id == event_id,
-            )
+            .where(*confirmed_filter)
             .group_by(Bar.bar_type)
         )
         fiscal_rows = (await self.db.execute(fiscal_stmt)).all()
-        fiscal_drinks_eur = Decimal(0)
-        fiscal_food_gross_eur = Decimal(0)
+        fiscal_drinks_cents = 0
+        fiscal_food_gross_cents = 0
         for fr in fiscal_rows:
-            eur = Decimal(fr.gross_cents or 0) / _CENTS
-            btype = fr.bar_type
-            btype_val = getattr(btype, "value", btype)
+            gross_cents = fr.gross_cents or 0
+            btype_val = getattr(fr.bar_type, "value", fr.bar_type)
             if btype_val == "drinks":
-                fiscal_drinks_eur = _money(eur)
+                fiscal_drinks_cents = gross_cents
             elif btype_val == "food":
-                fiscal_food_gross_eur = _money(eur)
+                fiscal_food_gross_cents = gross_cents
+        fiscal_drinks_eur = _money(Decimal(fiscal_drinks_cents) / _CENTS)
+        fiscal_food_gross_eur = _money(Decimal(fiscal_food_gross_cents) / _CENTS)
+
+        unmapped_stmt = (
+            select(func.sum(EventOrder.fiscal_gross_cents).label("gross_cents"))
+            .select_from(EventOrder)
+            .where(*confirmed_filter, EventOrder.bar_id.is_(None))
+        )
+        unmapped_cents = (await self.db.execute(unmapped_stmt)).scalar() or 0
+        unmapped_revenue_eur = _money(Decimal(unmapped_cents) / _CENTS)
 
         # 3. Roll up.
         drink_units = 0
@@ -204,14 +266,18 @@ class EventKpiSummaryService:
             # locked formula is drinks + food only). Intentionally skipped.
 
         # 4. Apply the partnership split to food.
-        # Header total = GROSS revenue (what customers paid at the bars).
-        # This matches Slesh's dashboard exactly. Net take-home after the
-        # food-truck split is exposed separately via food.net_revenue_eur.
-        # SWAPPED to fiscal source (2026-07-05).
+        # Header total = GROSS revenue (what customers paid at the bars),
+        # INCLUDING orders not yet mapped to a bar (F-01) — see
+        # unmapped_revenue_eur. This matches Slesh's dashboard exactly.
+        # Net take-home after the food-truck split is exposed separately
+        # via food.net_revenue_eur (and, more completely, via
+        # RevenueBreakdownService.OwnerWaterfall.net_takehome_eur).
+        # SWAPPED to fiscal source (2026-07-05); refund + unmapped
+        # handling corrected (F-01, 2026-08).
         food_gross = fiscal_food_gross_eur
         food_net = _money(food_gross * Decimal(share_pct) / Decimal(100))
         drink_rev = fiscal_drinks_eur
-        total = _money(drink_rev + food_gross)
+        total = _money(Decimal(unsplit_total_cents) / _CENTS)
 
         drink_lines = [
             DrinkCategoryLine(family=f, units=v["units"], revenue_eur=_money(v["revenue"]))
@@ -228,6 +294,7 @@ class EventKpiSummaryService:
         return EventKpiSummary(
             event_id=event_id,
             total_revenue_eur=total,
+            unmapped_revenue_eur=unmapped_revenue_eur,
             drinks=DrinksSummary(
                 units=drink_units,
                 revenue_eur=drink_rev,

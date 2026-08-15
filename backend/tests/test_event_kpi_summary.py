@@ -16,11 +16,14 @@ cleans up via delete_tenant_cascade in a finally block.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
 
 from app.modules.events.event_kpi_service import EventKpiSummaryService
+from app.modules.events.models import EventOrder
+from app.modules.events.revenue_breakdown_service import RevenueBreakdownService
 from app.modules.predictions.predictors.heuristic import REVENUE_SOURCES
 from app.modules.products.models import FoodType, ProductCategory, ProductType
 from app.modules.stock_transactions.models import TransactionSource
@@ -69,6 +72,36 @@ async def _sale(session, tenant_id, event_id, bar_id, product_id, *, qty, price_
     return st
 
 
+async def _order(
+    session, tenant_id, event_id, *, bar_id=None,
+    fiscal_gross_cents, deposit_cents=0, confirmed_line_count=1,
+):
+    """A minimal EventOrder row — F-01's fiscal source. bar_id=None
+    simulates a Slesh shop not yet mapped to a Bar; confirmed_line_count=0
+    simulates a fully-refunded order."""
+    order = EventOrder(
+        tenant_id=tenant_id,
+        event_id=event_id,
+        slesh_order_id=f"test-{uuid.uuid4().hex[:12]}",
+        slesh_shop_id=None,
+        bar_id=bar_id,
+        order_type="experience",
+        subtotal_cents=fiscal_gross_cents + deposit_cents,
+        vat_cents=0,
+        deposit_cents=deposit_cents,
+        fiscal_gross_cents=fiscal_gross_cents,
+        fiscal_net_cents=fiscal_gross_cents,
+        discount_cents=0,
+        cart_line_count=1,
+        confirmed_line_count=confirmed_line_count,
+        refunded_line_count=0 if confirmed_line_count else 1,
+        created_at_slesh=datetime.now(timezone.utc),
+    )
+    session.add(order)
+    await session.flush()
+    return order
+
+
 # ── tests ───────────────────────────────────────────────────────────────────
 
 async def test_drinks_only_families_null_share_is_100():
@@ -85,6 +118,9 @@ async def test_drinks_only_families_null_share_is_100():
             await _sale(session, tenant.id, ev.id, bar.id, wine.id, qty=3, price_cents=700)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=1, price_cents=1200)
             await _sale(session, tenant.id, ev.id, bar.id, soft.id, qty=5, price_cents=600)
+            # Euro totals are fiscal-sourced (EventOrder), not derived from
+            # the stock-transaction sales above — see event_kpi_service.py.
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=7700)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res is not None
@@ -113,11 +149,12 @@ async def test_food_only_share_50():
             ev = await make_event(session, tenant.id)
             ev.food_revenue_share_pct = 50
             await session.flush()
-            bar = await make_bar(session, tenant.id, ev.id)
+            bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             gel = await _food_product(session, tenant.id, FoodType.GELATO)
             await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=4, price_cents=1200)
             await _sale(session, tenant.id, ev.id, bar.id, gel.id, qty=2, price_cents=500)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=5800)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 0
@@ -144,10 +181,13 @@ async def test_mixed_share_30():
             ev.food_revenue_share_pct = 30
             await session.flush()
             bar = await make_bar(session, tenant.id, ev.id)
+            food_bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             cock = await _drink_product(session, tenant.id, ProductCategory.PREMIUM_COCKTAIL)
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=10, price_cents=1200)
-            await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=5, price_cents=1200)
+            await _sale(session, tenant.id, ev.id, food_bar.id, burg.id, qty=5, price_cents=1200)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=12000)
+            await _order(session, tenant.id, ev.id, bar_id=food_bar.id, fiscal_gross_cents=6000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 10
@@ -173,10 +213,13 @@ async def test_share_zero_food_net_is_zero():
             ev.food_revenue_share_pct = 0
             await session.flush()
             bar = await make_bar(session, tenant.id, ev.id)
+            food_bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             cock = await _drink_product(session, tenant.id, ProductCategory.BASIC_COCKTAIL)
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=1, price_cents=1000)
-            await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=3, price_cents=1000)
+            await _sale(session, tenant.id, ev.id, food_bar.id, burg.id, qty=3, price_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=food_bar.id, fiscal_gross_cents=3000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.revenue_eur == Decimal("10.00")
@@ -196,9 +239,10 @@ async def test_share_explicit_100_equals_gross():
             ev = await make_event(session, tenant.id)
             ev.food_revenue_share_pct = 100
             await session.flush()
-            bar = await make_bar(session, tenant.id, ev.id)
+            bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             burg = await _food_product(session, tenant.id, FoodType.SANDWICHES)
             await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=2, price_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=2000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.food.share_pct == 100
@@ -263,11 +307,68 @@ async def test_excludes_non_revenue_and_priceless_rows():
                 session, tenant.id, ev.id, bar.id, cock.id, qty=Decimal("50"),
                 source=_REVENUE_SOURCE,
             )
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=2000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 2
             assert res.drinks.revenue_eur == Decimal("20.00")
             assert res.total_revenue_eur == Decimal("20.00")
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+            await session.commit()
+
+
+# ── F-01: unmapped-bar / refund handling, tile vs. modal ────────────────────
+
+async def test_unmapped_and_refunded_orders_match_between_tile_and_modal():
+    """Before F-01: the tile's fiscal query inner-joined Bar (dropping
+    unmapped-shop orders) and never filtered confirmed_line_count
+    (including refunded orders) — while RevenueBreakdownService already
+    did both correctly. This proves they now agree: the tile's
+    total_revenue_eur equals the modal's fiscal_gross_eur, unmapped
+    revenue is surfaced (not dropped), and refunded revenue is excluded
+    from both."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            ev = await make_event(session, tenant.id)
+            bar = await make_bar(session, tenant.id, ev.id)  # bar_type="drinks"
+
+            # Mapped, confirmed — counted everywhere.
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=10000)
+            # Unmapped (no bar_id) — must now be INCLUDED in the tile's
+            # total and surfaced via unmapped_revenue_eur, but excluded
+            # from the drinks/food split (no bar to attribute it to).
+            await _order(session, tenant.id, ev.id, bar_id=None, fiscal_gross_cents=5000)
+            # Fully refunded (confirmed_line_count=0) — must be EXCLUDED
+            # from both the tile and the modal.
+            await _order(
+                session, tenant.id, ev.id, bar_id=bar.id,
+                fiscal_gross_cents=3000, confirmed_line_count=0,
+            )
+
+            tile = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
+            modal = await RevenueBreakdownService(session).compute(tenant.id, ev.id)
+
+            # Tile: true total includes the unmapped order, excludes the
+            # refunded one. 100 (mapped) + 50 (unmapped) = 150; 30 (refunded)
+            # excluded.
+            assert tile.total_revenue_eur == Decimal("150.00")
+            assert tile.unmapped_revenue_eur == Decimal("50.00")
+            # Drinks split is necessarily bar-scoped — unmapped stays out
+            # of it, same structural limit the modal's per-bar rows have.
+            assert tile.drinks.revenue_eur == Decimal("100.00")
+
+            # Modal: same two filters (no bar join for the order-type
+            # total, confirmed_line_count > 0), so its fiscal_gross_eur
+            # is the SAME true total as the tile's — the whole point of
+            # this fix.
+            assert modal.fiscal.fiscal_gross_eur == Decimal("150.00")
+            assert modal.total_billed_eur == Decimal("150.00") + Decimal("0.00")  # subtotal == fiscal here (no deposits)
+            assert modal.diagnostics.refunded_order_count == 1
+
+            # The two numbers this fix was about are now identical.
+            assert tile.total_revenue_eur == modal.fiscal.fiscal_gross_eur
         finally:
             await delete_tenant_cascade(session, tenant.id)
             await session.commit()

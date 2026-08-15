@@ -38,6 +38,7 @@ from app.modules.stock_transactions.models import (
 from app.modules.venues.models import Venue
 from app.workers import tasks as tasks_module
 from app.workers.tasks import cron_auto_transition_event_statuses
+from tests.fixtures.alerts.factories import make_tenant
 
 
 # ─── Helpers ────────────────────────────────────────────────────────
@@ -71,6 +72,41 @@ async def _park_existing_live(db: AsyncSession, tenant_id) -> None:
     )
     for live_ev in r.scalars().all():
         live_ev.status = EventStatus.DRAFT
+    await db.flush()
+
+
+async def _park_other_due_events(db: AsyncSession, tenant_id) -> None:
+    """Push every OTHER due DRAFT/ACTIVE event for this tenant far into
+    the future, so it can't compete with (or block) the event a test is
+    about to create.
+
+    xproject_dev has a pile of leftover stale DRAFT events for this
+    tenant from old debug/seed scripts, all with scheduled_at in the
+    past. Without this, the cron picks them up in the SAME tick as the
+    test's own event; whichever one the (now-deterministic, ORDER BY
+    scheduled_at) query happens to process first wins the one-live-per-
+    tenant slot, and it isn't guaranteed to be the test's own event —
+    the test's own event can then legitimately, non-crashingly fail to
+    reach LIVE by conflicting with a stale event the test never created
+    or asserted on. Same SAVEPOINT-scoped, auto-restored-at-teardown
+    pattern as _park_existing_live above — nothing here touches real
+    xproject_dev data past this test's rollback.
+    """
+    now = datetime.now(timezone.utc)
+    r = await db.execute(
+        select(Event).where(
+            Event.tenant_id == tenant_id,
+            Event.status.in_([EventStatus.DRAFT, EventStatus.ACTIVE]),
+            Event.scheduled_at <= now,
+        )
+    )
+    for ev in r.scalars().all():
+        # Move both fields — ck_events_scheduled_end_after_start requires
+        # scheduled_end_at > scheduled_at, and only moving scheduled_at
+        # can violate it if the stale row's original scheduled_end_at is
+        # earlier than the new scheduled_at.
+        ev.scheduled_at = now + timedelta(days=365)
+        ev.scheduled_end_at = now + timedelta(days=365, hours=4)
     await db.flush()
 
 
@@ -166,6 +202,50 @@ def patched_session_factory(db_session: AsyncSession, monkeypatch):
     return db_session
 
 
+@pytest.fixture
+def patched_isolated_session_factory(db_session: AsyncSession, monkeypatch):
+    """Like patched_session_factory, but each async_session_factory() call
+    returns a GENUINELY SEPARATE AsyncSession — same underlying connection
+    as db_session (so everything still rolls back inside db_session's
+    outer SAVEPOINT-per-test transaction at teardown), but its own
+    identity map, so a rollback on one of these sessions cannot expire
+    ORM objects loaded by a different one.
+
+    This is what F-02's fix actually needs to be exercised meaningfully:
+    the whole point of the fix is "each event gets its own session," and
+    patched_session_factory (which always hands back the literal same
+    db_session object) can't distinguish "fixed" from "still shares one
+    session" — a rollback on that single shared session would still expire
+    everything, fix or no fix. Uses the same join_transaction_mode=
+    "create_savepoint" idiom db_session itself is built on (see conftest.py)
+    so each session's commit()/rollback() only affects its own SAVEPOINT.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    NestedSession = async_sessionmaker(
+        bind=db_session._test_connection, expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+    opened: list[AsyncSession] = []
+
+    class _FreshSessionWrapper:
+        async def __aenter__(self):
+            session = NestedSession()
+            opened.append(session)
+            return session
+        async def __aexit__(self, *args):
+            # Close this one session — NOT db_session, whose outer
+            # SAVEPOINT teardown (conftest.py) handles the real rollback.
+            await opened[-1].close()
+            return None
+
+    monkeypatch.setattr(
+        tasks_module, "async_session_factory",
+        lambda: _FreshSessionWrapper(),
+    )
+    return db_session
+
+
 # ─── Tests ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -177,6 +257,7 @@ async def test_draft_past_scheduled_at_promoted_to_live(
     now = datetime.now(timezone.utc)
     tenant = await _get_tenant(db_session)
     await _park_existing_live(db_session, tenant.id)
+    await _park_other_due_events(db_session, tenant.id)
     venue = await _make_venue(db_session, tenant.id)
     event = await _make_event(
         db_session, tenant.id, venue.id,
@@ -205,6 +286,7 @@ async def test_active_past_scheduled_at_promoted_to_live(
     now = datetime.now(timezone.utc)
     tenant = await _get_tenant(db_session)
     await _park_existing_live(db_session, tenant.id)
+    await _park_other_due_events(db_session, tenant.id)
     venue = await _make_venue(db_session, tenant.id)
     event = await _make_event(
         db_session, tenant.id, venue.id,
@@ -312,3 +394,77 @@ async def test_live_past_end_with_recent_tx_stays_live(
         "(silence guard prevents premature auto-end)"
     )
     assert event.ended_at is None
+
+
+# ── F-02: one event's conflict must not poison the next event's session ──
+
+@pytest.mark.asyncio
+async def test_conflicting_event_does_not_poison_next_due_event(
+    db_session: AsyncSession, patched_isolated_session_factory,
+):
+    """Two due events in the same tick. The first (tenant 1) conflicts
+    with an already-LIVE event for its own tenant and fails with
+    LiveEventConflictError. The second (tenant 2, unrelated) has no
+    conflict and must still be correctly promoted to LIVE.
+
+    Before F-02: both events were loaded via one shared session; the
+    first event's failure handler called session.rollback(), which
+    expired every ORM object the session was tracking — including the
+    second event's not-yet-processed row. Its very next attribute
+    access crashed with MissingGreenlet, uncaught, so it never even got
+    a chance to transition. Needs patched_isolated_session_factory (not
+    patched_session_factory) — this only proves anything if each event
+    genuinely gets its own session, which is exactly what F-02 adds.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Tenant 1: a genuinely-live "blocker", plus a DRAFT event that will
+    # conflict with it. Scheduled MORE overdue than tenant 2's event so
+    # the due_events ORDER BY scheduled_at puts it first.
+    tenant1 = await _get_tenant(db_session)
+    await _park_existing_live(db_session, tenant1.id)
+    venue1 = await _make_venue(db_session, tenant1.id)
+    blocker = await _make_event(
+        db_session, tenant1.id, venue1.id,
+        status=EventStatus.LIVE,
+        scheduled_at=now - timedelta(hours=2),
+        scheduled_end_at=now + timedelta(hours=2),  # still genuinely live
+    )
+    conflicting = await _make_event(
+        db_session, tenant1.id, venue1.id,
+        status=EventStatus.DRAFT,
+        scheduled_at=now - timedelta(minutes=20),
+        scheduled_end_at=now + timedelta(hours=4),
+    )
+
+    # Tenant 2: unrelated, no conflict, less overdue -> processed second.
+    tenant2 = await make_tenant(db_session)
+    venue2 = await _make_venue(db_session, tenant2.id)
+    clean = await _make_event(
+        db_session, tenant2.id, venue2.id,
+        status=EventStatus.DRAFT,
+        scheduled_at=now - timedelta(minutes=10),
+        scheduled_end_at=now + timedelta(hours=4),
+    )
+
+    result = await cron_auto_transition_event_statuses(ctx={})
+
+    # No uncaught exception — the cron completed the whole tick.
+    assert result["status"] == "ok"
+    assert result["errors"] >= 1
+
+    await db_session.refresh(conflicting)
+    # activate_event (DRAFT->ACTIVE) has no conflict check and commits
+    # before start_event's conflict check runs — so this event correctly
+    # got as far as ACTIVE, then correctly failed to reach LIVE.
+    assert conflicting.status == EventStatus.ACTIVE
+    assert conflicting.started_at is None
+
+    await db_session.refresh(clean)
+    # The event that matters for this test: NOT poisoned by the earlier
+    # failure, correctly promoted all the way to LIVE.
+    assert clean.status == EventStatus.LIVE
+    assert clean.started_at is not None
+
+    await db_session.refresh(blocker)
+    assert blocker.status == EventStatus.LIVE  # untouched
