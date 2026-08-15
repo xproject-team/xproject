@@ -152,6 +152,15 @@ async def db_session():
             join_transaction_mode="create_savepoint",
         )
         session = TestSession()
+        # Exposed so a test that needs MULTIPLE independent sessions bound
+        # to this same connection/SAVEPOINT chain (e.g. simulating "each
+        # cron event gets its own session" in test_event_auto_transitions.py)
+        # can build them via async_sessionmaker(bind=session._test_connection,
+        # join_transaction_mode="create_savepoint") — get_bind() doesn't
+        # work for this: it returns the sync-facing connection proxy, not
+        # the AsyncConnection async_sessionmaker requires. Doesn't change
+        # db_session's behavior for any other test.
+        session._test_connection = connection
 
         try:
             yield session

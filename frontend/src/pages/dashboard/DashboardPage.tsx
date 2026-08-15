@@ -104,12 +104,24 @@ function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, isLive, on
   const foodUnits    = kpi?.food.units ?? 0
   const foodNet      = kpi ? formatEur(kpi.food.net_revenue_eur) : '\u2014'
   const foodShare    = kpi?.food.share_pct ?? 100
+  // Already included in totalRevenue \u2014 surfaced explicitly rather than
+  // left invisible inside the total (F-01: this used to be silently
+  // dropped from the total entirely; now it's visible instead).
+  const unmappedRevenue = kpi && Number(kpi.unmapped_revenue_eur) > 0
+    ? formatEur(kpi.unmapped_revenue_eur)
+    : null
 
   const unackAccent: VeraRole = criticalCount > 0 ? 'pink' : 'amber'
 
   return (
     <div className="grid grid-cols-5 gap-3 px-5 py-3 shrink-0">
-      <MetricTile label="Total Revenue" value={totalRevenue} accent="cyan" />
+      <MetricTile label="Total Revenue" value={totalRevenue} accent="cyan">
+        {unmappedRevenue && (
+          <span className="text-[10px] block whitespace-nowrap" style={{ color: 'var(--v-amber)' }}>
+            {unmappedRevenue} not yet assigned to a bar
+          </span>
+        )}
+      </MetricTile>
 
       <MetricTile label="Drinks" value={String(drinkUnits)} accent="cyan" onClick={onBreakdownClick}>
         <span className="text-xs mt-0.5 block" style={{ color: 'var(--v-text-muted)' }}>{drinkRevenue}</span>
