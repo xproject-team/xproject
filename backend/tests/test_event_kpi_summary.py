@@ -118,6 +118,9 @@ async def test_drinks_only_families_null_share_is_100():
             await _sale(session, tenant.id, ev.id, bar.id, wine.id, qty=3, price_cents=700)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=1, price_cents=1200)
             await _sale(session, tenant.id, ev.id, bar.id, soft.id, qty=5, price_cents=600)
+            # Euro totals are fiscal-sourced (EventOrder), not derived from
+            # the stock-transaction sales above — see event_kpi_service.py.
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=7700)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res is not None
@@ -146,11 +149,12 @@ async def test_food_only_share_50():
             ev = await make_event(session, tenant.id)
             ev.food_revenue_share_pct = 50
             await session.flush()
-            bar = await make_bar(session, tenant.id, ev.id)
+            bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             gel = await _food_product(session, tenant.id, FoodType.GELATO)
             await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=4, price_cents=1200)
             await _sale(session, tenant.id, ev.id, bar.id, gel.id, qty=2, price_cents=500)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=5800)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 0
@@ -177,10 +181,13 @@ async def test_mixed_share_30():
             ev.food_revenue_share_pct = 30
             await session.flush()
             bar = await make_bar(session, tenant.id, ev.id)
+            food_bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             cock = await _drink_product(session, tenant.id, ProductCategory.PREMIUM_COCKTAIL)
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=10, price_cents=1200)
-            await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=5, price_cents=1200)
+            await _sale(session, tenant.id, ev.id, food_bar.id, burg.id, qty=5, price_cents=1200)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=12000)
+            await _order(session, tenant.id, ev.id, bar_id=food_bar.id, fiscal_gross_cents=6000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 10
@@ -206,10 +213,13 @@ async def test_share_zero_food_net_is_zero():
             ev.food_revenue_share_pct = 0
             await session.flush()
             bar = await make_bar(session, tenant.id, ev.id)
+            food_bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             cock = await _drink_product(session, tenant.id, ProductCategory.BASIC_COCKTAIL)
             burg = await _food_product(session, tenant.id, FoodType.BURGERS)
             await _sale(session, tenant.id, ev.id, bar.id, cock.id, qty=1, price_cents=1000)
-            await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=3, price_cents=1000)
+            await _sale(session, tenant.id, ev.id, food_bar.id, burg.id, qty=3, price_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=food_bar.id, fiscal_gross_cents=3000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.revenue_eur == Decimal("10.00")
@@ -229,9 +239,10 @@ async def test_share_explicit_100_equals_gross():
             ev = await make_event(session, tenant.id)
             ev.food_revenue_share_pct = 100
             await session.flush()
-            bar = await make_bar(session, tenant.id, ev.id)
+            bar = await make_bar(session, tenant.id, ev.id, bar_type="food")
             burg = await _food_product(session, tenant.id, FoodType.SANDWICHES)
             await _sale(session, tenant.id, ev.id, bar.id, burg.id, qty=2, price_cents=1000)
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=2000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.food.share_pct == 100
@@ -296,6 +307,7 @@ async def test_excludes_non_revenue_and_priceless_rows():
                 session, tenant.id, ev.id, bar.id, cock.id, qty=Decimal("50"),
                 source=_REVENUE_SOURCE,
             )
+            await _order(session, tenant.id, ev.id, bar_id=bar.id, fiscal_gross_cents=2000)
 
             res = await EventKpiSummaryService(session).get_for_event(tenant.id, ev.id)
             assert res.drinks.units == 2

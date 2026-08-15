@@ -70,12 +70,14 @@ async def make_bar(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     event_id: uuid.UUID,
+    *,
+    bar_type: str = "drinks",
 ) -> Bar:
     b = Bar(
         tenant_id=tenant_id,
         event_id=event_id,
         name=f"test-bar-{uuid.uuid4().hex[:8]}",
-        bar_type="drinks",
+        bar_type=bar_type,
         is_active=True,
     )
     session.add(b)
