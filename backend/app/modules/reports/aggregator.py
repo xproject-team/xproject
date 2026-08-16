@@ -231,11 +231,14 @@ class ReportAggregator:
     ) -> ReportRevenueKpis:
         """ReportRevenueKpis: total revenue, per-hour, peak window, top product."""
         # Base predicate: all revenue-counting transactions for this event.
+        # pos_line_status='confirmed' excludes refunds — see the model's own
+        # documented invariant (stock_transactions/models.py).
         revenue_filter = and_(
             StockTransaction.tenant_id == tenant_id,
             StockTransaction.event_id == event_id,
             StockTransaction.source.in_(REVENUE_SOURCES),
             StockTransaction.price_cents.is_not(None),
+            StockTransaction.pos_line_status == "confirmed",
         )
 
         # total_revenue: SUM(qty * price_cents) / 100, as Decimal.
@@ -334,6 +337,7 @@ class ReportAggregator:
                 StockTransaction.event_id == event_id,
                 StockTransaction.source.in_(REVENUE_SOURCES),
                 StockTransaction.price_cents.is_not(None),
+                StockTransaction.pos_line_status == "confirmed",
             )
             .group_by(Bar.id, Bar.name)
             .order_by(desc("revenue"))
@@ -867,6 +871,7 @@ class ReportAggregator:
             StockTransaction.event_id == event_id,
             StockTransaction.source.in_(REVENUE_SOURCES),
             StockTransaction.price_cents.is_not(None),
+            StockTransaction.pos_line_status == "confirmed",
         )
         stmt = (
             select(
