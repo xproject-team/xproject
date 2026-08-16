@@ -389,13 +389,17 @@ class DepletionEvaluator:
                     bar_id, product_id, e,
                 )
 
-        # Auto-resolve anything that's no longer alert-worthy.
+        # Auto-resolve anything that's no longer alert-worthy. Scoped to
+        # 'depletion' only — this pass has no information about whether
+        # any anomaly alert's condition still holds, so it must never
+        # touch those rows (see auto_resolve_missing's docstring).
         try:
             counters["auto_resolved"] = (
                 await self.alerts_service.auto_resolve_missing(
                     tenant_id=tenant_id,
                     event_id=event_id,
                     still_active_keys=still_active_keys,
+                    alert_types={"depletion"},
                 )
             )
         except Exception as e:  # noqa: BLE001
@@ -456,9 +460,11 @@ class AlertsOrchestrator:
         name_maps = await self.depletion._load_name_maps(tenant_id, event_id)
 
         # Then anomaly detectors. Each increments "checked" and "fired".
-        # Auto-resolve for anomalies is the SAME depletion auto-resolve —
-        # the evaluator scans ALL active alerts and resolves any whose
-        # dedup key no longer matches. No per-detector auto-resolve needed.
+        # Anomaly alerts have no auto-resolve pass of their own yet — the
+        # depletion auto-resolve above is scoped to alert_type='depletion'
+        # only and never touches them (see auto_resolve_missing). An
+        # anomaly alert currently only clears via manual acknowledge/
+        # resolve or event expiry.
         spike = await self.demand_spike.evaluate(tenant_id, event_id, name_maps=name_maps)
         for k, v in spike.items():
             totals[k] = totals.get(k, 0) + v

@@ -47,6 +47,7 @@ from app.modules.alerts.schemas import (
     AlertAcknowledgeResponse,
     AlertCreate,
     AlertListResponse,
+    AlertResolveResponse,
     AlertResponse,
 )
 
@@ -72,6 +73,11 @@ class StaleAlertVersionError(Exception):
 class AlertAlreadyAcknowledgedError(Exception):
     """Alert has already been acknowledged; re-ack is a no-op but we
     surface this to the client so it can refresh its local state."""
+
+
+class AlertAlreadyResolvedError(Exception):
+    """Alert has already been manually resolved; re-resolve is a no-op
+    but we surface this to the client so it can refresh its local state."""
 
 
 class AlertAccessDeniedError(Exception):
@@ -218,6 +224,8 @@ class AlertsService:
             acknowledged_at=alert.acknowledged_at,
             acknowledged_by_user_id=alert.acknowledged_by_user_id,
             auto_resolved_at=alert.auto_resolved_at,
+            resolved_at=alert.resolved_at,
+            resolved_by_user_id=alert.resolved_by_user_id,
             expired_at=alert.expired_at,
             lifecycle_state=alert.lifecycle_state,
             version=alert.version,
@@ -256,6 +264,7 @@ class AlertsService:
             ),
             Alert.acknowledged_at.is_(None),
             Alert.auto_resolved_at.is_(None),
+            Alert.resolved_at.is_(None),
             Alert.expired_at.is_(None),
         )
 
@@ -328,6 +337,7 @@ class AlertsService:
             conditions.extend([
                 Alert.acknowledged_at.is_(None),
                 Alert.auto_resolved_at.is_(None),
+                Alert.resolved_at.is_(None),
                 Alert.expired_at.is_(None),
             ])
         if severity is not None:
@@ -463,6 +473,75 @@ class AlertsService:
             lifecycle_state=row.lifecycle_state,
         )
 
+    # ── RESOLVE (manual, optimistic lock) ───────────────────────────────────
+
+    async def resolve(
+        self,
+        tenant_id: UUID,
+        alert_id: UUID,
+        user_id: UUID,
+        expected_version: int,
+    ) -> AlertResolveResponse:
+        """Mark an alert manually resolved. Optimistic lock via version.
+
+        Distinct from acknowledge(): acknowledge means "Owner has seen this
+        and is on it"; resolve means "the underlying condition is over".
+        A human can resolve an alert that was never acknowledged (e.g. the
+        underlying condition was fixed outside the platform — a Slesh shop
+        mapping corrected via direct DB work, with nobody having clicked
+        Acknowledge first) and can resolve one that's already acknowledged.
+
+        Same permission model as acknowledge (owner-only, enforced in the
+        router — see acknowledge()'s docstring for why).
+
+        Idempotent-friendly: if the alert is already resolved (manually or
+        automatically), we raise so the client refreshes; we do NOT
+        silently overwrite resolved_by/resolved_at, and we do NOT resolve
+        an alert that a detector already auto-resolved (same event class,
+        already closed — re-marking it manually-resolved would just
+        obscure which mechanism actually closed it).
+        """
+        row = (
+            await self.db.execute(
+                select(Alert).where(
+                    and_(
+                        Alert.id == alert_id,
+                        Alert.tenant_id == tenant_id,
+                    )
+                ).with_for_update()
+            )
+        ).scalar_one_or_none()
+
+        if row is None:
+            raise AlertNotFoundError()
+
+        if row.version != expected_version:
+            raise StaleAlertVersionError(current_version=row.version)
+
+        if row.resolved_at is not None or row.auto_resolved_at is not None:
+            raise AlertAlreadyResolvedError()
+
+        now = datetime.now().astimezone()
+        row.resolved_at = now
+        row.resolved_by_user_id = user_id
+        row.version += 1
+        await self.db.flush()
+
+        logger.info(
+            "alert resolved id=%s by=%s",
+            row.id, user_id,
+        )
+
+        await self._broadcast(row.event_id, "alert_changed", row.id)
+
+        return AlertResolveResponse(
+            id=row.id,
+            resolved_at=row.resolved_at,
+            resolved_by_user_id=row.resolved_by_user_id,
+            version=row.version,
+            lifecycle_state=row.lifecycle_state,
+        )
+
     # ── LIFECYCLE: auto-resolve + expire ────────────────────────────────────
 
     async def auto_resolve_missing(
@@ -470,13 +549,24 @@ class AlertsService:
         tenant_id: UUID,
         event_id: UUID,
         still_active_keys: set[tuple[UUID, UUID | None, str]],
+        alert_types: set[str],
     ) -> int:
         """Auto-resolve alerts whose dedup key is NOT in the provided set.
 
-        Called by the evaluator AFTER it has finished a full pass and
+        Called by an evaluator AFTER it has finished a full pass and
         produced the set of keys that should still be active. Any active
         alert not in that set represents a condition that has ended
         (e.g. stock restocked, burn rate dropped below INFO threshold).
+
+        alert_types scopes which alert_type(s) this call is authoritative
+        for — only alerts of those type(s) are candidates for resolution.
+        A caller that only evaluated 'depletion' conditions has no
+        information about whether an 'anomaly' alert's condition still
+        holds, so it must never touch anomaly rows (previously it did,
+        since this scan considered every active alert regardless of type
+        — see the 2026-08 anomaly-churn bug: a depletion-only pass would
+        auto-resolve every active anomaly alert, which then got
+        immediately recreated by the next detector, every tick).
 
         Returns the number of rows updated. Bounded per-call so the
         background loop stays responsive; the evaluator cycles anyway.
@@ -485,8 +575,10 @@ class AlertsService:
             and_(
                 Alert.tenant_id == tenant_id,
                 Alert.event_id == event_id,
+                Alert.alert_type.in_(alert_types),
                 Alert.acknowledged_at.is_(None),
                 Alert.auto_resolved_at.is_(None),
+                Alert.resolved_at.is_(None),
                 Alert.expired_at.is_(None),
             )
         )
@@ -529,6 +621,7 @@ class AlertsService:
                     Alert.event_id == event_id,
                     Alert.acknowledged_at.is_(None),
                     Alert.auto_resolved_at.is_(None),
+                    Alert.resolved_at.is_(None),
                     Alert.expired_at.is_(None),
                 )
             )
@@ -564,6 +657,7 @@ class AlertsService:
                     Alert.event_id == event_id,
                     Alert.acknowledged_at.is_(None),
                     Alert.auto_resolved_at.is_(None),
+                    Alert.resolved_at.is_(None),
                     Alert.expired_at.is_(None),
                 )
             )
@@ -592,6 +686,7 @@ class AlertsService:
                     Alert.event_id == event_id,
                     Alert.acknowledged_at.is_(None),
                     Alert.auto_resolved_at.is_(None),
+                    Alert.resolved_at.is_(None),
                     Alert.expired_at.is_(None),
                 )
             )

@@ -22,7 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field
 AlertType = Literal["depletion", "anomaly", "discrepancy", "system"]
 AlertSeverity = Literal["info", "warning", "critical", "anomaly"]
 AlertAudience = Literal["owner_only", "owner_and_manager"]
-AlertLifecycleState = Literal["active", "acknowledged", "auto_resolved", "expired"]
+AlertLifecycleState = Literal[
+    "active", "acknowledged", "auto_resolved", "resolved", "expired",
+]
 
 
 # ─── Context sub-schemas (typed shapes for context_json per alert_type) ───────
@@ -103,6 +105,20 @@ class AlertAcknowledge(BaseModel):
     )
 
 
+class AlertResolve(BaseModel):
+    """Body for PATCH /alerts/{id}/resolve.
+
+    Same optimistic-locking contract as AlertAcknowledge. A separate
+    schema (rather than reusing AlertAcknowledge) so the two actions stay
+    independently evolvable — e.g. resolve may grow a free-text note field
+    later without touching acknowledge's contract.
+    """
+    version: int = Field(
+        description="Current version known to the client. Service returns "
+                    "409 if the DB has a newer version.",
+    )
+
+
 # ─── Response schemas ─────────────────────────────────────────────────────────
 
 
@@ -141,6 +157,8 @@ class AlertResponse(BaseModel):
     acknowledged_at: datetime | None
     acknowledged_by_user_id: UUID | None
     auto_resolved_at: datetime | None
+    resolved_at: datetime | None
+    resolved_by_user_id: UUID | None
     expired_at: datetime | None
 
     lifecycle_state: AlertLifecycleState
@@ -171,5 +189,24 @@ class AlertAcknowledgeResponse(BaseModel):
     id: UUID
     acknowledged_at: datetime
     acknowledged_by_user_id: UUID
+    version: int
+    lifecycle_state: AlertLifecycleState
+
+
+# ─── Resolve response (explicit type for clarity) ──────────────────────────
+
+
+class AlertResolveResponse(BaseModel):
+    """Returned by PATCH /alerts/{id}/resolve on success.
+
+    Separate from AlertResponse/AlertAcknowledgeResponse for the same
+    reason as acknowledge's response type — a narrow, explicit signal for
+    'resolve succeeded'.
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    resolved_at: datetime
+    resolved_by_user_id: UUID
     version: int
     lifecycle_state: AlertLifecycleState

@@ -881,6 +881,14 @@ class EventService:
                 "ended_at": datetime.now(timezone.utc),
             },
         )
+        # Expire any alert still active when the event ends, so it doesn't
+        # sit "active" forever on a completed event. Inline, in the SAME
+        # transaction as the completion itself — unlike the three
+        # best-effort jobs below (which run after commit, in their own
+        # try/except, and may silently no-op), this is a single cheap
+        # UPDATE and must not be skippable.
+        from app.modules.alerts.service import AlertsService
+        await AlertsService(self.db).expire_event_alerts(tenant_id, event_id)
         await self.db.commit()
         # Phase F: queue a nowcast retrain now that this event has real,
         # closed-book revenue data. Enqueued AFTER commit (not before) —

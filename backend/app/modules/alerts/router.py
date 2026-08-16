@@ -6,6 +6,7 @@ Endpoints:
     GET   /alerts/by-event/{event_id}/count-by-bar {bar: {severity: count}}
     GET   /alerts/{alert_id}                        single alert detail
     PATCH /alerts/{alert_id}/acknowledge            optimistic-lock ack
+    PATCH /alerts/{alert_id}/resolve                optimistic-lock manual resolve
 
     WS    /ws/alerts/{event_id}                     live push (stub, wired in 1.8)
 
@@ -38,11 +39,14 @@ from app.modules.alerts.schemas import (
     AlertAcknowledge,
     AlertAcknowledgeResponse,
     AlertListResponse,
+    AlertResolve,
+    AlertResolveResponse,
     AlertResponse,
 )
 from app.modules.alerts.service import (
     AlertAccessDeniedError,
     AlertAlreadyAcknowledgedError,
+    AlertAlreadyResolvedError,
     AlertNotFoundError,
     AlertsService,
     StaleAlertVersionError,
@@ -241,5 +245,73 @@ async def acknowledge_alert(
             detail={
                 "error": "already_acknowledged",
                 "message": "This alert was already acknowledged.",
+            },
+        )
+
+
+# ─── PATCH /alerts/{alert_id}/resolve ──────────────────────────────────────
+
+
+@router.patch(
+    "/{alert_id}/resolve",
+    response_model=AlertResolveResponse,
+)
+async def resolve_alert(
+    alert_id: UUID,
+    payload: AlertResolve,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> AlertResolveResponse:
+    """Manually resolve an alert. Optimistic lock via version.
+
+    Distinct from acknowledge: acknowledge means "I've seen this and am on
+    it"; resolve means "the underlying condition is over" — for when it
+    was fixed outside the platform and no detector will ever naturally
+    clear it (e.g. a Slesh shop mapping corrected via direct DB work).
+
+    Owner-only, same as acknowledge — see acknowledge_alert's docstring.
+
+    409 on version conflict or if the alert is already resolved (manually
+    or automatically). Client must refetch the alert and retry.
+    """
+    if get_active_role(current_user).value != "owner":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "forbidden",
+                "message": "Only Owners can resolve alerts.",
+            },
+        )
+
+    service = AlertsService(db)
+    try:
+        result = await service.resolve(
+            tenant_id=current_user.tenant_id,
+            alert_id=alert_id,
+            user_id=current_user.id,
+            expected_version=payload.version,
+        )
+        await db.commit()
+        return result
+    except AlertNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "alert_not_found", "message": "No such alert."},
+        )
+    except StaleAlertVersionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "version_conflict",
+                "message": "Alert was modified; refetch and retry.",
+                "current_version": e.current_version,
+            },
+        )
+    except AlertAlreadyResolvedError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "already_resolved",
+                "message": "This alert was already resolved.",
             },
         )
