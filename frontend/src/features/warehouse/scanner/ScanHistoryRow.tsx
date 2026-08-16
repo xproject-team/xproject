@@ -113,15 +113,18 @@ function formatTime(ms: number): string {
 }
 
 /** Extract a display label for the bottle: prefer product_name, fall back
- *  to barcode, then to a generic placeholder. Never throws on null data. */
-function rowLabel(row: ScanHistoryRowData): string {
+ *  to barcode, then to a generic placeholder. Never throws on null data.
+ *  'failed' never falls back to "Scan recorded" — nothing WAS recorded;
+ *  saying so was actively misleading about a scan that just errored out. */
+export function rowLabel(row: ScanHistoryRowData): string {
   switch (row.kind) {
     case 'synced':
     case 'voided':
       return row.scan.product_name ?? row.scan.barcode_raw ?? 'Scan recorded'
     case 'queued':
-    case 'failed':
       return row.productName ?? row.barcodeRaw ?? 'Scan recorded'
+    case 'failed':
+      return row.productName ?? row.barcodeRaw ?? 'Scan failed'
   }
 }
 
@@ -187,10 +190,7 @@ export function ScanHistoryRow({
           <p className="text-[11px] text-[#A16207]">pending sync</p>
         )}
         {row.kind === 'failed' && (
-          <p
-            className="text-[11px] text-[#B91C1C] truncate"
-            title={row.errorMessage}
-          >
+          <p className="text-[11px] text-[#B91C1C] break-words">
             {row.errorMessage}
           </p>
         )}

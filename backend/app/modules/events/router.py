@@ -82,6 +82,7 @@ from app.modules.predictions.nowcast.schemas import RevenueForecastResponse
 from app.modules.predictions.nowcast.service import (
     EventNotFoundError as ForecastEventNotFoundError,
     EventNotInTenantError as ForecastEventNotInTenantError,
+    InsufficientForecastHistoryError,
     get_revenue_forecast,
 )
 from app.modules.customer_intelligence.schemas import (
@@ -1090,7 +1091,11 @@ async def get_revenue_forecast_endpoint(
     404 if event_id doesn't exist at all. 403 if it exists but belongs
     to a different tenant (an intentionally stricter distinction than
     most endpoints in this file, which collapse both into 404 — see
-    Phase D's task brief).
+    Phase D's task brief). 409 if the event is real but this TENANT has
+    no nowcast training data yet (never retrained, or the artifact is
+    unavailable) — the frontend's RevenueForecastPanel already treats
+    any error/missing-forecast state as "Forecast unavailable", so this
+    degrades gracefully with no frontend change required.
     """
     if as_of_time is None:
         as_of_time = datetime.now(timezone.utc)
@@ -1105,6 +1110,11 @@ async def get_revenue_forecast_endpoint(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "event_not_in_tenant", "message": str(e)},
+        )
+    except InsufficientForecastHistoryError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "insufficient_forecast_history", "message": str(e)},
         )
 
 

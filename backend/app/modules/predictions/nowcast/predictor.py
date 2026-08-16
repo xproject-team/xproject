@@ -7,13 +7,15 @@ statistical nowcast (historical shape curve + linear scaling), not a
 trained model. Post-Sundance the guts get upgraded to something
 trained on more seasons of data; the label doesn't change.
 
-Pure pandas + numpy. No sklearn, no .pkl artifacts.
+Pure pandas + numpy fit — no sklearn. (Serving does now use a pickled
+bundle, model_artifacts.file_bytes — see the "Serving" section below —
+but the fit itself has no trained weights, just shape_curve/r2_table.)
 
 Moved here from backend/scripts/nowcast_predictor.py (Phase C) as part
 of Phase D — same class API, now backed by parquet files shipped
-alongside this module (nowcast/data/*.parquet) instead of a scratch
-scripts/ml_data/ directory, and loaded once as a process-wide
-singleton (see get_predictor() below) instead of per-script-run.
+alongside this module (nowcast/data/*.parquet) for the offline
+back-test script; see "Serving" below for how production actually
+loads a predictor today.
 
 ─── Method (unchanged from Phase C, matches Phase B's Q1/Q4) ──────────
 1. For each historical event, interpolate its cumulative-revenue curve
@@ -63,10 +65,36 @@ keep growing with real data after every completed event. Once there
 are enough events for a reasonable per-year split (rough rule of
 thumb: 8-10+ per year), year-segmentation may be worth re-testing —
 the back-test script is right there.
+
+─── Serving: per-tenant, via model_artifacts (2026-08 fix) ────────────
+Originally served from a single process-wide singleton fit on two
+parquet files shipped inside this module (app/modules/predictions/
+nowcast/data/*.parquet) — a shared, tenant-blind cache. Two problems:
+(1) every tenant's Dashboard forecast was computed from the SAME
+historical basis regardless of which tenant was asking — the exact
+9-event external Sundance dataset belongs to one tenant (Noma Group),
+not to test/sim tenants who happened to share the deploy; (2) retrain.py's
+output (an atomic parquet rewrite) lived on local container disk, which
+Railway does not persist across deploys — every retrain was silently
+discarded on the next deploy, so the nowcast never actually benefited
+from a completed event in production.
+
+Both are fixed the same way the demand model (predictions/demand/)
+already solved them: served from model_artifacts (tenant_id-scoped,
+versioned, file_bytes in Postgres — durable). See nowcast/loader.py
+for the per-tenant serving cache (mirrors demand/loader.py) and
+nowcast/retrain.py for the write side (mirrors demand/retrain.py).
+
+This module (predictor.py) keeps its file-based constructor
+(__init__/from_dataframes/reload) purely for the offline back-test
+script (backend/scripts/test_nowcast_predictor.py) and for building a
+NowcastPredictor from an in-memory DataFrame pair generically — the
+production serving path now goes through from_bundle() instead, which
+reconstructs a predictor from an already-fitted model_artifacts bundle
+WITHOUT refitting (mirrors DemandPredictor.from_bundle exactly).
 """
 from __future__ import annotations
 
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -76,7 +104,17 @@ import pandas as pd
 HOUR_GRID = np.arange(0, 11, 1.0)  # elapsed hours since first tx: 0..10
 DATA_DIR = Path(__file__).parent / "data"
 REQUIRED_FILES = ("training_events.parquet", "training_transactions.parquet")
-MTIME_CHECK_INTERVAL_S = 60.0  # how often get_predictor() re-stats the parquet files
+
+# Bundle format for model_artifacts.file_bytes (see from_bundle below and
+# nowcast/retrain.py). Mirrors demand/predictor.py's identical guard —
+# bump this and retrain everyone if the bundle's dict shape ever changes.
+FORMAT_VERSION = 1
+
+
+class IncompatibleArtifactFormatError(Exception):
+    """A model_artifacts row's bundle["format_version"] doesn't match this
+    code's FORMAT_VERSION. The artifact must be retrained, not loaded —
+    see FORMAT_VERSION."""
 
 
 def _assert_data_present(data_dir: Path) -> None:
@@ -125,7 +163,16 @@ def fit_shape_and_r2(
     r2_values = {}
     for hr in HOUR_GRID:
         col = matrix_df[hr]
-        if col.std() == 0 or finals.std() == 0:
+        col_std = col.std()
+        finals_std = finals.std()
+        # pandas .std() (ddof=1) is NaN, not 0, for a single-event fit
+        # (n=1 has zero degrees of freedom — variance is undefined, not
+        # zero). NaN == 0 is False, so the old check let it slip through
+        # into np.corrcoef, producing a NaN r² that can't even be stored
+        # (Postgres JSONB rejects literal NaN). A single event has no
+        # meaningful correlation to compute either way — same honest
+        # r²=0.0 answer as the constant-value (std==0, n>=2) case.
+        if pd.isna(col_std) or col_std == 0 or pd.isna(finals_std) or finals_std == 0:
             r2_values[hr] = 0.0
         else:
             r = np.corrcoef(col, finals)[0, 1]
@@ -205,11 +252,45 @@ class NowcastPredictor:
         self.training_last_updated_at = datetime.now(timezone.utc)
         return self
 
+    @classmethod
+    def from_bundle(cls, bundle: dict, trained_at: datetime) -> "NowcastPredictor":
+        """Reconstruct a predictor from a retrain.py bundle (the exact
+        dict pickled to model_artifacts.file_bytes) WITHOUT refitting —
+        the bundle already carries fitted curves. Used by loader.py to
+        serve predictions from a tenant's active model_artifacts row;
+        from_dataframes/__init__ are for fitting from raw data
+        (retraining, back-testing), not serving. Mirrors
+        DemandPredictor.from_bundle exactly.
+
+        Raises IncompatibleArtifactFormatError if the bundle's
+        format_version doesn't match FORMAT_VERSION (including bundles
+        with no format_version at all) — a silently wrong/partial
+        predictor is worse than a loud, named failure loader.py can log
+        and report accurately.
+        """
+        bundle_version = bundle.get("format_version")
+        if bundle_version != FORMAT_VERSION:
+            raise IncompatibleArtifactFormatError(
+                f"nowcast model artifact format_version={bundle_version!r} does not "
+                f"match this code's FORMAT_VERSION={FORMAT_VERSION!r} — the artifact "
+                f"was written by incompatible code and must be retrained, not loaded."
+            )
+        self = cls.__new__(cls)
+        self.data_dir = None
+        self.shape_curve = bundle["shape_curve"]
+        self.r2_table = bundle["r2_table"]
+        self.historical_mean = bundle["historical_mean"]
+        self.historical_range_eur = bundle["historical_range_eur"]
+        self.historical_n = bundle["historical_n"]
+        self._events_df = bundle["events_df"]  # needed by year_weighted_fallback_mean at predict() time
+        self.training_last_updated_at = trained_at
+        return self
+
     def reload(self) -> None:
-        """Re-read the parquet files and re-fit in place. Called by
-        get_predictor() when it notices the files changed on disk
-        (see MTIME_CHECK_INTERVAL_S below) — i.e. after retrain.py has
-        atomically written a fresh training set post-event-completion."""
+        """Re-read the parquet files and re-fit in place. Only relevant
+        to a predictor built via __init__(data_dir=...) — i.e. the
+        offline back-test script; production serving no longer uses
+        this (see from_bundle)."""
         if self.data_dir is None:
             raise RuntimeError("reload() requires a predictor built from parquet (data_dir set)")
         events_df, transactions_df = self._load_parquet(self.data_dir)
@@ -319,52 +400,3 @@ class NowcastPredictor:
             "training_last_updated_at": self.training_last_updated_at,
             "year_weighted_prior_used": year_weighted_prior_used,
         }
-
-
-# ─── Process-wide singleton ─────────────────────────────────────────
-# Loaded once, the first time this module is imported (i.e. at app
-# startup, since events/router.py imports get_predictor() at module
-# load time) — NOT on every request. Fails loudly at import time if
-# the parquet data is missing, rather than on the first request.
-#
-# Phase F auto-retrain (retrain.py) runs in a separate arq worker
-# process and atomically rewrites the parquet files after each
-# completed event. That worker process's own predictor instance
-# reloading itself wouldn't help the web process — they're different
-# Python processes with independent memory. So get_predictor() here
-# polls the parquet files' mtime (throttled to once every
-# MTIME_CHECK_INTERVAL_S, not on every request) and calls reload() when
-# it notices they changed. Both the web process and the worker process
-# independently detect the change this way — no cross-process signaling
-# needed.
-_predictor: NowcastPredictor | None = None
-_last_mtime_check: float = 0.0
-
-
-def get_predictor() -> NowcastPredictor:
-    global _predictor, _last_mtime_check
-
-    if _predictor is None:
-        _predictor = NowcastPredictor()
-        _last_mtime_check = time.monotonic()
-        return _predictor
-
-    now = time.monotonic()
-    if now - _last_mtime_check >= MTIME_CHECK_INTERVAL_S:
-        _last_mtime_check = now
-        if _predictor.data_dir is not None:
-            try:
-                latest_mtime = NowcastPredictor._data_mtime(_predictor.data_dir)
-                if latest_mtime > _predictor.training_last_updated_at:
-                    _predictor.reload()
-            except OSError:
-                # Data dir transiently unavailable mid-atomic-rename —
-                # keep serving the current model, try again next check.
-                pass
-
-    return _predictor
-
-
-# Eager singleton init at import time (see module docstring above).
-_predictor = NowcastPredictor()
-_last_mtime_check = time.monotonic()
