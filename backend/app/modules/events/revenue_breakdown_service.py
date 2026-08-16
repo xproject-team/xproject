@@ -5,14 +5,15 @@ See docs/revenue-calculation-bible.md for the canonical math.
 Source of truth: event_orders rows with status != 'refunded'. Bar classification
 (drinks/food/mixed/merch) is read from Bar.bar_type. Food share % is per-event
 from Event.food_revenue_share_pct, expressed as OWNER's share (30 means
-owner takes 30%, vendor takes 70%).
+owner takes 30%, vendor takes 70%). NULL means 100 (no split, owner keeps
+everything) — see the field's docstring on the Event model.
 
 All money is stored as int cents in the DB; conversion to Decimal EUR happens
 at the response boundary, two-decimal-quantized.
 """
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -140,8 +141,19 @@ class RevenueBreakdownService:
             unspent_balance_eur=None,
         )
 
-        share_pct = int(event.food_revenue_share_pct or 30)
-        food_owner_share_cents = int(food_total * share_pct / 100)
+        # NULL = 100 (no split, owner keeps everything) per the model's own
+        # documented contract (events/models.py) — matches
+        # EventKpiSummaryService's identical None-check. An explicit 0 must
+        # stay 0 (owner keeps nothing), not fall back to a default.
+        share_pct = (
+            100 if event.food_revenue_share_pct is None
+            else int(event.food_revenue_share_pct)
+        )
+        food_owner_share_cents = int(
+            (Decimal(food_total) * Decimal(share_pct) / Decimal(100)).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP
+            )
+        )
         food_vendor_share_cents = food_total - food_owner_share_cents
         net_takehome_cents = (
             all_subtotal

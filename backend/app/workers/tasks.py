@@ -492,6 +492,16 @@ async def cron_close_paused_invoices(ctx: dict) -> dict:
     No fan-out: the work per invoice is just a status transition + the
     discrepancy report compute. Both fast (<200ms total). Doing it inline
     avoids Redis enqueue overhead and contention.
+
+    F-03 (2026-08): each invoice is processed in its OWN freshly opened
+    session, not a session shared across the whole tick — the same fix
+    F-02 applied to cron_auto_transition_event_statuses. Previously, a
+    failure closing one invoice left the shared session's transaction
+    aborted (no rollback), so the very next invoice's first query failed
+    immediately too — logged as if THAT invoice individually failed to
+    close, cascading through every remaining invoice in the tick from one
+    root cause. A session per invoice means a failure can only ever
+    affect that one invoice's own (otherwise-empty) transaction.
     """
     from datetime import datetime, timedelta, timezone
     from sqlalchemy import select
@@ -508,39 +518,45 @@ async def cron_close_paused_invoices(ctx: dict) -> dict:
     async with async_session_factory() as session:
         try:
             stmt = (
-                select(DeliveryInvoice)
+                select(DeliveryInvoice.id, DeliveryInvoice.tenant_id)
                 .where(
                     DeliveryInvoice.status == "PAUSED",
                     DeliveryInvoice.scan_started_at < cutoff,
                 )
+                .order_by(DeliveryInvoice.scan_started_at.asc())
             )
-            eligible = (await session.execute(stmt)).scalars().all()
+            eligible = (await session.execute(stmt)).all()
         except Exception as e:  # noqa: BLE001
             logger.exception("cron_close_paused: list failed: %s", e)
             return {"status": "error", "eligible": 0}
 
-        if not eligible:
-            return {"status": "ok", "eligible": 0, "closed": 0, "failed": 0}
+    if not eligible:
+        return {"status": "ok", "eligible": 0, "closed": 0, "failed": 0}
 
-        for invoice in eligible:
+    for invoice_id, tenant_id in eligible:
+        async with async_session_factory() as invoice_session:
             try:
                 # close_scan handles its own transitions + commit. Pass
                 # closed_by=None to mark this as a system action.
-                svc = InvoiceService(session)
+                svc = InvoiceService(invoice_session)
                 await svc.close_scan(
-                    tenant_id=invoice.tenant_id,
-                    invoice_id=invoice.id,
+                    tenant_id=tenant_id,
+                    invoice_id=invoice_id,
                     closed_by=None,
                 )
                 closed += 1
             except InvalidInvoiceTransitionError:
                 # Race: invoice changed state between our SELECT and the
-                # close call. Safe to skip; next tick re-evaluates.
-                pass
+                # close call. Safe to skip; next tick re-evaluates. Scoped
+                # to invoice_session only (F-03) — cannot affect any
+                # other invoice's processing.
+                await invoice_session.rollback()
             except Exception as e:  # noqa: BLE001
+                # Scoped to invoice_session only (F-03) — see note above.
+                await invoice_session.rollback()
                 logger.warning(
                     "cron_close_paused: failed to close invoice=%s: %s",
-                    invoice.id, e,
+                    invoice_id, e,
                 )
                 failed += 1
 

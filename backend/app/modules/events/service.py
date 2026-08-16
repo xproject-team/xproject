@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import AsyncSessionLocal
 from app.modules.events.models import Event, EventStatus
 from app.modules.events.repository import EventRepository
 from app.modules.events.schemas import EventCreate, EventUpdate
@@ -796,9 +797,10 @@ class EventService:
         """Active → Live. Enforces one-live-per-tenant with auto-end-if-stale.
 
         Contract Q1 (hybrid): if another event is currently Live AND its
-        ended_at has already passed, auto-end it in the same transaction,
-        then start the requested one. If the conflicting event is still
-        "genuinely" live (ended_at in future or NULL), raise LiveEventConflict.
+        ended_at has already passed, auto-end it (via end_event(), in its
+        own isolated session — see _auto_end_stale_live), then start the
+        requested one. If the conflicting event is still "genuinely" live
+        (ended_at in future or NULL), raise LiveEventConflict.
         """
         event = await self.get_event(tenant_id, event_id)
         assert_transition_allowed(event.status, EventStatus.LIVE)
@@ -810,11 +812,19 @@ class EventService:
         if existing_live is not None and existing_live.id != event.id:
             now = datetime.now(timezone.utc)
             if existing_live.ended_at is not None and existing_live.ended_at < now:
-                # Stale live event — auto-end it (same transaction)
-                await self.repo.update(
-                    existing_live,
-                    {"status": EventStatus.COMPLETED},
-                )
+                # Stale live event — complete it the same way end_event()
+                # would (status + the three post-event background jobs),
+                # not a bare status flip, so its customer-session/model-
+                # retrain work still fires. Runs in its OWN session,
+                # isolated from the transaction that starts `event` below:
+                # a failure completing the stale event must never block or
+                # poison the event the caller actually asked to start (see
+                # F-02's per-event-session pattern in
+                # app/workers/tasks.py::cron_auto_transition_event_statuses
+                # for the same isolation principle — sharing a session here
+                # would risk the identical MissingGreenlet-on-rollback
+                # failure mode that fix addressed).
+                await self._auto_end_stale_live(tenant_id, existing_live.id)
             else:
                 # Genuinely live — refuse
                 raise LiveEventConflictError(conflicting_event=existing_live)
@@ -829,6 +839,34 @@ class EventService:
         )
         await self.db.commit()
         return event
+
+    async def _auto_end_stale_live(self, tenant_id: UUID, event_id: UUID) -> None:
+        """Best-effort: complete a stale live event via end_event(), in a
+        freshly opened session, so its post-event background jobs (nowcast
+        retrain, demand retrain, customer-features population) fire exactly
+        as they would for a normal manual/cron completion.
+
+        Deliberately isolated from self.db: this is cleanup for a DIFFERENT
+        event than the one start_event() was actually called for. A
+        conflict, stale data, or transient DB error completing it must
+        never raise out of here — the caller's own transition (for the
+        event it was actually asked to start) must proceed regardless.
+        Using a separate session (rather than self.db + a local
+        try/except + rollback) also avoids expiring `event` — the ORM
+        object start_event() still needs after this call returns — the
+        same expired-object hazard F-02 fixed for the cron's shared
+        session (a rollback on self.db would expire every object in its
+        identity map, not just this one).
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                await EventService(db=session).end_event(tenant_id, event_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "start_event: auto-end of stale live event=%s failed "
+                "(continuing to start the requested event): %s",
+                event_id, e,
+            )
 
     async def end_event(self, tenant_id: UUID, event_id: UUID) -> Event:
         """Live → Completed. Idempotent."""
