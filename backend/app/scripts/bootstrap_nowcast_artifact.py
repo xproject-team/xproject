@@ -38,7 +38,6 @@ import sys
 from pathlib import Path
 from uuid import UUID
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.database import AsyncSessionLocal
 from app.modules.auth.models import Tenant  # noqa: F401 — prime mapper
