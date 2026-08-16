@@ -160,6 +160,14 @@
   color: var(--v-violet);
 }
 
+/* Closed/inactive states (acknowledged, resolved, not-configured, etc.) —
+   deliberately dimmer than --neutral (--v-text-muted): this reads as
+   "no longer needs attention," not just "no strong opinion." */
+.v-badge--dim {
+  background: rgba(107, 114, 128, 0.08);
+  color: var(--v-text-dim);
+}
+
 /* ── Button ─────────────────────────────────────────────────────────────── */
 
 .v-btn {
