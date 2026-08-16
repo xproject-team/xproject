@@ -156,6 +156,18 @@ class Alert(Base):
     # and time-to-depletion rose above the INFO threshold). System resolved
     # it; Owner didn't need to act.
     auto_resolved_at = Column(DateTime(timezone=True), nullable=True)
+    # When a human explicitly marked this resolved (migration ag1) — distinct
+    # from auto_resolved_at (system-detected) and from acknowledged_at
+    # (Owner has seen it, not necessarily that it's over). Covers the case
+    # where the underlying condition was fixed OUTSIDE the platform (e.g. a
+    # Slesh shop mapping corrected via direct DB work) and no detector will
+    # ever naturally clear it.
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # When the event ended while the alert was still unacknowledged and
     # unresolved. "Timed out" — Owner never got to it. Key signal for report:
     # "3 alerts fired during the event that you never acknowledged."
@@ -169,6 +181,7 @@ class Alert(Base):
 
     # ── ORM relationships (lazy, only loaded on demand) ────────────────────
     acknowledged_by = relationship("User", foreign_keys=[acknowledged_by_user_id])
+    resolved_by = relationship("User", foreign_keys=[resolved_by_user_id])
     event = relationship("Event", foreign_keys=[event_id])
     bar = relationship("Bar", foreign_keys=[bar_id])
     product = relationship("Product", foreign_keys=[product_id])
@@ -210,6 +223,7 @@ class Alert(Base):
         return (
             self.acknowledged_at is None
             and self.auto_resolved_at is None
+            and self.resolved_at is None
             and self.expired_at is None
         )
 
@@ -221,6 +235,8 @@ class Alert(Base):
         informative state."""
         if self.expired_at is not None:
             return "expired"
+        if self.resolved_at is not None:
+            return "resolved"
         if self.auto_resolved_at is not None:
             return "auto_resolved"
         if self.acknowledged_at is not None:
