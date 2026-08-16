@@ -108,6 +108,10 @@ class PredictionRepository:
         into the prediction inputs.
 
         Only COMPLETED events with started_at + ended_at populated qualify.
+        is_training_eligible=True is the same contamination guard
+        nowcast/retrain.py applies (migrations aa3 + aa4) — without it,
+        simulation/test/seed fixture events (the dev DB has 17+) would
+        silently scale a "per-guest average" that was never a real night.
         Ordered by ended_at DESC so recent events weight the prediction
         more heavily (if the predictor cares about recency).
         """
@@ -118,6 +122,7 @@ class PredictionRepository:
                 Event.status == EventStatus.COMPLETED,
                 Event.started_at.is_not(None),
                 Event.ended_at.is_not(None),
+                Event.is_training_eligible.is_(True),
             )
             .order_by(Event.ended_at.desc())
             .limit(limit)

@@ -1,10 +1,14 @@
 """Business logic for GET /events/{event_id}/revenue-forecast.
 
 Fetches the event (with an explicit not-found vs. wrong-tenant
-distinction — see the two exceptions below), sums confirmed revenue
+distinction — see the exceptions below), sums confirmed revenue
 transactions up to as_of_time, derives hour_offset_from_start from the
-event's own first transaction, and calls the NowcastPredictor
-singleton to produce the forecast.
+event's own first transaction, and loads THIS TENANT'S active nowcast
+predictor (model_artifacts, via nowcast/loader.py — no shared state
+between tenants, see predictor.py's module docstring) to produce the
+forecast. Raises InsufficientForecastHistoryError if this tenant has
+no nowcast training data yet — never falls back to another tenant's,
+never fabricates a number.
 
 "Confirmed" revenue = the same (source in slesh_pos, manual_bartender)
 convention already used by the heuristic predictor's revenue rollup
@@ -23,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.events.models import Event
-from app.modules.predictions.nowcast.predictor import get_predictor
+from app.modules.predictions.nowcast.loader import get_active_nowcast_predictor
 from app.modules.predictions.nowcast.schemas import (
     HistoricalRange,
     PredictedCurvePoint,
@@ -41,6 +45,19 @@ class EventNotFoundError(Exception):
 
 class EventNotInTenantError(Exception):
     """event_id exists, but belongs to a different tenant. Maps to 403."""
+
+
+class InsufficientForecastHistoryError(Exception):
+    """This tenant has no active nowcast model_artifacts row yet (never
+    retrained, or the retrained artifact is unavailable — see
+    nowcast/loader.py's two distinct reasons). Maps to 409: the event
+    itself is real, but there is no historical basis to forecast from
+    for THIS tenant — never another tenant's, and never a fabricated
+    number. Carries the loader's reason string verbatim."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
 
 
 async def _get_event_or_raise(db: AsyncSession, tenant_id: UUID, event_id: UUID) -> Event:
@@ -100,7 +117,9 @@ async def get_revenue_forecast(
         hour_offset = (as_of_time - first_tx_time).total_seconds() / 3600.0
         hour_offset = max(hour_offset, 0.0)
 
-    predictor = get_predictor()
+    predictor, reason = await get_active_nowcast_predictor(db, tenant_id)
+    if predictor is None:
+        raise InsufficientForecastHistoryError(reason)
     result = predictor.predict(
         float(current_revenue), hour_offset, target_year=event.scheduled_at.year,
     )

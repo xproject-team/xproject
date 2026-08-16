@@ -25,7 +25,12 @@ from app.modules.bars.models import Bar
 from app.modules.events.models import Event, EventStatus
 from app.modules.products.models import Product, ProductType, ProductUnit
 from app.modules.stock_transactions.models import StockTransaction, TransactionSource
-from app.modules.predictions.nowcast.predictor import get_predictor, year_weighted_fallback_mean
+from app.modules.predictions.nowcast.loader import get_active_nowcast_predictor
+from app.modules.predictions.nowcast.predictor import year_weighted_fallback_mean
+from app.modules.predictions.nowcast.service import (
+    InsufficientForecastHistoryError,
+    get_revenue_forecast,
+)
 from app.modules.venues.models import Venue
 
 
@@ -148,7 +153,8 @@ async def test_forecast_at_hour_0_returns_year_weighted_fallback_mean(
     assert r.status_code == 200, r.text
     data = r.json()
 
-    predictor = get_predictor()
+    predictor, reason = await get_active_nowcast_predictor(db_session, tenant.id)
+    assert predictor is not None, reason
     expected_mean = year_weighted_fallback_mean(predictor._events_df, target_year=2026)
     # Sanity: the year-weighted 2026 prior differs from the flat mean
     # (2025 pulls it down) — otherwise this test can't distinguish the
@@ -222,7 +228,8 @@ async def test_forecast_at_hour_6_returns_meaningful_prediction(
     assert data["current_revenue_eur"] == pytest.approx(20000.0)
     assert data["year_weighted_prior_used"] is False  # real revenue present — not the fallback path
     assert data["hour_offset_from_start"] == pytest.approx(6.0, abs=0.01)
-    predictor = get_predictor()
+    predictor, reason = await get_active_nowcast_predictor(db_session, tenant.id)
+    assert predictor is not None, reason
     expected_confidence = predictor._interp_r2(6.0)
     assert data["confidence"] == pytest.approx(expected_confidence, abs=0.001)
     # Sane, not exact — the point estimate is 20000 / shape_curve[6].
@@ -293,3 +300,29 @@ async def test_forecast_respects_tenant_isolation(
     )
     assert r.status_code == 403, r.text
     assert r.json()["detail"]["error"] == "event_not_in_tenant"
+
+
+@pytest.mark.asyncio
+async def test_forecast_degrades_honestly_for_tenant_with_no_nowcast_artifact(
+    db_session: AsyncSession,
+):
+    """A tenant that has never had a nowcast retrain (the common case —
+    most tenants start here, per the 2026-08 isolation fix) must get an
+    explicit "insufficient history" error, never a 200 with a fabricated
+    number and never noma-group's (or any other tenant's) data. Tested
+    at the service layer directly — no HTTP login exists for an
+    on-the-fly tenant in this test suite; the router's exception ->
+    409 mapping is a thin, already-established mechanical translation
+    (identical pattern to the 404/403 cases above)."""
+    other_tenant = Tenant(name=f"no-nowcast-tenant-{uuid4().hex[:8]}", slug=uuid4().hex[:12])
+    db_session.add(other_tenant)
+    await db_session.flush()
+
+    venue = await _create_venue(db_session, other_tenant.id)
+    event = await _create_event(db_session, other_tenant.id, venue.id)
+    await db_session.flush()
+
+    with pytest.raises(InsufficientForecastHistoryError):
+        await get_revenue_forecast(
+            db_session, other_tenant.id, event.id, datetime.now(timezone.utc),
+        )

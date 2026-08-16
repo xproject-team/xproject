@@ -53,9 +53,13 @@ CLAUDE.md
 **/CLAUDE.md
 
 # ML model artifacts — committed selectively after verification.
-# By default exclude .joblib; once a trained model is verified,
-# `git add -f` the specific file to commit it.
+# By default exclude .joblib/.pkl (best-effort local debug copies —
+# demand/retrain.py and nowcast/retrain.py both write one alongside
+# the durable copy in model_artifacts.file_bytes; nothing depends on
+# these surviving). Once a trained model is verified, `git add -f` the
+# specific file to commit it.
 *.joblib
+*.pkl
 
 # ML training data extracted from historical Slesh exports (Phase A,
 # revenue-prediction feature). Derived from raw exports outside this

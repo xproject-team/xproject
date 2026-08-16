@@ -154,12 +154,16 @@ async def retrain_predictor(ctx: dict, tenant_id: str) -> dict:
     Idempotent — retrain_from_completed_events upserts by event_id, so
     re-running (retries, manual re-enqueue) never double-counts an event.
 
-    Never raises out to arq: any failure here (bad data, disk issue) is
-    logged and returned as a structured error. The predictor singleton
-    keeps serving its last-known-good parquet on failure — a bad
-    retrain must never take the /revenue-forecast endpoint down, and
-    must never roll back the event completion that triggered it (that
-    transaction has already committed by the time this task runs).
+    Persists to model_artifacts (tenant_id-scoped, versioned, durable —
+    same mechanism as retrain_demand_predictor below, re-platformed off
+    the old shared/ephemeral parquet files in 2026-08; see
+    nowcast/predictor.py's module docstring for why). Never raises out
+    to arq: any failure here is logged and returned as a structured
+    error. The active model_artifacts row keeps serving the
+    last-known-good fit on failure — a bad retrain must never take the
+    /revenue-forecast endpoint down, and must never roll back the event
+    completion that triggered it (that transaction has already
+    committed by the time this task runs).
     """
     try:
         tenant_uuid = UUID(tenant_id)
@@ -171,7 +175,9 @@ async def retrain_predictor(ctx: dict, tenant_id: str) -> dict:
 
     async with async_session_factory() as session:
         try:
-            return await retrain_from_completed_events(session, tenant_uuid)
+            return await retrain_from_completed_events(
+                session, tenant_uuid, triggered_by="event_completed",
+            )
         except Exception as e:  # noqa: BLE001
             logger.exception("retrain_predictor failed: tenant=%s: %s", tenant_id, e)
             return {"status": "error", "reason": str(e)[:200]}

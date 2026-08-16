@@ -29,6 +29,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Html5Qrcode } from 'html5-qrcode'
 
+import { extractScanErrorMessage } from './scanErrorMessage'
+
 import { Button } from '@/shared/ui/Button'
 import {
   useResolveBarcode,
@@ -184,11 +186,7 @@ export function BottleScanCard({
       } catch (err: unknown) {
         triggerFlash('failure')
         playFailureFeedback()
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Scan submission failed. Try again.'
-        onScanFailed(msg, null)
+        onScanFailed(extractScanErrorMessage(err), null)
       } finally {
         // Brief cooldown so the user sees the flash, then ready for next scan.
         setTimeout(() => {
