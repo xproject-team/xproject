@@ -5,30 +5,30 @@ import type { MockUser } from '@/lib/mockUsers'
 import '@/design-system/components/components.css'
 
 // ─── Role presentation ────────────────────────────────────────────────────────
+// Two-role model. Lookups fall back rather than assuming the role string is
+// one of ours — a stale token can still carry a retired role at runtime.
 
 const ROLE_LABEL: Record<MockUser['role'], string> = {
-  owner:     'Owner',
-  manager:   'Manager',
-  warehouse: 'Warehouse Staff',
-  bartender: 'Bartender',
+  owner:   'Owner',
+  manager: 'Manager',
 }
 
 const ROLE_AVATAR_COLOR: Record<MockUser['role'], string> = {
-  owner:     '#1ABC9C',
-  manager:   '#3498DB',
-  warehouse: '#D69E2E',
-  bartender: '#E74C3C',
+  owner:   '#1ABC9C',
+  manager: '#3498DB',
 }
 
 const ROLE_BADGE: Record<MockUser['role'], string> = {
-  owner:     'bg-[#E6FBF6] text-[#1ABC9C] border-[#1ABC9C]/40',
-  manager:   'bg-[#EBF5FB] text-[#3498DB] border-[#3498DB]/40',
-  warehouse: 'bg-[#FEF9E7] text-[#D69E2E] border-[#D69E2E]/40',
-  bartender: 'bg-[#FDEDEC] text-[#E74C3C] border-[#E74C3C]/40',
+  owner:   'bg-[#E6FBF6] text-[#1ABC9C] border-[#1ABC9C]/40',
+  manager: 'bg-[#EBF5FB] text-[#3498DB] border-[#3498DB]/40',
 }
 
 const ROLE_INITIAL: Record<MockUser['role'], string> = {
-  owner: 'O', manager: 'M', warehouse: 'W', bartender: 'B',
+  owner: 'O', manager: 'M',
+}
+
+function roleLabel(role: string): string {
+  return (ROLE_LABEL as Record<string, string>)[role] ?? role
 }
 
 // ─── SVG icon helper ──────────────────────────────────────────────────────────
@@ -172,28 +172,24 @@ function getNavItems(role: MockUser['role']): NavItem[] {
       ]
 
     case 'manager':
+      // Scan Empties (CONSUMED) and Warehouse were absorbed from the
+      // retired Bartender / Warehouse roles in the two-role model.
       return [
         { label: 'My Bar',         path: '/dashboard',      icon: ICONS.wineGlass },
         { label: 'Inventory',      path: '/inventory',      icon: ICONS.package },
         { label: 'Scan Arrivals',  path: '/scan/arrivals',  icon: ICONS.scan },
+        { label: 'Scan Empties',   path: '/scan/empties',   icon: ICONS.scan },
+        { label: 'Warehouse',      path: '/warehouse',      icon: ICONS.warehouse },
         { label: 'Alerts',         path: '/alerts',         icon: ICONS.bell },
         { label: 'Chat',           path: '/chat',           icon: ICONS.messageCircle },
         { label: 'Settings',       path: '/settings',       icon: ICONS.gear },
       ]
 
-    case 'bartender':
+    default:
+      // Unknown/retired role at runtime (stale token): degrade to a
+      // minimal nav instead of crashing on an undefined item list.
       return [
-        { label: 'My Bar',        path: '/dashboard',     icon: ICONS.wineGlass },
-        { label: 'Scan Empties',  path: '/scan/empties',  icon: ICONS.scan },
-        { label: 'Inventory',     path: '/inventory',     icon: ICONS.package },
-        { label: 'Chat',          path: '/chat',          icon: ICONS.messageCircle },
-        { label: 'Settings',      path: '/settings',      icon: ICONS.gear },
-      ]
-
-    case 'warehouse':
-      return [
-        { label: 'Scan Goods', path: '/warehouse',           icon: ICONS.scan,          exact: true },
-        { label: 'Settings',   path: '/settings',            icon: ICONS.gear },
+        { label: 'Settings', path: '/settings', icon: ICONS.gear },
       ]
   }
 }
@@ -250,23 +246,23 @@ export function Sidebar() {
             {/* Avatar circle */}
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm"
-              style={{ backgroundColor: ROLE_AVATAR_COLOR[role] }}
+              style={{ backgroundColor: ROLE_AVATAR_COLOR[role] ?? '#4A5568' }}
             >
-              {ROLE_INITIAL[role]}
+              {ROLE_INITIAL[role] ?? '?'}
             </div>
 
             {/* Identity info */}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-[var(--v-text)] leading-tight truncate">
-                {user?.full_name ?? ROLE_LABEL[role]}
+                {user?.full_name ?? roleLabel(role)}
               </p>
               <span
                 className={[
                   'inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border mt-1',
-                  ROLE_BADGE[role],
+                  ROLE_BADGE[role] ?? 'bg-white/[0.06] text-[var(--v-text-muted)] border-white/20',
                 ].join(' ')}
               >
-                {ROLE_LABEL[role]}
+                {roleLabel(role)}
               </span>
             </div>
 

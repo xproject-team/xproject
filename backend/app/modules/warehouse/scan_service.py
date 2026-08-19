@@ -76,9 +76,11 @@ class ScanVoidError(Exception):
 
 _ROLE_SCAN_PERMISSIONS: dict[str, set[str]] = {
     "owner": {"INTAKE", "DISPATCH", "RETURN", "ADJUSTMENT", "INSPECT", "CONSUMED"},
-    "warehouse_keeper": {"INTAKE", "DISPATCH", "RETURN"},
-    "manager": {"DISPATCH", "RETURN"},  # scoped to their bar via bar_id check
-    "bartender": {"INSPECT", "CONSUMED"},  # scoped to their bar
+    # Phase 2 two-role model: Manager absorbs the warehouse-execution scans
+    # (INTAKE — invoice intake sessions are owner+manager now) and the
+    # bar-floor CONSUMED scan from the retired Bartender role. ADJUSTMENT
+    # and INSPECT stay Owner-only audit actions.
+    "manager": {"INTAKE", "DISPATCH", "RETURN", "CONSUMED"},
 }
 
 

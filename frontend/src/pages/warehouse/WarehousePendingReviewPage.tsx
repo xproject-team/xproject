@@ -23,8 +23,8 @@ import {
   usePendingReviewQueue,
   useRejectPendingScan,
   type ScanResponse,
-  type ScannerRole,
 } from '@/features/warehouse/useWarehouse'
+import { resolveRoleBadge } from '@/features/warehouse/roleBadges'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -48,13 +48,6 @@ function fmtDecimal(value: string | number | null | undefined, digits = 0): stri
   })
 }
 
-const ROLE_BADGES: Record<ScannerRole, { label: string; color: string }> = {
-  owner:            { label: 'Owner',     color: '#1E5A8D' },
-  warehouse_keeper: { label: 'Warehouse', color: '#DD6B20' },
-  manager:          { label: 'Manager',   color: '#6B21A8' },
-  bartender:        { label: 'Bartender', color: '#059669' },
-}
-
 // ─── Pending review row ──────────────────────────────────────────────────────
 
 function PendingReviewRow({ scan }: { scan: ScanResponse }) {
@@ -63,7 +56,10 @@ function PendingReviewRow({ scan }: { scan: ScanResponse }) {
   const approve = useApprovePendingScan()
   const reject = useRejectPendingScan()
 
-  const role = ROLE_BADGES[scan.scanned_by_role]
+  // Tolerates unknown roles (resolveRoleBadge falls back instead of
+  // crashing) — scanned_by_role is a historical audit snapshot that can
+  // outlive the current role model.
+  const role = resolveRoleBadge(scan.scanned_by_role)
   const inFlight = approve.isPending || reject.isPending
 
   const handleApprove = () => approve.mutate(scan.id)

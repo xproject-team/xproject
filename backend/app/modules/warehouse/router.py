@@ -10,10 +10,10 @@ Endpoint groups (spec S8):
   /barcode/resolve          — lookup before scan submit
 
 Role enforcement:
-  - Owner-only endpoints: require_owner dependency (KPIs, dispute, approve/
-    reject pending, ADJUSTMENT scans)
-  - Warehouse + Owner: require_warehouse_or_owner (invoice management,
-    intake/dispatch/return scans)
+  - Owner-only endpoints: require_owner dependency (dispute, approve/
+    reject pending, allocation writes, ADJUSTMENT scans)
+  - Owner + Manager: require_owner_or_manager (inventory reads, invoice
+    management, intake/dispatch/return scans)
   - Role-aware (via service layer): /scans submit — the service enforces
     the spec S3.5 role-to-scan-type matrix at the business-logic level
 
@@ -95,53 +95,27 @@ def require_owner(
     return current_user
 
 
-def require_owner_or_warehouse(
+def require_owner_or_manager(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
-    """Gate: Owner OR Warehouse keeper.
+    """Gate: Owner OR Manager (Phase 2 two-role model).
 
     Used for warehouse READ endpoints (inventory grid, KPIs, activity feed,
-    event allocations) and operational scan endpoints. Both roles need to
-    see warehouse state to do their jobs:
-      - Owner: full operational visibility + admin actions
-      - Warehouse keeper: their primary surface; can't work without it
+    event allocations) and the invoice lifecycle. Replaces two retired-role
+    guards: require_owner_or_warehouse (the WAREHOUSE role is gone) and
+    require_warehouse_or_owner (whose "warehouse_keeper" string never matched
+    the real role's "warehouse" value, making invoices owner-only in
+    practice — Managers now hold that surface deliberately).
 
-    Note: this guard is intentionally loose for visibility. Action endpoints
-    that should be Owner-only (approve/reject pending review, dispute, archive)
-    keep using require_owner above.
+    Action endpoints that stay Owner-only (approve/reject pending review,
+    dispute, archive, allocation writes) keep using require_owner above.
     """
-    if get_active_role(current_user) not in (UserRole.OWNER, UserRole.WAREHOUSE):
+    if get_active_role(current_user) not in (UserRole.OWNER, UserRole.MANAGER):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "error": "owner_or_warehouse_only",
-                "message": "Only the tenant Owner or Warehouse keepers can access this endpoint.",
-            },
-        )
-    return current_user
-
-
-def require_warehouse_or_owner(
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> User:
-    """Gate: Owner OR warehouse_keeper role.
-
-    Used for invoice management + write-path scan endpoints. Managers and
-    bartenders go through scan-type-level enforcement in ScanService
-    (spec S3.5 matrix).
-    """
-    # Normalize the role to lowercase string for robust comparison
-    role_value = (
-        get_active_role(current_user).value
-        if hasattr(get_active_role(current_user), "value")
-        else str(get_active_role(current_user))
-    ).lower()
-    if role_value not in ("owner", "warehouse_keeper"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "forbidden",
-                "message": "Only Owner or warehouse keeper can perform this action.",
+                "error": "owner_or_manager_only",
+                "message": "Only the tenant Owner or a bar Manager can access this endpoint.",
             },
         )
     return current_user
@@ -157,7 +131,7 @@ router = APIRouter()
 
 @router.get("/inventory/kpis", response_model=InventoryKpis)
 async def get_kpis(
-    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InventoryKpis:
     """5-metric dashboard header: total items, total qty, at-risk count,
@@ -169,7 +143,7 @@ async def get_kpis(
 
 @router.get("/inventory", response_model=list[InventoryRow])
 async def get_inventory_grid(
-    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[InventoryRow]:
     """Product grid: per-product current/allocated/available + risk flag."""
@@ -179,7 +153,7 @@ async def get_inventory_grid(
 
 @router.get("/inventory/activity", response_model=list[ActivityFeedRow])
 async def get_activity_feed(
-    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[ActivityFeedRow]:
@@ -223,7 +197,7 @@ async def resolve_barcode(
 
 @router.get("/invoices", response_model=list[InvoiceSummary])
 async def list_invoices(
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
     status_filter: Annotated[InvoiceStatus | None, Query(alias="status")] = None,
     limit: int = Query(default=100, ge=1, le=500),
@@ -240,7 +214,7 @@ async def list_invoices(
 
 @router.get("/invoices/pending", response_model=list[InvoiceSummary])
 async def list_pending_deliveries(
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[InvoiceSummary]:
     """Dashboard strip: EXPECTED/SCANNING/PAUSED, soonest first."""
@@ -256,7 +230,7 @@ async def list_pending_deliveries(
 )
 async def create_invoice(
     body: InvoiceCreate,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """Create a new EXPECTED invoice with its line items atomically."""
@@ -287,7 +261,7 @@ _MAX_PDF_BYTES = 10 * 1024 * 1024     # 10 MB — fatture are tiny (typically <5
 )
 async def parse_invoice_pdf_endpoint(
     file: Annotated[UploadFile, File(description="Italian fattura PDF")],
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
 ) -> ParsedInvoice:
     """Read an uploaded PDF fattura and return the parsed structure.
 
@@ -342,7 +316,7 @@ async def parse_invoice_pdf_endpoint(
 @router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
 async def get_invoice(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """Full invoice detail with items."""
@@ -361,7 +335,7 @@ async def get_invoice(
 async def update_invoice(
     invoice_id: UUID,
     body: InvoiceUpdate,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """Edit invoice header. Only allowed while status=EXPECTED."""
@@ -387,7 +361,7 @@ async def update_invoice(
 )
 async def start_scan(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """EXPECTED -> SCANNING. First scan against this invoice."""
@@ -404,7 +378,7 @@ async def start_scan(
 )
 async def pause_scan(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """SCANNING -> PAUSED. Session paused, resume later."""
@@ -421,7 +395,7 @@ async def pause_scan(
 )
 async def resume_scan(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> InvoiceResponse:
     """PAUSED -> SCANNING."""
@@ -438,7 +412,7 @@ async def resume_scan(
 )
 async def close_scan(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> DiscrepancyReport:
     """The moment of truth: run reconciliation + transition to VERIFIED
@@ -470,7 +444,7 @@ async def close_scan(
 )
 async def get_report(
     invoice_id: UUID,
-    current_user: Annotated[User, Depends(require_warehouse_or_owner)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> DiscrepancyReport:
     """Return the DiscrepancyReport at ANY invoice state (including live
@@ -692,7 +666,7 @@ async def void_scan(
 )
 async def list_event_allocations(
     event_id: UUID,
-    current_user: Annotated[User, Depends(require_owner_or_warehouse)],
+    current_user: Annotated[User, Depends(require_owner_or_manager)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[AllocationResponse]:
     """All warehouse reservations for one event."""

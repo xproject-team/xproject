@@ -7,7 +7,8 @@
  * full user object (including bar) without needing its signature changed.
  */
 
-export type UserRole = 'owner' | 'manager' | 'bartender' | 'warehouse'
+// Two-role model (Phase 2): owner and manager only.
+export type UserRole = 'owner' | 'manager'
 
 export interface MockUser {
   id: string
@@ -20,10 +21,8 @@ export interface MockUser {
 }
 
 export const MOCK_USERS: MockUser[] = [
-  { id: 'usr-1', name: 'Owner',           role: 'owner',     color: '#1ABC9C' },
-  { id: 'usr-2', name: 'Manager',         role: 'manager',   color: '#3498DB' },
-  { id: 'usr-3', name: 'Warehouse Staff', role: 'warehouse', color: '#D69E2E' },
-  { id: 'usr-4', name: 'Bartender',       role: 'bartender', color: '#E74C3C' },
+  { id: 'usr-1', name: 'Owner',   role: 'owner',   color: '#1ABC9C' },
+  { id: 'usr-2', name: 'Manager', role: 'manager', color: '#3498DB' },
 ]
 
 export const BARS = [
@@ -46,7 +45,7 @@ export function getMockUser(id: string): MockUser | undefined {
   const base = MOCK_USERS.find((u) => u.id === id)
   if (!base) return undefined
 
-  if (_pendingBar && (base.role === 'manager' || base.role === 'bartender')) {
+  if (_pendingBar && base.role === 'manager') {
     const result: MockUser = {
       ...base,
       assignedBarId:   _pendingBar.barId,
@@ -60,7 +59,6 @@ export function getMockUser(id: string): MockUser | undefined {
 }
 
 /** First route after login, by role. Keep /dashboard as fallback — routes.tsx depends on this. */
-export function getHomeRoute(role: UserRole): string {
-  if (role === 'warehouse') return '/warehouse'
+export function getHomeRoute(_role: UserRole): string {
   return '/dashboard'
 }

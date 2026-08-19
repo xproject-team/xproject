@@ -6,14 +6,20 @@ import { MentionBell } from '@/features/chat/MentionBell'
 import { useLiveEvent } from '@/features/dashboard/hooks'
 import '@/design-system/components/components.css'
 
-const ROLE_BADGE: Record<
-  UserRole,
-  { label: string; bg: string; text: string; border: string; dot: string }
-> = {
-  owner:     { label: 'Owner',     bg: 'bg-[#E6FBF6]', text: 'text-[#1ABC9C]', border: 'border-[#1ABC9C]/40', dot: '#1E5A8D' },
-  manager:   { label: 'Manager',   bg: 'bg-[#EBF5FB]', text: 'text-[#3498DB]', border: 'border-[#3498DB]/40', dot: '#6B21A8' },
-  warehouse: { label: 'Warehouse Staff', bg: 'bg-[#FEF9E7]', text: 'text-[#D69E2E]', border: 'border-[#D69E2E]/40', dot: '#DD6B20' },
-  bartender: { label: 'Bartender', bg: 'bg-[#FDEDEC]', text: 'text-[#E74C3C]', border: 'border-[#E74C3C]/40', dot: '#059669' },
+interface RoleBadgeStyle {
+  label: string; bg: string; text: string; border: string; dot: string
+}
+
+// Two-role model. Runtime role strings can still be retired/unknown (stale
+// tokens), so lookups go through the fallback below — never an exhaustive
+// index that crashes on a role this map doesn't know.
+const ROLE_BADGE: Record<UserRole, RoleBadgeStyle> = {
+  owner:   { label: 'Owner',   bg: 'bg-[#E6FBF6]', text: 'text-[#1ABC9C]', border: 'border-[#1ABC9C]/40', dot: '#1E5A8D' },
+  manager: { label: 'Manager', bg: 'bg-[#EBF5FB]', text: 'text-[#3498DB]', border: 'border-[#3498DB]/40', dot: '#6B21A8' },
+}
+
+const FALLBACK_BADGE: RoleBadgeStyle = {
+  label: 'Unknown role', bg: 'bg-white/[0.06]', text: 'text-[var(--v-text-muted)]', border: 'border-white/20', dot: '#4A5568',
 }
 
 export function TopBar() {
@@ -26,7 +32,7 @@ export function TopBar() {
   const firstItem  = useRef<HTMLButtonElement>(null)
 
   const role        = user?.activeRole ?? user?.role ?? 'owner'
-  const badge       = ROLE_BADGE[role]
+  const badge       = (ROLE_BADGE as Record<string, RoleBadgeStyle>)[role] ?? FALLBACK_BADGE
   const initials    = (user?.full_name ?? user?.email ?? '?')
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
   const hasMultipleRoles = (user?.assignedRoles?.length ?? 0) > 1
@@ -105,17 +111,8 @@ export function TopBar() {
         )}
       </div>
 
-      {role === 'bartender' && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="flex items-center gap-1.5 bg-white/[0.04] border border-[var(--v-border)] px-3 py-1.5 rounded-full text-[var(--v-text-muted)]">
-            Bottles opened today:
-            <span className="font-bold text-[var(--v-text)]">12</span>
-          </span>
-        </div>
-      )}
-
       <div className="flex items-center gap-1.5 shrink-0 relative">
-        {role !== 'warehouse' && <MentionBell />}
+        <MentionBell />
         {role !== 'owner' && (
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
             {badge.label}

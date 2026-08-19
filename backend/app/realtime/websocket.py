@@ -76,14 +76,14 @@ async def websocket_events(
     # receive the stock:{event_id}:{bar_id} channel so KPI tiles, alerts,
     # and transactions react in <200ms instead of waiting 10s for the
     # polling fallback. Owner subscribes to the wildcard for ALL bars in
-    # this event; Manager + Bartender are scoped to their assigned bar
-    # only. This mirrors the bar-scoping enforced by access_guards.py
-    # at the REST layer.
+    # this event; Manager is scoped to their assigned bar only. This
+    # mirrors the bar-scoping enforced by access_guards.py at the REST
+    # layer.
     user_bar_id = getattr(user, "bar_id", None)
     if user_bar_id is not None:
-        # Manager / Bartender: just their bar
+        # Manager: just their bar
         manager.subscribe(websocket, f"stock:{event_id}:{user_bar_id}")
-    # Owner / Warehouse have user_bar_id == None; for Owner we'd want
+    # Owner has user_bar_id == None; for Owner we'd want
     # all bars but per-bar subscriptions are tracked literally, not by
     # pattern. The dashboard polls every 10s anyway, so for v1.0 Owner
     # falls back to polling for stock events. (Future: Owner socket

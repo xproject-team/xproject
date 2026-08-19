@@ -1,11 +1,10 @@
 /**
- * BarDashboardView — Manager + Bartender role-aware dashboard.
+ * BarDashboardView — the Manager's per-bar dashboard.
  *
  * Spec: docs/bar-dashboard-spec.md S3 through S7.
  *
- * Role gating per spec S5.3:
- *   Manager   = sees + can action everything (acknowledge alerts, restock)
- *   Bartender = sees same data, NO action buttons (read-only)
+ * Two-role model (Phase 2): the read-only Bartender mode is retired;
+ * Manager sees + can action everything (acknowledge alerts, restock).
  *
  * Data flow:
  *   Backend bar-scoping (sub-patch 3b.1) means we don't pass bar_id from
@@ -43,7 +42,7 @@ import { useState } from 'react'
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-export type DashboardRole = 'manager' | 'bartender'
+export type DashboardRole = 'manager'
 
 interface BarDashboardViewProps {
   role: DashboardRole

@@ -154,8 +154,7 @@ function AuthenticatedRoutes() {
 
       {/*
        * /dashboard
-       * Owner (canViewAllBars) · Manager · Bartender (canViewOwnBar) → allowed
-       * Warehouse → neither flag is true → redirects to /warehouse
+       * Owner (canViewAllBars) · Manager (canViewOwnBar) → allowed
        */}
       <Route
         path="/dashboard"
@@ -206,7 +205,7 @@ function AuthenticatedRoutes() {
        */}
       {/*
        * /bars — Owner (canViewAllBars) and Manager
-       * Manager sees all bars for the tenant; Bartender sees only their bar
+       * Manager sees all bars for the tenant
        * via the existing dashboard (BarDashboardView) — not this page.
        */}
       <Route
@@ -235,7 +234,7 @@ function AuthenticatedRoutes() {
       />
       {/*
        * /products — Owner only (canViewAllBars used as the 'admin-y' gate;
-       * Manager and Bartender don't manage product catalog from the UI).
+       * Managers don't manage the product catalog from the UI).
        * /products/new must be declared before /products/:id so the static
        * 'new' segment is not swallowed by the dynamic :id param.
        */}
@@ -384,7 +383,7 @@ function AuthenticatedRoutes() {
 
       {/*
        * /alerts — Owner + Manager (canSeeOperationalAlerts)
-       * Bartender + Warehouse → redirect to home
+       * (two-role model: everyone except a stale retired-role token)
        */}
       <Route
         path="/alerts"
@@ -396,8 +395,7 @@ function AuthenticatedRoutes() {
       />
 
       {/*
-       * /warehouse — Owner + Warehouse Staff (canViewWarehouseStock)
-       * Manager + Bartender → redirect to home
+       * /warehouse — Owner + Manager (canViewWarehouseStock)
        */}
       <Route
         path="/warehouse"
@@ -410,7 +408,7 @@ function AuthenticatedRoutes() {
 
       {/*
        * /warehouse/scan — invoice reconciliation flow.
-       * Owner + Warehouse Staff (canViewWarehouseStock).
+       * Owner + Manager (canViewWarehouseStock).
        * Hosts: invoice picker, create form, scan session UI, discrepancy report.
        */}
       <Route
@@ -424,10 +422,8 @@ function AuthenticatedRoutes() {
 
       {/*
        * /warehouse/pending-review — Owner approves/rejects unexpected scans.
-       * Owner-only in practice (only Owner can approve via backend role check)
-       * but route gated on canViewWarehouseStock so the link is visible to
-       * warehouse staff for diagnostic purposes. Action buttons fail with
-       * 403 cleanly for non-Owner roles.
+       * Owner-only, gated on canCreateEvent (an owner-only flag); the
+       * backend independently enforces Owner on the approve/reject calls.
        */}
       <Route
         path="/warehouse/pending-review"
@@ -452,7 +448,7 @@ function AuthenticatedRoutes() {
 
       {/*
        * /reports — Owner (canGenerateReport) OR Manager (canGenerateBarReport)
-       * Bartender + Warehouse → redirect
+       * Others → redirect
        */}
       <Route
         path="/reports"
@@ -477,8 +473,7 @@ function AuthenticatedRoutes() {
       />
 
       {/*
-       * /chat — Owner + Manager + Bartender (canChat)
-       * Warehouse → redirect to /warehouse
+       * /chat — Owner + Manager (canChat)
        */}
       <Route
         path="/chat"
@@ -492,7 +487,8 @@ function AuthenticatedRoutes() {
 
       {/*
        * /scan/arrivals — Mode B (Manager DISPATCH). Manager + Owner.
-       * /scan/empties  — Mode C (Bartender CONSUMED). Bartender + Owner.
+       * /scan/empties  — Mode C (CONSUMED). Manager + Owner (absorbed
+       *                    from the retired Bartender role).
        *
        * Backend independently enforces scan_type permissions via the
        * _ROLE_SCAN_PERMISSIONS matrix in scan_service.py (defense in

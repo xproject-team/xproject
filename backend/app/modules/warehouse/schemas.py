@@ -49,6 +49,11 @@ ScanType = Literal[
     "CONSUMED",
 ]
 
+# READ-SIDE vocabulary — deliberately wider than the two-role auth model.
+# warehouse_scans.scanned_by_role is an insert-time audit snapshot; historical
+# rows recorded by the retired bartender / warehouse_keeper roles must keep
+# serializing, so those values stay here even though no new scan can carry
+# them (the write-side _ROLE_SCAN_PERMISSIONS matrix only knows owner/manager).
 ScannerRole = Literal["owner", "manager", "bartender", "warehouse_keeper"]
 
 InvoiceLineKind = Literal["catalog_product", "miscellaneous"]

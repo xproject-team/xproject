@@ -368,11 +368,10 @@ export default function DashboardPage() {
   const [searchParams]   = useSearchParams()
 
   // Role-aware branch: Owner sees the multi-bar overview below; Manager
-  // and Bartender get their per-bar 'My Bar' view. Warehouse keepers
-  // never reach this page (route guard redirects them to /warehouse).
-  // Spec: docs/bar-dashboard-spec.md S3.
+  // gets their per-bar 'My Bar' view. Two-role model — spec:
+  // docs/bar-dashboard-spec.md S3.
   const role = user?.role
-  if (role === 'manager' || role === 'bartender') {
+  if (role === 'manager') {
     return <BarDashboardView role={role} />
   }
   // Belt-and-suspenders for any unexpected role: route guard already
