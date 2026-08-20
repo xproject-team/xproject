@@ -144,10 +144,13 @@ class BarService:
     async def backfill_bar_channels(self, tenant_id: UUID) -> dict:
         """Idempotently create chat channels for any bars missing one.
 
-        Intended for admin use after bulk data imports, seed runs, or
-        backup restores that bypass BarService.create_bar (and therefore
-        skip the auto-create-channel hook). Safe to call repeatedly:
-        bars that already have a channel are left untouched.
+        CHANNEL PROVISIONING ONLY. Membership is no longer stored (Phase 2:
+        access is derived from role — Owner + Managers see every bar
+        channel automatically), so this endpoint has no membership-repair
+        job left; it only exists for bulk imports, seed runs, or backup
+        restores that bypass BarService.create_bar (and therefore skip the
+        auto-create-channel hook). Safe to call repeatedly: bars that
+        already have a channel are left untouched.
 
         Returns a summary dict:
           { bars_scanned, channels_created, channels_already_present }

@@ -36,16 +36,35 @@ class ChannelResponse(BaseModel):
 
     `unread_count` is computed from the requesting user's last_read_at
     vs message timestamps. Driven server-side; client just displays it.
+
+    Event fields (bar channels only, NULL otherwise) drive the sidebar's
+    current-event vs archived grouping. `is_archived` = the owning event
+    is completed/cancelled → the channel is read-only history.
     """
 
     model_config = ConfigDict(from_attributes=True)
 
     id: str
-    channel_type: str         # 'bar' | 'dm' | 'general'
+    channel_type: str         # 'bar' | 'direct'/'dm' | 'strategic' | 'general'
     bar_id: str | None
     name: str
     unread_count: int = 0
     last_message_at: datetime | None = None
+    event_id: str | None = None
+    event_name: str | None = None
+    event_status: str | None = None      # draft|active|live|completed|cancelled
+    event_scheduled_at: datetime | None = None
+    is_archived: bool = False
+
+
+class ChannelMemberInfo(BaseModel):
+    """A real current member of a channel — drives the mention picker and
+    the channel-header roster. Derived from role for bar/general/strategic
+    channels, from member rows for DMs."""
+
+    id: str
+    full_name: str
+    role: str                 # 'owner' | 'manager'
 class MentionResponse(BaseModel):
     """A single mention for the bell/notifications dropdown."""
 

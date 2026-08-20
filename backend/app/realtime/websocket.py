@@ -150,19 +150,17 @@ async def websocket_chat(
                 continue
 
             if action == "subscribe":
-                # Enforce membership before subscribing
+                # Enforce role-derived channel access before subscribing
+                # (same rule as the REST layer: bar/general = owner+manager,
+                # strategic = owner, DMs = member rows).
                 async with AsyncSessionLocal() as db:
                     chat = ChatService(db)
                     try:
-                        await chat._ensure_member(
-                            channel_id=UUID(channel_id),
-                            user_id=user.id,
-                            tenant_id=user.tenant_id,
-                        )
+                        await chat._ensure_access(UUID(channel_id), user)
                     except Exception:
                         await websocket.send_text(json.dumps({
                             "type": "error",
-                            "detail": f"not a member of {channel_id}",
+                            "detail": f"no access to {channel_id}",
                         }))
                         continue
 

@@ -59,17 +59,20 @@ export function MentionBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50">
-          <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
-            <h3 className="font-semibold text-sm text-[#1A202C]">Mentions</h3>
+        <div
+          className="absolute right-0 mt-2 w-80 rounded-xl shadow-xl overflow-hidden z-50"
+          style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}
+        >
+          <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: '0.5px solid var(--v-border)' }}>
+            <h3 className="font-semibold text-sm" style={{ color: 'var(--v-text)' }}>Mentions</h3>
             {unreadCount > 0 && (
-              <span className="text-xs text-[#A0AEC0]">{unreadCount} unread</span>
+              <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>{unreadCount} unread</span>
             )}
           </div>
 
           <div className="max-h-96 overflow-y-auto">
             {mentions.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-[#A0AEC0]">
+              <div className="px-4 py-8 text-center text-sm" style={{ color: 'var(--v-text-dim)' }}>
                 No mentions yet. You'll see them here when someone @-mentions you.
               </div>
             ) : (
@@ -77,21 +80,22 @@ export function MentionBell() {
                 <button
                   key={m.id}
                   onClick={() => handleMentionClick(m)}
-                  className={[
-                    'w-full text-left px-4 py-3 border-b border-[#F0F4F8] last:border-b-0 hover:bg-[#F7FAFC] transition-colors',
-                    m.read_at === null ? 'bg-[#EBF4FA]' : '',
-                  ].join(' ')}
+                  className="w-full text-left px-4 py-3 transition-colors hover:bg-white/[0.05]"
+                  style={{
+                    borderBottom: '0.5px solid var(--v-border)',
+                    background: m.read_at === null ? 'rgba(0, 229, 212, 0.07)' : undefined,
+                  }}
                 >
                   <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <span className="text-xs font-semibold text-[#1A202C]">
-                      {m.sender_name ?? 'Unknown'}
+                    <span className="text-xs font-semibold" style={{ color: 'var(--v-text)' }}>
+                      {m.sender_name ?? '(deleted user)'}
                     </span>
-                    <span className="text-[10px] text-[#A0AEC0] flex-shrink-0">
+                    <span className="text-[10px] flex-shrink-0" style={{ color: 'var(--v-text-dim)' }}>
                       {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <div className="text-[11px] text-[#4A5568] mb-1">in #{m.channel_name}</div>
-                  <div className="text-xs text-[#1A202C] line-clamp-2">{m.body}</div>
+                  <div className="text-[11px] mb-1" style={{ color: 'var(--v-text-muted)' }}>in #{m.channel_name}</div>
+                  <div className="text-xs line-clamp-2" style={{ color: 'var(--v-text)' }}>{m.body}</div>
                 </button>
               ))
             )}

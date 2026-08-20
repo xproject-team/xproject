@@ -9,7 +9,6 @@ Endpoints (all require valid JWT):
 from typing import Annotated
 from uuid import UUID
 
-from app.core.config import settings
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +19,7 @@ from app.modules.chat.schemas import (
     AttachmentPresignRequest,
     AttachmentPresignResponse,
     AttachmentResponse,
+    ChannelMemberInfo,
     ChannelResponse,
     MentionResponse,
     MessageCreate,
@@ -60,12 +60,11 @@ async def list_channels(
     current_user: Annotated[User, Depends(get_current_user)],
     db:           Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ChannelResponse]:
-    """List all channels the current user is a member of."""
+    """List all channels the current user can access (role-derived), with
+    unread counts and each bar channel's owning event for sidebar grouping."""
     service = ChatService(db)
-    rows = await service.list_user_channels(
-        user_id=current_user.id,
-        tenant_id=current_user.tenant_id,
-    )
+    rows = await service.list_user_channels(current_user)
+    ARCHIVED = ("completed", "cancelled")
     return [
         ChannelResponse(
             id=str(row["channel"].id),
@@ -74,8 +73,29 @@ async def list_channels(
             name=row["channel"].name,
             unread_count=row["unread_count"],
             last_message_at=row["last_message_at"],
+            event_id=str(row["event_id"]) if row["event_id"] else None,
+            event_name=row["event_name"],
+            event_status=row["event_status"].value if row["event_status"] else None,
+            event_scheduled_at=row["event_scheduled_at"],
+            is_archived=bool(row["event_status"] and row["event_status"].value in ARCHIVED),
         )
         for row in rows
+    ]
+
+
+@router.get("/channels/{channel_id}/members", response_model=list[ChannelMemberInfo])
+async def list_channel_members(
+    channel_id:   UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db:           Annotated[AsyncSession, Depends(get_db)],
+) -> list[ChannelMemberInfo]:
+    """The channel's real current members (drives the mention picker and
+    the header roster). Derived from role; DMs from member rows."""
+    service = ChatService(db)
+    members = await service.list_channel_members(channel_id, current_user)
+    return [
+        ChannelMemberInfo(id=str(u.id), full_name=u.full_name, role=u.role.value)
+        for u in members
     ]
 
 
@@ -96,8 +116,7 @@ async def list_messages(
     service = ChatService(db)
     rows = await service.get_channel_messages(
         channel_id=channel_id,
-        user_id=current_user.id,
-        tenant_id=current_user.tenant_id,
+        user=current_user,
         limit=limit,
     )
     # Hydrate attachments for all messages in one batched query
@@ -144,8 +163,7 @@ async def post_message(
     from uuid import UUID as _UUID
     message = await service.post_message(
         channel_id=channel_id,
-        sender_id=current_user.id,
-        tenant_id=current_user.tenant_id,
+        user=current_user,
         body=payload.body,
         attachment_ids=[_UUID(aid) for aid in payload.attachment_ids],
     )
@@ -234,11 +252,7 @@ async def mark_channel_read(
 ) -> None:
     """Update user's last_read_at on this channel to NOW (clears unread)."""
     service = ChatService(db)
-    await service.mark_channel_read(
-        channel_id=channel_id,
-        user_id=current_user.id,
-        tenant_id=current_user.tenant_id,
-    )
+    await service.mark_channel_read(channel_id=channel_id, user=current_user)
 # ─── Mentions ─────────────────────────────────────────────────────────
 
 
@@ -305,8 +319,7 @@ async def presign_attachment(
     service = ChatService(db)
     attachment, upload_url = await service.create_attachment_slot(
         channel_id   = UUID(payload.channel_id),
-        user_id      = current_user.id,
-        tenant_id    = current_user.tenant_id,
+        user         = current_user,
         filename     = payload.filename,
         content_type = payload.content_type,
         size_bytes   = payload.size_bytes,
@@ -336,12 +349,7 @@ async def search_messages_endpoint(
     Empty/blank queries return [].
     """
     service = ChatService(db)
-    rows = await service.search_messages(
-        query=q,
-        user_id=current_user.id,
-        tenant_id=current_user.tenant_id,
-        limit=limit,
-    )
+    rows = await service.search_messages(query=q, user=current_user, limit=limit)
     return [
         SearchResultItem(
             message_id   = str(r["message"].id),
