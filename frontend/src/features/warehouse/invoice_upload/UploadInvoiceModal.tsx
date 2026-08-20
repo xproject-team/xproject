@@ -136,6 +136,15 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
       setBannerError("Only PDF files are accepted.")
       return
     }
+    // If the operator already has rows in the table (parsed or typed),
+    // parsing a new PDF will replace them. Confirm so accidental drops
+    // don't wipe work in progress.
+    if (previewItems.length > 0) {
+      const ok = window.confirm(
+        `Replace the ${previewItems.length} current row${previewItems.length === 1 ? "" : "s"} with the contents of this PDF?`,
+      )
+      if (!ok) return
+    }
     setBannerError(null)
     setFile(f)
     void runParse(f)
@@ -183,15 +192,22 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
   }
 
   function switchMode(next: "upload" | "manual") {
+    if (next === mode) return  // no-op if already in this mode
     setMode(next)
-    setFile(null)
-    setParsed(null)
     setBannerError(null)
-    if (next === "manual") {
-      // Seed an empty row so the operator can type immediately.
+    // Preserve whatever rows the operator has built up. If switching to
+    // 'manual' and the table is empty, seed one row so they can start
+    // typing right away. Otherwise leave things alone — accidental tab
+    // clicks must NOT wipe the operator's work.
+    if (next === "manual" && previewItems.length === 0) {
       setPreviewItems([makeEmptyPreviewItem(1)])
-    } else {
-      setPreviewItems([])
+    }
+    // Clear the PDF-parse state only when going back to upload from a
+    // fresh slate; if the operator has manual rows we keep them so they
+    // can still hit Save with what they already typed.
+    if (next === "upload" && previewItems.length === 0) {
+      setFile(null)
+      setParsed(null)
     }
   }
 
@@ -358,12 +374,12 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
             </div>
           )}
 
-          {!parsed && mode === "upload" && (
+          {mode === "upload" && (
             <div
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer rounded-lg border-2 border-dashed border-[#CBD5E0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC] p-10 text-center transition-colors"
+              className={["cursor-pointer rounded-lg border-2 border-dashed border-[#CBD5E0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC] text-center transition-colors", previewItems.length > 0 ? "p-4 mb-4" : "p-10"].join(" ")}
             >
               <input ref={fileInputRef} type="file" accept={ACCEPTED_PDF} className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelected(f) }} />
@@ -375,6 +391,14 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
                   </svg>
                   <p className="text-sm text-[#4A5568]">Parsing PDF…</p>
                   {file && <p className="text-xs text-[#718096]">{file.name}</p>}
+                </div>
+              ) : previewItems.length > 0 ? (
+                <div className="flex items-center justify-center gap-2 text-sm">
+                  <svg className="w-4 h-4 text-[#A0AEC0]" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  <span className="font-semibold text-[#4A5568]">Drop another PDF to replace these rows</span>
+                  <span className="text-xs text-[#A0AEC0]">· .pdf · max 10 MB</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
@@ -389,7 +413,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
             </div>
           )}
 
-          {parsed && (
+          {previewItems.length > 0 && (
             <div className="mb-5">
               <h3 className="text-sm font-bold text-[#1A202C] uppercase tracking-wider mb-3">Invoice details</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -419,7 +443,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
                     className="w-full px-3 py-2 border border-[#E2E8F0] rounded-lg text-sm focus:outline-none focus:border-[#1E5A8D]" />
                 </div>
               </div>
-              {parsed.header.total_document && (
+              {parsed && parsed.header.total_document && (
                 <p className="mt-2 text-xs text-[#718096]">
                   PDF declared total: <span className="font-semibold">{fmtEur(parsed.header.total_document)}</span>
                   {" "}· imponibile {fmtEur(parsed.header.total_imponibile)}
@@ -521,7 +545,7 @@ export function UploadInvoiceModal({ isOpen, onClose, onSaved, eventId }: Props)
           <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-[#4A5568] hover:bg-white rounded-lg">
             Cancel
           </button>
-          {parsed && (
+          {previewItems.length > 0 && (
             <button onClick={handleSave} disabled={createM.isPending}
               className={["px-5 py-2 text-sm font-semibold rounded-lg text-white",
                 createM.isPending ? "bg-[#CBD5E0] cursor-not-allowed" : "bg-[#1ABC9C] hover:bg-[#17a589]"].join(" ")}>

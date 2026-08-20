@@ -71,8 +71,8 @@ async def list_transactions_for_event(
 ) -> list[StockTransactionResponse]:
     """Ledger rows for an event, newest first.
 
-    Bar-scoped per spec docs/bar-dashboard-spec.md S9: Manager/Bartender
-    are auto-locked to their assignedBarId; Owner can pass any bar_id or
+    Bar-scoped per spec docs/bar-dashboard-spec.md S9: Manager is
+    auto-locked to their assignedBarId; Owner can pass any bar_id or
     None for all bars.
     """
     bar_id = resolve_bar_filter(current_user, bar_id)

@@ -56,12 +56,12 @@ function fmtDate(iso: string | null | undefined): string {
 const TERMINAL_STATES: InvoiceStatus[] = ['VERIFIED', 'DISCREPANCY', 'DISPUTED', 'CLOSED']
 
 // Map User.role (auth model) -> ScannerRole (warehouse module).
+// Two-role model: this page is gated owner+manager; anything else at
+// runtime (stale token) gets the least-privileged manager button set.
 function mapAuthRole(role: string | null | undefined): ScannerRole {
   const r = (role ?? '').toLowerCase()
   if (r === 'owner') return 'owner'
-  if (r === 'manager') return 'manager'
-  if (r === 'bartender') return 'bartender'
-  return 'warehouse_keeper' // safe default for any other role
+  return 'manager'
 }
 
 // ─── Main page ───────────────────────────────────────────────────────────────

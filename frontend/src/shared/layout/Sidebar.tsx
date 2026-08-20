@@ -2,32 +2,33 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/useAuth'
 import type { MockUser } from '@/lib/mockUsers'
+import '@/design-system/components/components.css'
 
 // ─── Role presentation ────────────────────────────────────────────────────────
+// Two-role model. Lookups fall back rather than assuming the role string is
+// one of ours — a stale token can still carry a retired role at runtime.
 
 const ROLE_LABEL: Record<MockUser['role'], string> = {
-  owner:     'Owner',
-  manager:   'Manager',
-  warehouse: 'Warehouse Staff',
-  bartender: 'Bartender',
+  owner:   'Owner',
+  manager: 'Manager',
 }
 
 const ROLE_AVATAR_COLOR: Record<MockUser['role'], string> = {
-  owner:     '#1ABC9C',
-  manager:   '#3498DB',
-  warehouse: '#D69E2E',
-  bartender: '#E74C3C',
+  owner:   '#1ABC9C',
+  manager: '#3498DB',
 }
 
 const ROLE_BADGE: Record<MockUser['role'], string> = {
-  owner:     'bg-[#E6FBF6] text-[#1ABC9C] border-[#1ABC9C]/40',
-  manager:   'bg-[#EBF5FB] text-[#3498DB] border-[#3498DB]/40',
-  warehouse: 'bg-[#FEF9E7] text-[#D69E2E] border-[#D69E2E]/40',
-  bartender: 'bg-[#FDEDEC] text-[#E74C3C] border-[#E74C3C]/40',
+  owner:   'bg-[#E6FBF6] text-[#1ABC9C] border-[#1ABC9C]/40',
+  manager: 'bg-[#EBF5FB] text-[#3498DB] border-[#3498DB]/40',
 }
 
 const ROLE_INITIAL: Record<MockUser['role'], string> = {
-  owner: 'O', manager: 'M', warehouse: 'W', bartender: 'B',
+  owner: 'O', manager: 'M',
+}
+
+function roleLabel(role: string): string {
+  return (ROLE_LABEL as Record<string, string>)[role] ?? role
 }
 
 // ─── SVG icon helper ──────────────────────────────────────────────────────────
@@ -171,28 +172,24 @@ function getNavItems(role: MockUser['role']): NavItem[] {
       ]
 
     case 'manager':
+      // Scan Empties (CONSUMED) and Warehouse were absorbed from the
+      // retired Bartender / Warehouse roles in the two-role model.
       return [
         { label: 'My Bar',         path: '/dashboard',      icon: ICONS.wineGlass },
         { label: 'Inventory',      path: '/inventory',      icon: ICONS.package },
         { label: 'Scan Arrivals',  path: '/scan/arrivals',  icon: ICONS.scan },
+        { label: 'Scan Empties',   path: '/scan/empties',   icon: ICONS.scan },
+        { label: 'Warehouse',      path: '/warehouse',      icon: ICONS.warehouse },
         { label: 'Alerts',         path: '/alerts',         icon: ICONS.bell },
         { label: 'Chat',           path: '/chat',           icon: ICONS.messageCircle },
         { label: 'Settings',       path: '/settings',       icon: ICONS.gear },
       ]
 
-    case 'bartender':
+    default:
+      // Unknown/retired role at runtime (stale token): degrade to a
+      // minimal nav instead of crashing on an undefined item list.
       return [
-        { label: 'My Bar',        path: '/dashboard',     icon: ICONS.wineGlass },
-        { label: 'Scan Empties',  path: '/scan/empties',  icon: ICONS.scan },
-        { label: 'Inventory',     path: '/inventory',     icon: ICONS.package },
-        { label: 'Chat',          path: '/chat',          icon: ICONS.messageCircle },
-        { label: 'Settings',      path: '/settings',      icon: ICONS.gear },
-      ]
-
-    case 'warehouse':
-      return [
-        { label: 'Scan Goods', path: '/warehouse',           icon: ICONS.scan,          exact: true },
-        { label: 'Settings',   path: '/settings',            icon: ICONS.gear },
+        { label: 'Settings', path: '/settings', icon: ICONS.gear },
       ]
   }
 }
@@ -213,11 +210,11 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-60 bg-[#1E5A8D] text-white flex flex-col flex-shrink-0 shadow-xl">
+    <aside className="v-glass w-60 text-[var(--v-text)] flex flex-col flex-shrink-0 relative z-10">
       {/* Logo */}
       <div className="px-6 py-5 border-b border-white/10">
-        <span className="text-xl font-bold tracking-tight">XProject</span>
-        <p className="text-blue-200 text-xs mt-0.5">Operations Platform</p>
+        <span className="text-xl font-bold tracking-tight text-[var(--v-text)]">Vera Event</span>
+        <p className="text-[10px] tracking-[0.14em] mt-0.5 text-[var(--v-cyan)]">LIVE OPS</p>
       </div>
 
       {/* Nav */}
@@ -229,10 +226,10 @@ export function Sidebar() {
               key={item.path + item.label}
               to={item.path}
               className={[
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                'flex items-center gap-3 px-3 py-2.5 rounded-[var(--v-radius-sm)] text-sm font-medium transition-all border-l-2',
                 active
-                  ? 'bg-[#6C63FF] text-white shadow-sm'
-                  : 'text-blue-100 hover:bg-white/10 hover:text-white',
+                  ? 'text-[var(--v-cyan)] bg-[rgba(0,229,212,0.12)] border-l-[var(--v-cyan)]'
+                  : 'text-[var(--v-text-muted)] hover:text-[var(--v-text)] hover:bg-white/[0.04] border-l-transparent',
               ].join(' ')}
             >
               {item.icon}
@@ -249,23 +246,23 @@ export function Sidebar() {
             {/* Avatar circle */}
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-sm"
-              style={{ backgroundColor: ROLE_AVATAR_COLOR[role] }}
+              style={{ backgroundColor: ROLE_AVATAR_COLOR[role] ?? '#4A5568' }}
             >
-              {ROLE_INITIAL[role]}
+              {ROLE_INITIAL[role] ?? '?'}
             </div>
 
             {/* Identity info */}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white leading-tight truncate">
-                {user?.full_name ?? ROLE_LABEL[role]}
+              <p className="text-sm font-semibold text-[var(--v-text)] leading-tight truncate">
+                {user?.full_name ?? roleLabel(role)}
               </p>
               <span
                 className={[
                   'inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-full border mt-1',
-                  ROLE_BADGE[role],
+                  ROLE_BADGE[role] ?? 'bg-white/[0.06] text-[var(--v-text-muted)] border-white/20',
                 ].join(' ')}
               >
-                {ROLE_LABEL[role]}
+                {roleLabel(role)}
               </span>
             </div>
 
@@ -274,7 +271,7 @@ export function Sidebar() {
               onClick={handleSwitch}
               title="Sign out"
               aria-label="Sign out"
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-blue-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--v-text-dim)] hover:text-[var(--v-text)] hover:bg-white/[0.04] transition-colors shrink-0"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />

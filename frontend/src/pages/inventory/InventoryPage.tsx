@@ -1,13 +1,18 @@
 /**
  * InventoryPage — per-bar stock "box" grid, LIVE event only.
  *
- * The operations view during a live event — the missing link between
- * Warehouse (total invoiced supply) and Dashboard (live monitoring).
- * One box per drinks/food bar, showing that bar's CURRENT stock
- * (same data + math as the Dashboard bar card's stock section) with
- * an inline "+ Add bottle" action to charge it from the warehouse
- * pool. Recharge/service bars (Accrediti, CASSA) hold no bottles and
- * are omitted from the grid entirely.
+ * Design-system conversion (Day 11 Phase 3): same data/behavior as
+ * before (useBarSupplierStock, useChargeBarDispatch, the name-match
+ * bridge to warehouse-invoiced items) — UI-only restyle onto the dark
+ * design system used by Events/Bars/Catalog. No hook, type, or backend
+ * change.
+ *
+ * "Not configured" status (Day 11 investigation finding): a bar with NO
+ * stock rows at all previously showed no status badge whatsoever — not
+ * wrong, but silent. It must not be confused with "healthy" (a bar that
+ * has stock and is comfortably above the low-stock threshold). This is
+ * derived purely client-side from items.length === 0, which the page
+ * already computes — no backend change needed.
  *
  * Reuses already-proven, already-wired pieces rather than introducing
  * anything new:
@@ -39,7 +44,7 @@
  * No backend changes. Charge Bars page (events/:id/charge-bars) is
  * untouched and remains a bulk-entry alternative.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useBarsForEvent, useBarSupplierStock, useLiveEvent } from '@/features/dashboard/hooks'
@@ -48,6 +53,10 @@ import { useSupplierProducts } from '@/features/event_storage/hooks'
 import { useChargeBarDispatch } from '@/features/event_storage/useChargeBars'
 import { useEventWarehouseSummary } from '@/features/warehouse/useWarehouse'
 import type { BarRow } from '@/lib/mockData'
+import { Badge, Button, EmptyState, MetricTile, PageHeader } from '@/design-system/components'
+import type { BadgeVariant } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls, Label } from '@/design-system/wizardForm'
 
 interface PickerRow {
   key:                 string   // product_name, lowercased — React key + name-match key
@@ -57,24 +66,26 @@ interface PickerRow {
   unit:                string
 }
 
-type StockStatus = 'healthy' | 'low' | 'critical'
+type StockStatus = 'healthy' | 'low' | 'critical' | 'not_configured'
 
 const BOX_BAR_TYPES = new Set(['drinks', 'food', 'mixed'])
 
-const STATUS_COLOR: Record<StockStatus, string> = {
-  healthy: '#16A34A',
-  low: '#D97706',
-  critical: '#DC2626',
-}
-const STATUS_BG: Record<StockStatus, string> = {
-  healthy: '#DCFCE7',
-  low: '#FEF3C7',
-  critical: '#FEE2E2',
+const STATUS_BADGE: Record<StockStatus, BadgeVariant> = {
+  healthy: 'success',
+  low: 'warning',
+  critical: 'danger',
+  not_configured: 'dim',
 }
 const STATUS_LABEL: Record<StockStatus, string> = {
   healthy: 'Healthy',
   low: 'Low Stock',
   critical: 'Critical',
+  not_configured: 'Not configured',
+}
+const STATUS_COLOR: Record<'healthy' | 'low' | 'critical', string> = {
+  healthy: 'var(--v-green)',
+  low: 'var(--v-amber)',
+  critical: 'var(--v-pink)',
 }
 
 function fmtQty(value: string | number): string {
@@ -83,8 +94,43 @@ function fmtQty(value: string | number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
-function isStockStatus(s: string | undefined): s is StockStatus {
+function isStockStatus(s: string | undefined): s is 'healthy' | 'low' | 'critical' {
   return s === 'healthy' || s === 'low' || s === 'critical'
+}
+
+// A bar with zero stock rows must never read as "healthy" — that was a
+// real false positive (Day 11 investigation). Not-configured is its own,
+// plainly-labelled state, independent of whatever the aggregate status
+// query returned (or didn't). Shared by the card and the detail panel so
+// the two never disagree.
+function effectiveStockStatus(
+  items: BarSupplierStockItemDTO[],
+  status: 'healthy' | 'low' | 'critical' | undefined,
+): StockStatus {
+  return items.length === 0 ? 'not_configured' : (status ?? 'not_configured')
+}
+
+// Established modal treatment (see BarDetailOverlay / SalesBreakdownModal /
+// RevenueBreakdownModal / EventDetailPage — same values everywhere).
+const MODAL_BACKDROP_STYLE = {
+  background: 'rgba(8,9,13,0.72)',
+  backdropFilter: 'blur(8px)',
+  WebkitBackdropFilter: 'blur(8px)',
+} as const
+
+// Fixed height for the card's bottle-summary block — every card gets the
+// same value regardless of how many bottles that bar has (0, 1, or 20),
+// so the grid stays a scannable overview instead of growing per-card.
+const CARD_LIST_HEIGHT = 138
+const CARD_MAX_ROWS = 3
+
+/** Escape-to-close, shared by every modal/panel in this file. */
+function useEscapeToClose(onClose: () => void) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 }
 
 // ─── Page ────────────────────────────────────────────────────────────
@@ -101,6 +147,7 @@ export default function InventoryPage() {
   const dispatchMut = useChargeBarDispatch(eventId ?? '')
 
   const [addBottleBarId, setAddBottleBarId] = useState<string | null>(null)
+  const [detailBarId, setDetailBarId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const boxBars = useMemo(
@@ -121,7 +168,7 @@ export default function InventoryPage() {
   }, [stockQ.data])
 
   const statusByBar = useMemo(() => {
-    const m = new Map<string, StockStatus>()
+    const m = new Map<string, 'healthy' | 'low' | 'critical'>()
     for (const b of stockQ.data?.by_bar ?? []) {
       if (isStockStatus(b.status)) m.set(b.bar_id, b.status)
     }
@@ -173,187 +220,349 @@ export default function InventoryPage() {
     window.setTimeout(() => setToast(null), 3000)
   }
 
-  if (liveEventQ.isLoading) {
-    return <Shell><p className="text-slate-500">Loading…</p></Shell>
-  }
-  if (!liveEventQ.data) {
-    return (
-      <Shell>
-        <Empty
-          title="No live event"
-          body="Inventory is only available while an event is LIVE. Activate the event from the Events page when you're ready."
-        />
-      </Shell>
-    )
-  }
-
   const addBottleBar = boxBars.find((b) => b.id === addBottleBarId) ?? null
+  const detailBar = boxBars.find((b) => b.id === detailBarId) ?? null
 
   return (
-    <Shell>
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">
-          Inventory — {liveEventQ.data.name}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Live stock at each bar. Add bottles from the warehouse to charge a bar.
-        </p>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <PageHeader
+          title="Inventory"
+          subtitle={liveEventQ.data ? `${liveEventQ.data.name} · Live stock at each bar` : 'No live event'}
+        />
       </div>
 
-      {/* Summary strip — both halves stay within the same supplier_product
-          taxonomy as the boxes below (avoids re-mixing it with the
-          products-keyed warehouse_inventory numbers — see the prior
-          chunk's Inventory/Warehouse bug report for why that's a trap). */}
-      <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 px-5 py-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
-          Stock overview
-        </p>
-        <p className="mt-1 text-sm text-blue-900">
-          <span className="font-semibold">{fmtQty(totalUnitsAtBars)} units</span> currently at bars
-          {' · '}{fmtQty(totalAvailableToDispatch)} units available to dispatch
-        </p>
-      </div>
-
-      {/* Bar boxes */}
-      {barsQ.isLoading ? (
-        <p className="mt-6 text-center text-sm text-slate-500">Loading…</p>
-      ) : boxBars.length === 0 ? (
-        <Empty
-          title="No drinks or food bars yet"
-          body="This event has no drinks or food bars yet. Configure bars in the wizard."
+      {liveEventQ.isLoading ? (
+        <div className="py-12 text-center text-sm" style={{ color: 'var(--v-text-muted)' }}>
+          <div className="inline-flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full animate-spin" style={{ border: '2px solid var(--v-border)', borderTopColor: 'var(--v-cyan)' }} />
+            Loading…
+          </div>
+        </div>
+      ) : !liveEventQ.data ? (
+        <EmptyState
+          headline="No live event"
+          body="Inventory is only available while an event is LIVE. Activate the event from the Events page when you're ready."
         />
       ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {boxBars.map((bar) => (
-            <BarBox
-              key={bar.id}
-              bar={bar}
-              items={itemsByBar.get(bar.id) ?? []}
-              status={statusByBar.get(bar.id)}
+        <>
+          {/* Summary tiles */}
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <MetricTile label="Units at bars" value={fmtQty(totalUnitsAtBars)} accent="cyan" />
+            <MetricTile label="Available to dispatch" value={fmtQty(totalAvailableToDispatch)} accent="green" />
+          </div>
+
+          {/* Bar boxes */}
+          {barsQ.isLoading ? (
+            <div className="py-12 text-center text-sm" style={{ color: 'var(--v-text-muted)' }}>Loading…</div>
+          ) : boxBars.length === 0 ? (
+            <EmptyState
+              headline="No drinks or food bars yet"
+              body="This event has no drinks or food bars yet. Configure bars in the wizard."
+            />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-stretch">
+              {boxBars.map((bar) => (
+                <BarBox
+                  key={bar.id}
+                  bar={bar}
+                  items={itemsByBar.get(bar.id) ?? []}
+                  status={statusByBar.get(bar.id)}
+                  stockLoading={stockQ.isLoading}
+                  stockError={stockQ.isError}
+                  onOpenDetail={() => setDetailBarId(bar.id)}
+                  onAddBottle={() => setAddBottleBarId(bar.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Bar detail panel — hidden (not unmounted) while the Add
+              bottle modal is open on top of it, so closing that modal
+              returns to the panel instead of closing everything. */}
+          {detailBar && !addBottleBar && (
+            <BarDetailPanel
+              bar={detailBar}
+              items={itemsByBar.get(detailBar.id) ?? []}
+              status={statusByBar.get(detailBar.id)}
               stockLoading={stockQ.isLoading}
               stockError={stockQ.isError}
-              onAddBottle={() => setAddBottleBarId(bar.id)}
+              onClose={() => setDetailBarId(null)}
+              onAddBottle={() => setAddBottleBarId(detailBar.id)}
             />
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* Add bottle modal */}
-      {addBottleBar && eventId && (
-        <AddBottleModal
-          bar={addBottleBar}
-          pickerRows={pickerRows}
-          dispatchMut={dispatchMut}
-          onClose={() => setAddBottleBarId(null)}
-          onSuccess={(msg) => {
-            showToast(msg)
-            // useChargeBarDispatch already invalidates event-storage
-            // summary/by-bar/activity + dashboard's bar-supplier-stock.
-            // It does NOT know about the Warehouse page's separate
-            // useEventWarehouseSummary query — invalidate that one here
-            // so the Warehouse KPI cards + table pick up the dispatch too.
-            qc.invalidateQueries({ queryKey: ['warehouse', 'event-summary', eventId] })
-          }}
-        />
-      )}
+          {/* Add bottle modal — opened either directly from a card
+              (detailBarId stays null) or from the detail panel above
+              (detailBarId stays set, so the panel reappears on close). */}
+          {addBottleBar && eventId && (
+            <AddBottleModal
+              bar={addBottleBar}
+              pickerRows={pickerRows}
+              dispatchMut={dispatchMut}
+              onClose={() => setAddBottleBarId(null)}
+              onSuccess={(msg) => {
+                showToast(msg)
+                // useChargeBarDispatch already invalidates event-storage
+                // summary/by-bar/activity + dashboard's bar-supplier-stock.
+                // It does NOT know about the Warehouse page's separate
+                // useEventWarehouseSummary query — invalidate that one here
+                // so the Warehouse KPI cards + table pick up the dispatch too.
+                qc.invalidateQueries({ queryKey: ['warehouse', 'event-summary', eventId] })
+              }}
+            />
+          )}
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 left-6 z-50 rounded-lg bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
-          {toast}
-        </div>
+          {/* Toast */}
+          {toast && (
+            <div
+              className="fixed bottom-6 left-6 z-50 rounded-lg px-4 py-3 text-sm"
+              style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)' }}
+            >
+              {toast}
+            </div>
+          )}
+        </>
       )}
-    </Shell>
+    </div>
   )
 }
 
-// ─── Bar box ─────────────────────────────────────────────────────────
+// ─── Bar box — compact summary card ─────────────────────────────────
+//
+// Deliberately does NOT list every bottle — that's what made the grid
+// grow unusably with stock count (Day 11 follow-up). This card shows
+// just enough to triage at a glance; the full list lives in the detail
+// panel, opened by clicking anywhere on the card except the button.
 
 function BarBox({
-  bar, items, status, stockLoading, stockError, onAddBottle,
+  bar, items, status, stockLoading, stockError, onOpenDetail, onAddBottle,
 }: {
   bar: BarRow
   items: BarSupplierStockItemDTO[]
-  status: StockStatus | undefined
+  status: 'healthy' | 'low' | 'critical' | undefined
   stockLoading: boolean
   stockError: boolean
+  onOpenDetail: () => void
   onAddBottle: () => void
 }) {
-  const sorted = useMemo(() => [...items].sort((a, b) => {
-    const sev = (s: string) => (s === 'critical' ? 0 : s === 'low' ? 1 : 2)
-    if (sev(a.status) !== sev(b.status)) return sev(a.status) - sev(b.status)
-    return a.remaining_pct - b.remaining_pct
-  }), [items])
+  // Lowest-remaining first — the top of this list is "what needs
+  // attention", both here (capped preview) and in the detail panel
+  // (full list).
+  const sortedByLowest = useMemo(
+    () => [...items].sort((a, b) => a.remaining_pct - b.remaining_pct),
+    [items],
+  )
+  const preview = sortedByLowest.slice(0, CARD_MAX_ROWS)
+  const hiddenCount = sortedByLowest.length - preview.length
+
+  const effectiveStatus = effectiveStockStatus(items, status)
+  const totalUnits = useMemo(
+    () => items.reduce((sum, i) => sum + i.dispatched_units, 0),
+    [items],
+  )
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail() }
+  }
 
   return (
-    <div className="flex flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpenDetail}
+      onKeyDown={handleKeyDown}
+      className="flex flex-col h-full p-4 text-left cursor-pointer transition-colors"
+      style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }}
+      onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--v-border-hover)')}
+      onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--v-border)')}
+    >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-800 truncate" title={bar.name}>
+        <h3 className="text-sm font-medium truncate" style={{ color: 'var(--v-text)' }} title={bar.name}>
           {bar.name}
         </h3>
-        {status && (
-          <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-            style={{ color: STATUS_COLOR[status], backgroundColor: STATUS_BG[status] }}
-          >
-            {STATUS_LABEL[status]}
-          </span>
-        )}
+        <Badge variant={STATUS_BADGE[effectiveStatus]}>{STATUS_LABEL[effectiveStatus]}</Badge>
       </div>
 
-      <div className="mt-3 flex-1 space-y-2">
+      <p className="mt-1 text-xs" style={{ color: 'var(--v-text-muted)' }}>
+        {fmtQty(totalUnits)} units &middot; {items.length} bottle{items.length === 1 ? '' : 's'}
+      </p>
+
+      {/* Fixed-height block — identical for every card, whether the bar
+          has 0 bottles or 20. */}
+      <div className="mt-3" style={{ height: CARD_LIST_HEIGHT }}>
         {stockError ? (
-          <p className="rounded-md border border-dashed border-red-200 px-3 py-4 text-center text-xs text-red-500">
+          <p className="px-3 py-4 text-center text-xs" style={{ color: 'var(--v-pink)' }}>
             Failed to load stock.
           </p>
         ) : stockLoading ? (
-          <p className="py-4 text-center text-xs text-slate-400">Loading…</p>
-        ) : sorted.length === 0 ? (
-          <p className="rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+          <p className="py-4 text-center text-xs" style={{ color: 'var(--v-text-dim)' }}>Loading…</p>
+        ) : preview.length === 0 ? (
+          <p className="py-4 text-center text-xs" style={{ color: 'var(--v-text-dim)' }}>
             This bar has no stock yet. Click + Add bottle to charge it.
           </p>
         ) : (
-          sorted.map((r) => {
-            const pct = Math.max(0, Math.min(100, r.remaining_pct))
-            return (
-              <div key={r.supplier_product_id} className="rounded-md border border-slate-100 p-2">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="truncate text-xs font-medium text-slate-700" title={r.item_name}>
-                    {r.item_name}
-                  </span>
-                  <span
-                    className="shrink-0 text-[10px] font-semibold tabular-nums"
-                    style={{ color: STATUS_COLOR[r.status] }}
-                  >
-                    {Math.round(pct)}%
-                  </span>
+          <div className="space-y-2">
+            {preview.map((r) => {
+              const pct = Math.max(0, Math.min(100, r.remaining_pct))
+              const color = STATUS_COLOR[isStockStatus(r.status) ? r.status : 'healthy']
+              return (
+                <div key={r.supplier_product_id}>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-medium" style={{ color: 'var(--v-text-muted)' }} title={r.item_name}>
+                      {r.item_name}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-medium tabular-nums" style={{ color }}>
+                      {Math.round(pct)}%
+                    </span>
+                  </div>
+                  <div className="h-1 w-full overflow-hidden rounded-full" style={{ background: 'var(--v-surface-raised)' }}>
+                    <div className="h-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+                  </div>
                 </div>
-                <div
-                  className="h-2 w-full overflow-hidden rounded-full"
-                  style={{ backgroundColor: STATUS_BG[r.status] }}
-                >
-                  <div
-                    className="h-full transition-all duration-500"
-                    style={{ width: `${pct}%`, backgroundColor: STATUS_COLOR[r.status] }}
-                  />
-                </div>
-                <p className="mt-1 text-[10px] tabular-nums text-slate-500">
-                  {Math.round(r.remaining_ml).toLocaleString()} / {Math.round(r.dispatched_ml).toLocaleString()} ml
-                </p>
-              </div>
-            )
-          })
+              )
+            })}
+            {hiddenCount > 0 && (
+              <p className="text-[11px]" style={{ color: 'var(--v-text-dim)' }}>+ {hiddenCount} more</p>
+            )}
+          </div>
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onAddBottle}
-        className="mt-3 w-full rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+      <Button
+        variant="secondary"
+        onClick={(e) => { e.stopPropagation(); onAddBottle() }}
+        className="mt-3 w-full"
       >
         + Add bottle
-      </button>
+      </Button>
+    </div>
+  )
+}
+
+// ─── Bar detail panel ────────────────────────────────────────────────
+//
+// The "bigger picture" view — every bottle, full names, real vertical
+// room. Fixed header + footer, only the bottle list scrolls.
+
+function BarDetailPanel({
+  bar, items, status, stockLoading, stockError, onClose, onAddBottle,
+}: {
+  bar: BarRow
+  items: BarSupplierStockItemDTO[]
+  status: 'healthy' | 'low' | 'critical' | undefined
+  stockLoading: boolean
+  stockError: boolean
+  onClose: () => void
+  onAddBottle: () => void
+}) {
+  useEscapeToClose(onClose)
+
+  const sortedByLowest = useMemo(
+    () => [...items].sort((a, b) => a.remaining_pct - b.remaining_pct),
+    [items],
+  )
+  const effectiveStatus = effectiveStockStatus(items, status)
+  const totalUnits = useMemo(
+    () => items.reduce((sum, i) => sum + i.dispatched_units, 0),
+    [items],
+  )
+
+  return (
+    <div
+      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={MODAL_BACKDROP_STYLE}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${bar.name} stock detail`}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full flex flex-col"
+        style={{
+          maxWidth: 720,
+          maxHeight: '80vh',
+          background: 'var(--v-surface-raised)',
+          border: '0.5px solid var(--v-border)',
+          borderRadius: 'var(--v-radius-lg)',
+        }}
+      >
+        {/* Header — fixed */}
+        <header
+          className="shrink-0 flex items-center justify-between gap-4 px-6 py-4"
+          style={{ borderBottom: '0.5px solid var(--v-border)' }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h2 className="text-lg font-medium truncate" style={{ color: 'var(--v-text)' }}>{bar.name}</h2>
+            <Badge variant={STATUS_BADGE[effectiveStatus]}>{STATUS_LABEL[effectiveStatus]}</Badge>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <span className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
+              {fmtQty(totalUnits)} units &middot; {items.length} bottle{items.length === 1 ? '' : 's'}
+            </span>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+              style={{ border: '0.5px solid var(--v-border)', color: 'var(--v-text-muted)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--v-text)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--v-text-muted)')}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        {/* Body — the only scrollable region */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {stockError ? (
+            <p className="py-8 text-center text-sm" style={{ color: 'var(--v-pink)' }}>Failed to load stock.</p>
+          ) : stockLoading ? (
+            <p className="py-8 text-center text-sm" style={{ color: 'var(--v-text-dim)' }}>Loading…</p>
+          ) : sortedByLowest.length === 0 ? (
+            <EmptyState
+              headline="No stock configured"
+              body="This bar has no bottles charged yet. Add one from the warehouse pool below."
+            />
+          ) : (
+            <div>
+              {sortedByLowest.map((r) => {
+                const pct = Math.max(0, Math.min(100, r.remaining_pct))
+                const color = STATUS_COLOR[isStockStatus(r.status) ? r.status : 'healthy']
+                return (
+                  <div key={r.supplier_product_id} className="py-3.5" style={{ borderBottom: '0.5px solid var(--v-border)' }}>
+                    <div className="flex items-start justify-between gap-4 mb-2">
+                      <span className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>
+                        {r.item_name}
+                      </span>
+                      <span className="shrink-0 text-sm font-medium tabular-nums" style={{ color }}>
+                        {Math.round(pct)}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full" style={{ background: 'var(--v-surface)' }}>
+                      <div className="h-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+                    </div>
+                    <p className="mt-1.5 text-xs tabular-nums" style={{ color: 'var(--v-text-dim)' }}>
+                      {Math.round(r.remaining_ml).toLocaleString()} / {Math.round(r.dispatched_ml).toLocaleString()} ml remaining
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer — fixed */}
+        <footer className="shrink-0 px-6 py-4" style={{ borderTop: '0.5px solid var(--v-border)' }}>
+          <Button variant="primary" onClick={onAddBottle} className="w-full">
+            + Add bottle
+          </Button>
+        </footer>
+      </div>
     </div>
   )
 }
@@ -372,6 +581,8 @@ function AddBottleModal({
   const [selectedKey, setSelectedKey] = useState('')
   const [qty, setQty] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  useEscapeToClose(onClose)
 
   const selected = pickerRows.find((r) => r.key === selectedKey)
   const maxQty = selected ? Number(selected.remaining_qty) : 0
@@ -397,61 +608,68 @@ function AddBottleModal({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      role="presentation"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={MODAL_BACKDROP_STYLE}
+      onClick={onClose}
     >
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl p-6"
+        style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}
+      >
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-800">Add bottle — {bar.name}</h2>
-            <p className="text-xs text-slate-500">Charge from the warehouse pool</p>
+            <h2 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>Add bottle — {bar.name}</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--v-text-muted)' }}>Charge from the warehouse pool</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             aria-label="Close"
+            className="rounded-md p-1 transition-colors"
+            style={{ color: 'var(--v-text-dim)' }}
           >
             ✕
           </button>
         </div>
 
-        <div className="px-6 py-4">
-          {pickerRows.length === 0 ? (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              No products with remaining warehouse stock for this event.
-            </p>
-          ) : (
-            <div className="space-y-2">
+        {pickerRows.length === 0 ? (
+          <p className="text-sm rounded-[var(--v-radius)] px-3 py-2" style={{ background: 'rgba(255, 216, 77, 0.08)', border: '0.5px solid var(--v-amber)', color: 'var(--v-amber)' }}>
+            No products with remaining warehouse stock for this event.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <Label>Item</Label>
               <select
                 value={selectedKey}
                 onChange={(e) => { setSelectedKey(e.target.value); setQty(''); setError(null) }}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={inputCls}
               >
                 <option value="">— pick item —</option>
                 {pickerRows.map((r) => (
-                  <option
-                    key={r.key}
-                    value={r.key}
-                    disabled={r.supplier_product_id === null}
-                  >
+                  <option key={r.key} value={r.key} disabled={r.supplier_product_id === null}>
                     {r.product_name} ({fmtQty(r.remaining_qty)}{r.unit ? ` ${r.unit}` : ''} remaining)
                     {r.supplier_product_id === null ? ' — not dispatchable' : ''}
                   </option>
                 ))}
               </select>
-              {selected && selected.supplier_product_id === null && (
-                <p className="text-xs text-amber-700">
-                  No matching warehouse dispatch item found for "{selected.product_name}" —
-                  can't be charged from here.
-                </p>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Quantities are as invoiced — verify against physical units before
-                confirming a large dispatch.
+            </div>
+
+            {selected && selected.supplier_product_id === null && (
+              <p className="text-xs" style={{ color: 'var(--v-amber)' }}>
+                No matching warehouse dispatch item found for "{selected.product_name}" — can't be charged from here.
               </p>
+            )}
+            <p className="text-[11px]" style={{ color: 'var(--v-text-dim)' }}>
+              Quantities are as invoiced — verify against physical units before confirming a large dispatch.
+            </p>
+
+            <div>
+              <Label>Quantity</Label>
               <input
                 type="number"
                 min={0}
@@ -461,36 +679,25 @@ function AddBottleModal({
                 onChange={(e) => { setQty(e.target.value); setError(null) }}
                 placeholder={selected ? `qty (max ${maxQty})` : 'qty'}
                 disabled={!selected || selected.supplier_product_id === null}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100"
+                className={inputCls}
               />
-              {error && <p className="text-xs text-red-600">{error}</p>}
-              <button
-                type="button"
+            </div>
+
+            {error && <p className="text-xs" style={{ color: 'var(--v-pink)' }}>{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button
+                variant="primary"
                 onClick={onConfirm}
                 disabled={dispatchMut.isPending || !selected || selected.supplier_product_id === null || !qty}
-                className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {dispatchMut.isPending ? 'Confirming…' : 'Confirm'}
-              </button>
+              </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
-  )
-}
-
-// ─── Shell + Empty ───────────────────────────────────────────────────
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="p-8">{children}</div>
-}
-
-function Empty({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="mt-6 rounded-lg border border-slate-200 bg-white p-8 text-center">
-      <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-      <p className="mt-2 text-sm text-slate-500">{body}</p>
     </div>
   )
 }

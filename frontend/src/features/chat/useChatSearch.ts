@@ -38,16 +38,40 @@ export function useChatSearch(query: string, limit = 30) {
 }
 
 
-/** Build a body snippet with <mark> around query terms for display. */
-export function highlightMatches(body: string, query: string): string {
-  const trimmed = query.trim()
-  if (!trimmed) return body
+/**
+ * Split a body into plain/highlighted segments for display.
+ *
+ * SECURITY: this replaces the old `highlightMatches`, which returned an
+ * HTML string (raw body + <mark> tags) rendered via dangerouslySetInnerHTML
+ * — a stored XSS: a message containing e.g. `<img src=x onerror=...>`
+ * executed in the browser of anyone whose search matched it. Segments are
+ * rendered as React text nodes, so message bodies are never interpreted
+ * as markup.
+ */
+export interface HighlightSegment {
+  text: string
+  match: boolean
+}
 
-  // Build regex: each word in query becomes a case-insensitive match
-  // Limit to first 5 words to avoid pathological queries
+export function highlightSegments(body: string, query: string): HighlightSegment[] {
+  const trimmed = query.trim()
+  if (!trimmed) return [{ text: body, match: false }]
+
+  // Each query word becomes a case-insensitive match; regex-escape the
+  // words and cap at 5 to avoid pathological queries
   const words = trimmed.split(/\s+/).slice(0, 5).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-  if (words.length === 0) return body
+  if (words.length === 0) return [{ text: body, match: false }]
 
   const re = new RegExp(`(${words.join('|')})`, 'ig')
-  return body.replace(re, '<mark>$1</mark>')
+  const segments: HighlightSegment[] = []
+  let lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(body)) !== null) {
+    if (m.index > lastIndex) segments.push({ text: body.slice(lastIndex, m.index), match: false })
+    segments.push({ text: m[0], match: true })
+    lastIndex = m.index + m[0].length
+    if (m[0].length === 0) re.lastIndex++ // safety against zero-width loops
+  }
+  if (lastIndex < body.length) segments.push({ text: body.slice(lastIndex), match: false })
+  return segments
 }

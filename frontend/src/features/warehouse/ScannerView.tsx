@@ -30,13 +30,16 @@ import {
   type BarcodeResolveResponse,
 } from '@/features/warehouse/useWarehouse'
 
-// ─── Role-aware scan-type matrix (mirrors spec §3.5 + scan_service.py) ──────
+// ─── Role-aware scan-type matrix (mirrors scan_service.py) ──────────────────
+// Two-role model: Manager absorbed the warehouse-execution scans (INTAKE/
+// DISPATCH/RETURN) from the retired warehouse_keeper entry. CONSUMED is a
+// bar-floor action offered on /scan/empties, not here. Partial because
+// ScannerRole keeps retired values for READING historical scans — they
+// just have no buttons (the `?? []` lookup below).
 
-const _BUTTONS_BY_ROLE: Record<ScannerRole, ScanType[]> = {
+const _BUTTONS_BY_ROLE: Partial<Record<ScannerRole, ScanType[]>> = {
   owner: ['INTAKE', 'DISPATCH', 'RETURN', 'ADJUSTMENT', 'INSPECT'],
-  warehouse_keeper: ['INTAKE', 'DISPATCH', 'RETURN'],
-  manager: ['DISPATCH', 'RETURN'],
-  bartender: ['INSPECT', 'CONSUMED'],
+  manager: ['INTAKE', 'DISPATCH', 'RETURN'],
 }
 
 const SCAN_TYPE_LABELS: Record<ScanType, string> = {

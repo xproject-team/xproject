@@ -9,8 +9,12 @@
  *   3. Guests                 — identified-guest detail (a FLOOR, not a headcount)
  *   4. Revenue Breakdown      — per-bar bar chart + KPI row + decomposition + top/lowest products
  *   5. Forecast vs. Actual    — demand-model band-hit-rate detail
- *   6. Stock Reality Check    — table per bar, stock-out highlighted
- *   7. Alerts Timeline        — chronological with severity pills
+ *   6. Alerts Timeline        — chronological with severity pills
+ *
+ * (Stock Reality Check was removed from this view 2026-08-10 — it read a
+ * table that stopped being written in June and duplicated the alerts
+ * timeline's stock-out coverage. The backend aggregator that produces
+ * `data.stock_rows` is untouched; the field just isn't rendered here.)
  *
  * Sections 1, 3, 4's decomposition/products, and 5 all degrade gracefully:
  * a null field (older report, predates this feature) or available=false
@@ -26,7 +30,7 @@
  * Spec: docs/report-module-spec.md §3 + §8.2.
  */
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BarChart } from '@/shared/charts/BarChart'
 import { Button } from '@/shared/ui/Button'
@@ -41,7 +45,6 @@ import {
   type ReportData,
   type ReportLanguage,
   type ReportProductRow,
-  type ReportStockRow,
 } from '@/features/reports/useReports'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
@@ -696,111 +699,6 @@ function ProductPerformance({ data }: { data: ReportData }) {
   )
 }
 
-// ─── Section 3: Stock Reality Check ──────────────────────────────────────────
-
-function StockSection({ data }: { data: ReportData }) {
-  const lang = data.language
-  const labels =
-    lang === 'it'
-      ? {
-          heading: 'Stato delle Scorte',
-          product: 'Prodotto',
-          opening: 'Iniziali',
-          closing: 'Finali',
-          consumed: 'Consumati',
-          burn: 'Consumo/ora',
-          stockout: 'ESAURITO',
-          empty: 'Nessun dato di scorta disponibile.',
-        }
-      : {
-          heading: 'Stock Reality Check',
-          product: 'Product',
-          opening: 'Opening',
-          closing: 'Closing',
-          consumed: 'Consumed',
-          burn: 'Burn/h',
-          stockout: 'STOCK-OUT',
-          empty: 'No stock data available.',
-        }
-
-  // Group stock rows by bar
-  const grouped: Record<string, ReportStockRow[]> = {}
-  for (const row of data.stock_rows) {
-    if (!grouped[row.bar_name]) grouped[row.bar_name] = []
-    grouped[row.bar_name].push(row)
-  }
-
-  if (data.stock_rows.length === 0) {
-    return (
-      <Card className="mb-8">
-        <h2 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-4">
-          {labels.heading}
-        </h2>
-        <p className="text-sm text-[#A0AEC0] italic py-4">{labels.empty}</p>
-      </Card>
-    )
-  }
-
-  return (
-    <Card className="mb-8">
-      <h2 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-4">
-        {labels.heading}
-      </h2>
-
-      <div className="space-y-5">
-        {Object.entries(grouped).map(([barName, rows]) => (
-          <div key={barName}>
-            <h3 className="text-sm font-semibold text-[#1A202C] mb-2">{barName}</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest border-b border-[#E2E8F0]">
-                    <th className="text-left py-2 pr-3">{labels.product}</th>
-                    <th className="text-right py-2 px-3">{labels.opening}</th>
-                    <th className="text-right py-2 px-3">{labels.closing}</th>
-                    <th className="text-right py-2 px-3">{labels.consumed}</th>
-                    <th className="text-right py-2 px-3">{labels.burn}</th>
-                    <th className="text-right py-2 pl-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr
-                      key={`${r.bar_id}-${r.product_id}`}
-                      className={`border-b border-[#F1F5F9] ${r.stock_out_occurred ? 'bg-[#FFF5F5]' : ''}`}
-                    >
-                      <td className="py-2 pr-3 text-[#1A202C]">{r.product_name}</td>
-                      <td className="py-2 px-3 text-right text-[#4A5568]">
-                        {fmtNumber(r.opening_qty, 0)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-[#4A5568]">
-                        {fmtNumber(r.closing_qty, 0)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-[#4A5568]">
-                        {fmtNumber(r.consumed_qty, 0)}
-                      </td>
-                      <td className="py-2 px-3 text-right text-[#4A5568]">
-                        {fmtNumber(r.burn_rate_per_hour, 1)}
-                      </td>
-                      <td className="py-2 pl-3 text-right">
-                        {r.stock_out_occurred && (
-                          <span className="inline-block px-2 py-0.5 bg-[#FED7D7] text-[#742A2A] text-[10px] font-semibold rounded-full">
-                            {labels.stockout}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
 // ─── Section 4: Alerts timeline ──────────────────────────────────────────────
 
 const SEVERITY_CONFIG = {
@@ -874,6 +772,7 @@ function AlertsSection({ data }: { data: ReportData }) {
 
 export default function ReportDetailPage() {
   const { reportId } = useParams<{ reportId: string }>()
+  const navigate = useNavigate()
   const [language, setLanguage] = useState<ReportLanguage | null>(null)
 
   const { data: report, isLoading, isError } = useReport(reportId ?? null, language ?? undefined)
@@ -881,6 +780,19 @@ export default function ReportDetailPage() {
 
   // If a language toggle was set, show that one; otherwise the backend's.
   const activeLang: ReportLanguage = language ?? report?.language ?? 'it'
+
+  const handleRegenerate = async () => {
+    try {
+      const newReport = await regenerate.mutateAsync({})
+      navigate(`/reports/${newReport.id}`)
+    } catch {
+      alert(
+        activeLang === 'it'
+          ? 'Impossibile rigenerare il report. Riprova.'
+          : 'Failed to regenerate the report. Please try again.',
+      )
+    }
+  }
 
   const handleDownloadPdf = async () => {
     if (!reportId) return
@@ -969,12 +881,12 @@ export default function ReportDetailPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => regenerate.mutate({})}
+              onClick={handleRegenerate}
               disabled={regenerate.isPending}
             >
-              🔄 {regenerate.isPending
-                ? (activeLang === 'it' ? 'Rigenerando…' : 'Regenerating…')
-                : (activeLang === 'it' ? 'Rigenera' : 'Regenerate')}
+              {regenerate.isPending
+                ? `⏳ ${activeLang === 'it' ? 'Rigenerando…' : 'Regenerating…'}`
+                : `🔄 ${activeLang === 'it' ? 'Rigenera' : 'Regenerate'}`}
             </Button>
           </div>
 
@@ -984,7 +896,6 @@ export default function ReportDetailPage() {
           <GuestsSection data={report.data} />
           <RevenueSection data={report.data} />
           <ForecastSection data={report.data} />
-          <StockSection data={report.data} />
           <AlertsSection data={report.data} />
 
           {/* Footer: version + generated_at */}

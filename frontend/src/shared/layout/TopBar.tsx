@@ -4,15 +4,22 @@ import { useAuth } from '@/features/auth/useAuth'
 import type { UserRole } from '@/features/auth/AuthContext'
 import { MentionBell } from '@/features/chat/MentionBell'
 import { useLiveEvent } from '@/features/dashboard/hooks'
+import '@/design-system/components/components.css'
 
-const ROLE_BADGE: Record<
-  UserRole,
-  { label: string; bg: string; text: string; border: string; dot: string }
-> = {
-  owner:     { label: 'Owner',     bg: 'bg-[#E6FBF6]', text: 'text-[#1ABC9C]', border: 'border-[#1ABC9C]/40', dot: '#1E5A8D' },
-  manager:   { label: 'Manager',   bg: 'bg-[#EBF5FB]', text: 'text-[#3498DB]', border: 'border-[#3498DB]/40', dot: '#6B21A8' },
-  warehouse: { label: 'Warehouse Staff', bg: 'bg-[#FEF9E7]', text: 'text-[#D69E2E]', border: 'border-[#D69E2E]/40', dot: '#DD6B20' },
-  bartender: { label: 'Bartender', bg: 'bg-[#FDEDEC]', text: 'text-[#E74C3C]', border: 'border-[#E74C3C]/40', dot: '#059669' },
+interface RoleBadgeStyle {
+  label: string; bg: string; text: string; border: string; dot: string
+}
+
+// Two-role model. Runtime role strings can still be retired/unknown (stale
+// tokens), so lookups go through the fallback below — never an exhaustive
+// index that crashes on a role this map doesn't know.
+const ROLE_BADGE: Record<UserRole, RoleBadgeStyle> = {
+  owner:   { label: 'Owner',   bg: 'bg-[#E6FBF6]', text: 'text-[#1ABC9C]', border: 'border-[#1ABC9C]/40', dot: '#1E5A8D' },
+  manager: { label: 'Manager', bg: 'bg-[#EBF5FB]', text: 'text-[#3498DB]', border: 'border-[#3498DB]/40', dot: '#6B21A8' },
+}
+
+const FALLBACK_BADGE: RoleBadgeStyle = {
+  label: 'Unknown role', bg: 'bg-white/[0.06]', text: 'text-[var(--v-text-muted)]', border: 'border-white/20', dot: '#4A5568',
 }
 
 export function TopBar() {
@@ -25,7 +32,7 @@ export function TopBar() {
   const firstItem  = useRef<HTMLButtonElement>(null)
 
   const role        = user?.activeRole ?? user?.role ?? 'owner'
-  const badge       = ROLE_BADGE[role]
+  const badge       = (ROLE_BADGE as Record<string, RoleBadgeStyle>)[role] ?? FALLBACK_BADGE
   const initials    = (user?.full_name ?? user?.email ?? '?')
     .split(/\s+/).map(s => s[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
   const hasMultipleRoles = (user?.assignedRoles?.length ?? 0) > 1
@@ -83,7 +90,10 @@ export function TopBar() {
   }
 
   return (
-    <header className="h-14 bg-white border-b border-[#E2E8F0] flex items-center px-6 justify-between flex-shrink-0 shadow-sm gap-4">
+    <header
+      className="v-glass h-14 text-[var(--v-text)] flex items-center px-6 justify-between flex-shrink-0 gap-4 relative z-10"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}
+    >
 
       <div className="flex items-center gap-2.5 shrink-0">
         <div className={
@@ -91,9 +101,9 @@ export function TopBar() {
             ? "w-2 h-2 rounded-full bg-[#38A169] animate-pulse"
             : "w-2 h-2 rounded-full bg-[#CBD5E0]"
         } />
-        <span className="text-sm font-semibold text-[#1A202C]">XProject</span>
-        <span className="text-[#CBD5E0]">·</span>
-        <span className="text-sm text-[#4A5568]">{eventLabel}</span>
+        <span className="text-sm font-semibold text-[var(--v-text)]">Vera Event</span>
+        <span className="text-[var(--v-text-dim)]">·</span>
+        <span className="text-sm text-[var(--v-text-muted)]">{eventLabel}</span>
         {eventIsLive && (
           <span className="bg-[#38A169]/10 text-[#38A169] text-[10px] font-semibold px-2 py-0.5 rounded-full border border-[#38A169]/20 tracking-wide">
             LIVE
@@ -101,17 +111,8 @@ export function TopBar() {
         )}
       </div>
 
-      {role === 'bartender' && (
-        <div className="flex items-center gap-2 text-xs">
-          <span className="flex items-center gap-1.5 bg-[#F7FAFC] border border-[#E2E8F0] px-3 py-1.5 rounded-full text-[#4A5568]">
-            Bottles opened today:
-            <span className="font-bold text-[#1A202C]">12</span>
-          </span>
-        </div>
-      )}
-
       <div className="flex items-center gap-1.5 shrink-0 relative">
-        {role !== 'warehouse' && <MentionBell />}
+        <MentionBell />
         {role !== 'owner' && (
           <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${badge.bg} ${badge.text} ${badge.border}`}>
             {badge.label}
@@ -125,7 +126,7 @@ export function TopBar() {
           aria-expanded={menuOpen}
           aria-label="Open profile menu"
           title="Profile menu"
-          className="w-8 h-8 flex items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F7FAFC] text-[#4A5568] hover:text-[#1A202C] hover:border-[#CBD5E0] hover:bg-[#EDF2F7] focus:outline-none focus:border-[#1E5A8D] transition-colors text-[11px] font-bold"
+          className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--v-border)] bg-white/[0.04] text-[var(--v-text-muted)] hover:text-[var(--v-text)] hover:border-[var(--v-border-hover)] hover:bg-white/[0.08] focus:outline-none focus:border-[var(--v-cyan)] transition-colors text-[11px] font-bold"
         >
           {initials}
         </button>

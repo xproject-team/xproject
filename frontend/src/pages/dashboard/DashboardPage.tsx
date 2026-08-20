@@ -61,6 +61,8 @@ import { useAlertsSocket } from '@/features/alerts/useAlertsSocket'
 import type { AlertRow } from '@/features/alerts/useAlerts'
 import { MapShopToBarModal } from '@/features/alerts/MapShopToBarModal'
 import type { BarKpi, Event } from '@/lib/mockData'
+import { MetricTile, Badge, Button, EmptyState, type VeraRole } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -90,105 +92,62 @@ interface KpiStripProps {
   elapsed: number
   unacknowledgedCount: number
   criticalCount: number
+  isLive: boolean
   onAlertsClick: () => void
   onBreakdownClick: () => void
 }
 
-function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsClick, onBreakdownClick }: KpiStripProps) {
+function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, isLive, onAlertsClick, onBreakdownClick }: KpiStripProps) {
   const totalRevenue = kpi ? formatEur(kpi.total_revenue_eur) : '\u2014'
   const drinkUnits   = kpi?.drinks.units ?? 0
   const drinkRevenue = kpi ? formatEur(kpi.drinks.revenue_eur) : '\u2014'
   const foodUnits    = kpi?.food.units ?? 0
   const foodNet      = kpi ? formatEur(kpi.food.net_revenue_eur) : '\u2014'
   const foodShare    = kpi?.food.share_pct ?? 100
+  // Already included in totalRevenue \u2014 surfaced explicitly rather than
+  // left invisible inside the total (F-01: this used to be silently
+  // dropped from the total entirely; now it's visible instead).
+  const unmappedRevenue = kpi && Number(kpi.unmapped_revenue_eur) > 0
+    ? formatEur(kpi.unmapped_revenue_eur)
+    : null
+
+  const unackAccent: VeraRole = criticalCount > 0 ? 'pink' : 'amber'
 
   return (
-    <div className="bg-white border-b border-[#E2E8F0] px-5 py-3 flex items-center gap-0 overflow-x-auto shrink-0 shadow-sm">
-
-      {/* Total Revenue */}
-      <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
-        <div>
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Total Revenue
-          </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none">
-            {totalRevenue}
-          </p>
-        </div>
-      </div>
-
-      {/* Drinks - tap for breakdown */}
-      <button
-        type="button"
-        onClick={onBreakdownClick}
-        title="View sales breakdown"
-        className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-[#F7FAFC] rounded-lg px-3 py-1 -mx-3 transition-colors text-left cursor-pointer"
-      >
-        <div>
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Drinks
-          </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none">
-            {drinkUnits}
-            <span className="text-sm font-semibold text-[#4A5568] ml-2">{drinkRevenue}</span>
-          </p>
-        </div>
-      </button>
-
-      {/* Food - tap for breakdown */}
-      <button
-        type="button"
-        onClick={onBreakdownClick}
-        title="View sales breakdown"
-        className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-[#F7FAFC] rounded-lg px-3 py-1 -mx-3 transition-colors text-left cursor-pointer"
-      >
-        <div>
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Food
-          </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none">
-            {foodUnits}
-            <span className="text-sm font-semibold text-[#4A5568] ml-2">{foodNet}</span>
-          </p>
-          {foodShare !== 100 && (
-            <p className="text-[10px] text-[#4A5568] mt-0.5 whitespace-nowrap">Omar {foodShare}% share</p>
-          )}
-        </div>
-      </button>
-
-      {/* Active Alerts — wired to real backend via useAlertsForEvent */}
-      <button
-        onClick={onAlertsClick}
-        className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0 hover:bg-red-50 rounded-lg px-3 py-1 -mx-3 transition-colors"
-      >
-        <div>
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5 text-left">
-            Unacknowledged
-          </p>
-          <p className="text-2xl font-bold text-[#1A202C] leading-none text-left">
-            {unacknowledgedCount}
-          </p>
-        </div>
-        {unacknowledgedCount > 0 && (
-          <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-[#E53E3E] border border-red-200 px-2 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
-            {criticalCount} critical
+    <div className="grid grid-cols-5 gap-3 px-5 py-3 shrink-0">
+      <MetricTile label="Total Revenue" value={totalRevenue} accent="cyan">
+        {unmappedRevenue && (
+          <span className="text-[10px] block whitespace-nowrap" style={{ color: 'var(--v-amber)' }}>
+            {unmappedRevenue} not yet assigned to a bar
           </span>
         )}
-      </button>
+      </MetricTile>
 
-      {/* Time Elapsed */}
-      <div className="flex items-center gap-3 pr-5 border-r border-[#E2E8F0] mr-5 shrink-0">
-        <div>
-          <p className="text-[10px] font-semibold text-[#4A5568] uppercase tracking-widest mb-0.5">
-            Time Elapsed
-          </p>
-          <p className="text-xl font-bold text-[#1A202C] leading-none font-mono tabular-nums">
-            {formatTimer(elapsed)}
-          </p>
-        </div>
-      </div>
+      <MetricTile label="Drinks" value={String(drinkUnits)} accent="cyan" onClick={onBreakdownClick}>
+        <span className="text-xs mt-0.5 block" style={{ color: 'var(--v-text-muted)' }}>{drinkRevenue}</span>
+      </MetricTile>
 
+      <MetricTile label="Food" value={String(foodUnits)} accent="cyan" onClick={onBreakdownClick}>
+        <span className="text-xs mt-0.5 block" style={{ color: 'var(--v-text-muted)' }}>{foodNet}</span>
+        {foodShare !== 100 && (
+          <span className="text-[10px] block whitespace-nowrap" style={{ color: 'var(--v-text-dim)' }}>Omar {foodShare}% share</span>
+        )}
+      </MetricTile>
+
+      <MetricTile label="Unacknowledged" value={String(unacknowledgedCount)} accent={unackAccent} onClick={onAlertsClick}>
+        {unacknowledgedCount > 0 && criticalCount > 0 && (
+          <span className="mt-1 inline-block">
+            <Badge variant="danger">{criticalCount} critical</Badge>
+          </span>
+        )}
+      </MetricTile>
+
+      <MetricTile
+        label="Time Elapsed"
+        value={formatTimer(elapsed)}
+        accent={isLive ? 'green' : undefined}
+        className="font-mono tabular-nums"
+      />
     </div>
   )
 }
@@ -197,19 +156,16 @@ function KpiStrip({ kpi, elapsed, unacknowledgedCount, criticalCount, onAlertsCl
 
 const SEVERITY_CFG = {
   critical: {
-    badge:  'bg-red-100 text-[#E53E3E] border border-red-200',
-    border: 'border-l-[#E53E3E]',
-    barBtn: 'text-[#E53E3E] hover:underline',
+    color:  'var(--v-pink)',
+    bg:     'rgba(255, 61, 113, 0.12)',
   },
   warning: {
-    badge:  'bg-yellow-100 text-[#D69E2E] border border-yellow-200',
-    border: 'border-l-[#D69E2E]',
-    barBtn: 'text-[#D69E2E] hover:underline',
+    color:  'var(--v-amber)',
+    bg:     'rgba(255, 216, 77, 0.12)',
   },
   anomaly: {
-    badge:  'bg-orange-100 text-[#E67E22] border border-orange-200',
-    border: 'border-l-[#E67E22]',
-    barBtn: 'text-[#E67E22] hover:underline',
+    color:  'var(--v-violet)',
+    bg:     'rgba(177, 75, 255, 0.12)',
   },
 } as const
 
@@ -249,30 +205,26 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eve
   const [mappingAlert, setMappingAlert] = useState<AlertSidebarAlert | null>(null)
 
   return (
-    <div className={[
-      'bg-white border-l border-[#E2E8F0] flex flex-col shrink-0 transition-all duration-200',
-      open ? 'w-80' : 'w-12',
-    ].join(' ')}>
+    <div
+      className="flex flex-col shrink-0 transition-all duration-200"
+      style={{ borderLeft: '0.5px solid var(--v-border)', width: open ? '320px' : '48px' }}
+    >
 
       {/* Header */}
-      <div className={[
-        'flex items-center border-b border-[#E2E8F0] px-3 py-3 shrink-0',
-        open ? 'justify-between' : 'justify-center',
-      ].join(' ')}>
+      <div
+        className={['flex items-center px-3 py-3 shrink-0', open ? 'justify-between' : 'justify-center'].join(' ')}
+        style={{ borderBottom: '0.5px solid var(--v-border)' }}
+      >
         {open && (
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm text-[#1A202C]">Alerts</span>
-            {unackedCount > 0 && (
-              <span className="flex items-center gap-1 text-xs font-bold bg-red-100 text-[#E53E3E] border border-red-200 px-1.5 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#E53E3E] animate-pulse" />
-                {unackedCount}
-              </span>
-            )}
+            <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'var(--v-text-muted)' }}>Alerts</span>
+            {unackedCount > 0 && <Badge variant="danger">{unackedCount}</Badge>}
           </div>
         )}
         <button
           onClick={onToggle}
-          className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[#F7FAFC] text-[#4A5568] transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+          style={{ color: 'var(--v-text-muted)' }}
           title={open ? 'Collapse alerts' : 'Expand alerts'}
         >
           {open ? (
@@ -285,7 +237,10 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eve
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               {unackedCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-[#E53E3E] text-[8px] text-white flex items-center justify-center font-bold">
+                <span
+                  className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full text-[8px] flex items-center justify-center font-bold"
+                  style={{ background: 'var(--v-pink)', color: 'var(--v-bg-base)' }}
+                >
                   {unackedCount}
                 </span>
               )}
@@ -309,36 +264,42 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eve
             return (
               <div
                 key={alert.id}
-                className={[
-                  'mx-2 mb-2 border-l-4 rounded-lg p-3 transition-all',
-                  cfg.border,
-                  acked
-                    ? 'bg-[#F7FAFC] border border-[#E2E8F0] opacity-50'
-                    : 'bg-white border border-[#E2E8F0]',
-                ].join(' ')}
+                className="mx-2 mb-2 rounded-lg p-3 transition-all"
+                style={{
+                  background: 'var(--v-surface)',
+                  border: '0.5px solid var(--v-border)',
+                  borderLeft: `3px solid ${cfg.color}`,
+                  opacity: acked ? 0.5 : 1,
+                }}
               >
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-[10px] font-mono font-bold text-[#1A202C]">
+                    <span className="text-[10px] font-mono font-bold" style={{ color: 'var(--v-text)' }}>
                       {formatRelativeTime(alert.created_at)}
                     </span>
-                    <span className={`text-xs font-semibold ${cfg.barBtn}`}>
+                    <span className="text-xs font-semibold" style={{ color: cfg.color }}>
                       {alert.bar_name}
                     </span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {alert.alert_type === 'anomaly' && (
-                      <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-orange-50 text-[#E67E22] border border-orange-200 uppercase">
+                      <span
+                        className="text-[9px] font-bold px-1 py-0.5 rounded uppercase"
+                        style={{ background: SEVERITY_CFG.anomaly.bg, color: SEVERITY_CFG.anomaly.color }}
+                      >
                         Anomaly
                       </span>
                     )}
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase ${cfg.badge}`}>
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase"
+                      style={{ background: cfg.bg, color: cfg.color }}
+                    >
                       {alert.severity}
                     </span>
                   </div>
                 </div>
 
-                <p className={`text-xs leading-snug mb-2 ${acked ? 'text-[#4A5568]' : 'text-[#1A202C]'}`}>
+                <p className="text-xs leading-snug mb-2" style={{ color: acked ? 'var(--v-text-muted)' : 'var(--v-text)' }}>
                   {alert.message}
                 </p>
 
@@ -346,12 +307,13 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eve
                   {!acked ? (
                     <button
                       onClick={() => onAcknowledge(alert.id)}
-                      className="text-[10px] font-semibold text-[#4A5568] border border-[#E2E8F0] bg-[#F7FAFC] hover:bg-[#EDF2F7] px-2.5 py-1 rounded-md transition-colors"
+                      className="text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors"
+                      style={{ color: 'var(--v-text-muted)', border: '0.5px solid var(--v-border)', background: 'var(--v-surface-raised)' }}
                     >
                       Acknowledge
                     </button>
                   ) : (
-                    <span className="text-[10px] text-[#4A5568] italic">Acknowledged</span>
+                    <span className="text-[10px] italic" style={{ color: 'var(--v-text-dim)' }}>Acknowledged</span>
                   )}
 
                   {/* Phantom-bar fix (Jul-19 sprint): unmapped Slesh shop_id
@@ -361,7 +323,8 @@ function AlertSidebar({ open, onToggle, alerts, acknowledged, onAcknowledge, eve
                     alert.context_json?.category === 'unmapped_shop' && (
                       <button
                         onClick={() => setMappingAlert(alert)}
-                        className="text-[10px] font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-2.5 py-1 rounded-md transition-colors"
+                        className="text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors"
+                        style={{ color: 'var(--v-bg-base)', background: 'var(--v-cyan)' }}
                       >
                         Map to bar
                       </button>
@@ -405,11 +368,10 @@ export default function DashboardPage() {
   const [searchParams]   = useSearchParams()
 
   // Role-aware branch: Owner sees the multi-bar overview below; Manager
-  // and Bartender get their per-bar 'My Bar' view. Warehouse keepers
-  // never reach this page (route guard redirects them to /warehouse).
-  // Spec: docs/bar-dashboard-spec.md S3.
+  // gets their per-bar 'My Bar' view. Two-role model — spec:
+  // docs/bar-dashboard-spec.md S3.
   const role = user?.role
-  if (role === 'manager' || role === 'bartender') {
+  if (role === 'manager') {
     return <BarDashboardView role={role} />
   }
   // Belt-and-suspenders for any unexpected role: route guard already
@@ -429,7 +391,7 @@ export default function DashboardPage() {
   // ── Loading state: still resolving which event to show ──
   if (!urlEventId && liveEventQuery.isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-[#4A5568]">
+      <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--v-text-muted)' }}>
         Finding the active event…
       </div>
     )
@@ -439,17 +401,12 @@ export default function DashboardPage() {
   if (!eventId) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
-        <p className="text-sm text-[#4A5568] max-w-md">
+        <p className="text-sm max-w-md" style={{ color: 'var(--v-text-muted)' }}>
           No Live event in progress. The dashboard shows real-time metrics
           for the currently-active event. Start an event from the Events
-          page, or pass <code className="font-mono bg-[#F7FAFC] px-1 py-0.5 rounded">?event_id=…</code> in the URL to view a specific event.
+          page, or pass <code className="font-mono px-1 py-0.5 rounded" style={{ background: 'var(--v-surface-raised)', color: 'var(--v-text)' }}>?event_id=…</code> in the URL to view a specific event.
         </p>
-        <button
-          onClick={() => navigate('/events')}
-          className="text-xs font-medium text-[#1E5A8D] border border-[#1E5A8D] px-3 py-1.5 rounded-lg hover:bg-[#F0F7FF] transition-colors"
-        >
-          Go to Events
-        </button>
+        <Button variant="secondary" onClick={() => navigate('/events')}>Go to Events</Button>
       </div>
     )
   }
@@ -625,7 +582,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
 
   if (isAnyLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-sm text-[#4A5568]">
+      <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--v-text-muted)' }}>
         Loading dashboard…
       </div>
     )
@@ -641,19 +598,19 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
   if (anyError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-sm">
-        <p className="text-[#E53E3E]">Failed to load dashboard data. Check the backend is reachable.</p>
-        <button
+        <p style={{ color: 'var(--v-pink)' }}>Failed to load dashboard data. Check the backend is reachable.</p>
+        <Button
+          variant="primary"
           onClick={() => {
             barsQuery.refetch()
             barStockQuery.refetch()
             transactionsQuery.refetch()
             productsQuery.refetch()
           }}
-          className="px-4 py-2 rounded-lg font-semibold text-white text-xs bg-[#3182CE] hover:bg-[#2B6CB0] transition-colors"
         >
           Retry now
-        </button>
-        <p className="text-[10px] text-[#A0AEC0]">Reconnecting automatically every 15s…</p>
+        </Button>
+        <p className="text-[10px]" style={{ color: 'var(--v-text-dim)' }}>Reconnecting automatically every 15s…</p>
       </div>
     )
   }
@@ -740,6 +697,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           elapsed={elapsed}
           unacknowledgedCount={unacknowledgedCount}
           criticalCount={alerts.filter((a) => a.severity === 'critical' && a.lifecycle_state === 'active' && !acknowledged.has(a.id)).length}
+          isLive={isLive}
           onAlertsClick={handleAlertsClick}
           onBreakdownClick={() => setBreakdownOpen(true)}
         />
@@ -747,41 +705,37 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
         <RevenueBreakdownModal data={revBreakdownQuery.data ?? null} open={revBreakdownOpen} onClose={() => setRevBreakdownOpen(false)} />
 
         {/* Zone B — Bar card grid */}
-        <main className="flex-1 overflow-y-auto p-5 bg-[#F7FAFC]">
+        <main className="flex-1 overflow-y-auto p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-lg font-bold text-[#1A202C]">Bar Performance</h1>
-                <FreshnessBadge eventHasSleshBars={eventHasSleshBars} eventEndedAt={(liveEvent as { ended_at?: string | null } | null | undefined)?.ended_at ?? null} eventId={eventId} />
+                <h1 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>Bar Performance</h1>
+                <FreshnessBadge eventHasSleshBars={eventHasSleshBars} isLive={isLive} eventId={eventId} />
                 <WeatherPill eventId={eventId} />
               </div>
-              <p className="text-xs text-[#4A5568] mt-0.5">
+              <p className="text-xs mt-0.5" style={{ color: 'var(--v-text-muted)' }}>
                 {eventName} · {eventStatusLabel} · {barKpis.length} {barKpis.length === 1 ? 'bar' : 'bars'}
               </p>
             </div>
-            <button
-              onClick={() => setRevBreakdownOpen(true)}
-              className="text-xs font-medium text-[#2F9E6E] border border-[#2F9E6E] px-3 py-1.5 rounded-lg hover:bg-[#F0F9F4] transition-colors mr-2"
-            >
-              Revenue
-            </button>
-            <button
-              onClick={() => navigate('/alerts')}
-              className="text-xs font-medium text-[#1E5A8D] border border-[#1E5A8D] px-3 py-1.5 rounded-lg hover:bg-[#F0F7FF] transition-colors"
-            >
-              View All Alerts
-            </button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setRevBreakdownOpen(true)}>Revenue</Button>
+              <Button variant="secondary" onClick={() => navigate('/alerts')}>View All Alerts</Button>
+            </div>
           </div>
 
           {barKpis.length === 0 ? (
-            <div className="bg-white rounded-xl p-12 text-center text-sm text-[#4A5568]">
-              No bars set up for this event yet. Add bars from the event detail page.
+            <div className="v-card p-12">
+              <EmptyState headline="No bars set up" body="Add bars from the event detail page to get started." />
             </div>
           ) : (
             <>
               {barKpis.length > 0 && barKpis.filter((b) => b.revenue_cents === 0 && b.drinks_sold === 0).length / barKpis.length >= 0.8 && (
-                <div className="bg-[#F0F7FF] border border-[#1E5A8D]/20 rounded-xl px-4 py-3 mb-4 text-xs text-[#1E5A8D] flex items-start gap-2">
-                  <svg className="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <div
+                  className="relative overflow-hidden rounded-[var(--v-radius)] px-4 py-3 mb-3 text-[13px] flex items-start gap-2"
+                  style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text-muted)' }}
+                >
+                  <span className="absolute left-0 top-0 bottom-0 w-[2px]" style={{ background: 'var(--v-cyan)' }} />
+                  <svg className="w-4 h-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="var(--v-cyan)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" />
                   </svg>
                   <span>
@@ -789,18 +743,19 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   </span>
                 </div>
               )}
-              {/* Big event-total revenue chart — Actual (live) vs ML Predicted.
-                  Locked May 27 2026: replaces the per-bar chart in the
-                  overlay. Spans full width of the grid above so it reads
-                  as ~2 bar cards wide.
-                  Phase E (Jul 2026): split into chart (~65%) + forecast
-                  KPI sidebar (~35%, fixed 320px min) when the event is
-                  LIVE. Extended (this chunk) to COMPLETED events too —
-                  a post-mortem "we predicted €X, actual was €Y" review,
-                  fetched once rather than polled. DRAFT still shows only
-                  the chart. Stacks vertically below 900px. */}
-              <div className="mb-4 flex flex-col min-[900px]:flex-row gap-4 items-stretch">
-                <div className="flex-1 min-w-0">
+
+              {/* One 12-column grid, 12px gutter, for the whole "Bar Performance"
+                  section below — chart/forecast row, recharge desk, customer
+                  intelligence, bar cards, and empty bars all share it so every
+                  row lines up and equal-width siblings stretch to equal height
+                  (CSS Grid's default align-items: stretch). */}
+              <div className="grid grid-cols-12 gap-3">
+                {/* Big event-total revenue chart — Actual (live) vs ML Predicted.
+                    Locked May 27 2026: replaces the per-bar chart in the
+                    overlay. Phase E (Jul 2026): chart (8/12) + forecast KPI
+                    sidebar (4/12) when the event is LIVE/COMPLETED. Stacks
+                    to full width below the md breakpoint. */}
+                <div className="col-span-12 md:col-span-8">
                   <EventRevenueChart
                     transactions={transactionsQuery.data ?? []}
                     eventStartMs={eventStartMs}
@@ -811,41 +766,46 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                   />
                 </div>
                 {(isLive || isCompleted) && (
-                  <div className="w-full min-[900px]:w-[320px] min-[900px]:flex-shrink-0 flex flex-col gap-1.5">
+                  <div className="col-span-12 md:col-span-4 flex flex-col gap-1.5">
                     {isCompleted && (
-                      <span className="text-[11px] font-medium text-[#A0AEC0] uppercase tracking-wide">
+                      <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--v-text-dim)' }}>
                         Post-event review
                       </span>
                     )}
-                    <RevenueForecastPanel
-                      forecast={forecast}
-                      loading={forecastLoading}
-                      error={forecastError}
+                    <div className="flex-1">
+                      <RevenueForecastPanel
+                        forecast={forecast}
+                        loading={forecastLoading}
+                        error={forecastError}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Recharge desk — Phase 2 (Jun 21 2026). Money-in row sits
+                    between the event-total chart and the bar grid so the
+                    page reads top-down: top KPIs → live trend → money came
+                    in via top-ups → money got spent across bars. Card hides
+                    itself if the event has no recharge stations configured. */}
+                <div className="col-span-12">
+                  <RechargeDeskCard eventId={eventId} />
+                </div>
+
+                {/* Customer Intelligence — Day 4. Same placement rationale
+                    as RechargeDeskCard above: sits between the money-in
+                    row and the per-bar grid. LIVE/COMPLETED only, same
+                    gate as the revenue forecast sidebar. */}
+                {(isLive || isCompleted) && (
+                  <div className="col-span-12">
+                    <CustomerIntelligencePanel
+                      eventId={eventId}
+                      data={customerIntel}
+                      loading={customerIntelLoading}
+                      error={customerIntelError}
                     />
                   </div>
                 )}
-              </div>
-              {/* Recharge desk — Phase 2 (Jun 21 2026). Money-in row sits
-                  between the event-total chart and the bar grid so the
-                  page reads top-down: top KPIs → live trend → money came
-                  in via top-ups → money got spent across bars. Card hides
-                  itself if the event has no recharge stations configured. */}
-              <div className="mb-4">
-                <RechargeDeskCard eventId={eventId} />
-              </div>
-              {/* Customer Intelligence — Day 4. Same placement rationale
-                  as RechargeDeskCard above: sits between the money-in
-                  row and the per-bar grid. LIVE/COMPLETED only, same
-                  gate as the revenue forecast sidebar. */}
-              {(isLive || isCompleted) && (
-                <CustomerIntelligencePanel
-                  eventId={eventId}
-                  data={customerIntel}
-                  loading={customerIntelLoading}
-                  error={customerIntelError}
-                />
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
                 {liveKpis.map((kpi) => {
                   const stub = stubById.get(kpi.id)
                   const mergeOptions = stub
@@ -857,40 +817,45 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
                       }
                     : undefined
                   return (
-                    <BarCard
-                      key={kpi.id}
-                      bar={kpi}
-                      criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
-                      onClick={(id) => setSelectedBar(liveKpis.find((b) => b.id === id) ?? null)}
-                      transactions={transactionsQuery.data ?? []}
-                      products={productsQuery.data ?? []}
-                      eventStartMs={eventStartMs}
-                      nowMs={nowMs}
-                      mergeOptions={mergeOptions}
-                      storage={storageByBarId.get(kpi.id)}
-                    />
+                    <div key={kpi.id} className="col-span-12 md:col-span-6">
+                      <BarCard
+                        bar={kpi}
+                        criticalAlertCount={alertCountsByBarQuery.data?.get(kpi.id)?.critical ?? 0}
+                        onClick={(id) => setSelectedBar(liveKpis.find((b) => b.id === id) ?? null)}
+                        transactions={transactionsQuery.data ?? []}
+                        products={productsQuery.data ?? []}
+                        eventStartMs={eventStartMs}
+                        nowMs={nowMs}
+                        mergeOptions={mergeOptions}
+                        storage={storageByBarId.get(kpi.id)}
+                      />
+                    </div>
                   )
                 })}
-              </div>
-              {emptyBars.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide mb-3">
-                    Awaiting activity · {emptyBars.length}
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {emptyBars.map((bar) => (
-                      <EmptyBarCard key={bar.id} bar={bar} />
-                    ))}
+
+                {emptyBars.length > 0 && (
+                  <div className="col-span-12 mt-2">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>
+                      Awaiting activity · {emptyBars.length}
+                    </h3>
                   </div>
-                </div>
-              )}
+                )}
+                {emptyBars.map((bar) => (
+                  <div key={bar.id} className="col-span-6 md:col-span-3">
+                    <EmptyBarCard bar={bar} />
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </main>
       </div>
 
-      {/* Zone C — Right column: alerts on top, wristband activity below */}
-      <div ref={alertsRef} className="flex-none flex flex-col overflow-y-auto max-h-screen">
+      {/* Zone C — Right column: alerts on top, wristband activity below.
+          h-full (not max-h-screen + independent scroll) so the panel's own
+          background fills the whole row height — no dark ambient gap
+          showing beneath short content. */}
+      <div ref={alertsRef} className="flex-none flex flex-col overflow-y-auto h-full" style={{ background: 'var(--v-surface-raised)' }}>
         <AlertSidebar
           open={sidebarOpen}
           onToggle={() => setSidebarOpen((o) => !o)}
@@ -900,7 +865,7 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
           eventId={eventId}
         />
         {sidebarOpen && (
-          <div className="border-l border-[#E2E8F0] bg-white p-3 w-80">
+          <div className="p-3 flex-1" style={{ borderLeft: '0.5px solid var(--v-border)' }}>
             <WristbandActivityFeed eventId={eventId} limit={25} />
           </div>
         )}
@@ -912,6 +877,10 @@ function DashboardContent({ eventId, liveEvent }: DashboardContentProps) {
       <BarDetailOverlay
         bar={selectedBar}
         onClose={() => setSelectedBar(null)}
+        eventId={eventId}
+        eventStartMs={eventStartMs}
+        nowMs={nowMs}
+        isLive={isLive}
       />
     </div>
   )

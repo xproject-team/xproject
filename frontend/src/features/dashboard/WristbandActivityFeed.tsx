@@ -11,6 +11,8 @@
  *   - Loading: dimmed skeleton lines
  */
 import { useWristbandActivity } from './useWristbandActivity'
+import { EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 function fmtEur(cents: number | null): string {
   if (cents === null || cents === undefined) return '—'
@@ -38,18 +40,18 @@ export function WristbandActivityFeed({ eventId, limit = 25 }: WristbandActivity
   const { data, isLoading, isError } = useWristbandActivity(eventId, limit)
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-2.5">
+    <div className="v-card">
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '0.5px solid var(--v-border)' }}>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-zinc-900">
+          <span className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>
             Wristband Activity
           </span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'var(--v-green)' }}>
+            <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: 'var(--v-green)' }} />
             live
           </span>
         </div>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>
           {data ? `${data.total} sales` : '—'}
         </span>
       </div>
@@ -58,36 +60,37 @@ export function WristbandActivityFeed({ eventId, limit = 25 }: WristbandActivity
         {isLoading && (
           <div className="space-y-2 p-3">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-4 animate-pulse rounded bg-zinc-100" />
+              <div key={i} className="h-4 animate-pulse rounded" style={{ background: 'var(--v-surface-raised)' }} />
             ))}
           </div>
         )}
         {isError && (
-          <div className="p-4 text-sm text-red-600">
+          <div className="p-4 text-sm" style={{ color: 'var(--v-pink)' }}>
             Could not load wristband activity. Check the backend logs.
           </div>
         )}
         {data && data.rows.length === 0 && (
-          <div className="p-4 text-sm text-zinc-500">
-            No wristband sales yet.
+          <div className="p-4">
+            <EmptyState headline="No wristband sales yet" body="Sales will appear here as wristband payments come in." />
           </div>
         )}
         {data && data.rows.length > 0 && (
-          <ul className="divide-y divide-zinc-50">
+          <ul>
             {data.rows.map((r) => (
               <li
                 key={r.transaction_id}
-                className="flex items-center justify-between px-4 py-2 hover:bg-zinc-50"
+                className="flex items-center justify-between px-4 py-2"
+                style={{ borderBottom: '0.5px solid var(--v-border)' }}
               >
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium text-zinc-900">
+                  <span className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>
                     {r.product_name}
                   </span>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs" style={{ color: 'var(--v-text-dim)' }}>
                     {r.bar_name.trim()} · {timeAgo(r.created_at)}
                   </span>
                 </div>
-                <span className="text-sm font-semibold text-zinc-700">
+                <span className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>
                   {fmtEur(r.price_cents)}
                 </span>
               </li>

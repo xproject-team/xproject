@@ -14,6 +14,9 @@ import {
 import { useVenues } from '@/features/venues/hooks'
 import { usePermissions } from '@/features/auth/usePermissions'
 import { useReportsForEvent } from '@/features/reports/useReports'
+import { inputCls } from '@/design-system/wizardForm'
+import { Badge, Button, EmptyState, type BadgeVariant } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 // Convert ISO datetime string (with timezone) to the format
 // expected by <input type="datetime-local">. The input doesn't
@@ -27,18 +30,25 @@ function toDatetimeLocal(iso: string | undefined | null): string {
 
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
+// Same semantic colors as the events list (EventListPage.tsx): live = green
+// (+ pulsing dot), draft = neutral, active = cyan, completed = violet.
 
-const STATUS_CFG: Record<Event['status'], { label: string; cls: string }> = {
-  live:      { label: 'Live',      cls: 'bg-green-100 text-[#38A169] border border-green-200' },
-  draft:     { label: 'Draft',     cls: 'bg-gray-100 text-[#718096] border border-gray-200' },
-  active:    { label: 'Active',    cls: 'bg-blue-100 text-[#3498DB] border border-blue-200' },
-  completed: { label: 'Completed', cls: 'bg-[#F7FAFC] text-[#4A5568] border border-[#E2E8F0]' },
+const STATUS_CFG: Record<Event['status'], { label: string; variant: BadgeVariant; pulse?: boolean }> = {
+  live:      { label: 'Live',      variant: 'success', pulse: true },
+  draft:     { label: 'Draft',     variant: 'neutral' },
+  active:    { label: 'Active',    variant: 'info' },
+  completed: { label: 'Completed', variant: 'violet' },
 }
 
 function StatusBadge({ status }: { status: Event['status'] }) {
   const cfg = STATUS_CFG[status]
   return (
-    <span className={`text-xs font-bold px-3 py-1 rounded-full ${cfg.cls}`}>{cfg.label}</span>
+    <Badge variant={cfg.variant}>
+      <span className="inline-flex items-center gap-1.5">
+        {cfg.pulse && <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--v-green)' }} />}
+        {cfg.label}
+      </span>
+    </Badge>
   )
 }
 
@@ -57,14 +67,17 @@ function StatCard({ icon, label, value, sub }: {
   sub?: string
 }) {
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm flex items-start gap-4">
-      <div className="w-10 h-10 rounded-lg bg-[#F7FAFC] border border-[#E2E8F0] flex items-center justify-center shrink-0 text-[#1E5A8D]">
+    <div className="v-card p-4 flex items-start gap-4">
+      <div
+        className="w-10 h-10 rounded-[var(--v-radius-sm)] flex items-center justify-center shrink-0"
+        style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-cyan)' }}
+      >
         {icon}
       </div>
       <div>
-        <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">{label}</p>
-        <p className="text-2xl font-bold text-[#1A202C] leading-none">{value}</p>
-        {sub && <p className="text-xs text-[#4A5568] mt-1">{sub}</p>}
+        <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>{label}</p>
+        <p className="text-2xl font-medium leading-none" style={{ color: 'var(--v-text)' }}>{value}</p>
+        {sub && <p className="text-xs mt-1" style={{ color: 'var(--v-text-muted)' }}>{sub}</p>}
       </div>
     </div>
   )
@@ -74,10 +87,10 @@ function StatCard({ icon, label, value, sub }: {
 
 function FieldDisplay({ locked, children }: { locked: boolean; children: React.ReactNode }) {
   if (!locked) {
-    return <p className="text-[#1A202C] font-medium">{children}</p>
+    return <p className="font-medium" style={{ color: 'var(--v-text)' }}>{children}</p>
   }
   return (
-    <div className="relative group inline-flex items-center gap-1.5 text-[#A0AEC0] font-medium" title="Locked while event is live">
+    <div className="relative group inline-flex items-center gap-1.5 font-medium" style={{ color: 'var(--v-text-dim)' }} title="Locked while event is live">
       <span>{children}</span>
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -308,7 +321,10 @@ function EventDetailContent({ event }: { event: Event }) {
     <div className="p-6 max-w-5xl mx-auto">
       {/* Toast — bottom-right, auto-dismisses after 5s */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#1A202C] text-white text-sm px-4 py-3 rounded-lg shadow-lg max-w-sm">
+        <div
+          className="fixed bottom-6 right-6 z-50 text-sm px-4 py-3 rounded-lg max-w-sm"
+          style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+        >
           {toastMessage}
         </div>
       )}
@@ -319,7 +335,10 @@ function EventDetailContent({ event }: { event: Event }) {
           <div className="flex items-center gap-3 mb-1">
             <button
               onClick={() => navigate('/events')}
-              className="text-xs text-[#4A5568] hover:text-[#1A202C] flex items-center gap-1 transition-colors"
+              className="text-xs flex items-center gap-1 transition-colors"
+              style={{ color: 'var(--v-text-muted)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--v-text)')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--v-text-muted)')}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -328,10 +347,10 @@ function EventDetailContent({ event }: { event: Event }) {
             </button>
           </div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#1A202C]">{effective.name}</h1>
+            <h1 className="text-2xl font-medium" style={{ color: 'var(--v-text)' }}>{effective.name}</h1>
             <StatusBadge status={effective.status} />
           </div>
-          <p className="text-sm text-[#4A5568] mt-1">
+          <p className="text-sm mt-1" style={{ color: 'var(--v-text-muted)' }}>
             {formatDate(effective.scheduled_at)} · {effective.venue.name}
           </p>
         </div>
@@ -339,99 +358,68 @@ function EventDetailContent({ event }: { event: Event }) {
         <div className="flex items-center gap-3 flex-wrap">
           {/* Reconciliation report — Owner only, after event has gone LIVE */}
           {effectiveCanViewReconciliation && (
-            <button
-              type="button"
-              onClick={() => navigate(`/events/${effective.id}/reconciliation`)}
-              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#164d7a] px-4 py-2 rounded-lg transition-colors"
-            >
+            <Button variant="secondary" onClick={() => navigate(`/events/${effective.id}/reconciliation`)}>
               View Reconciliation
-            </button>
+            </Button>
           )}
           {/* Edit / Save / Cancel */}
           {effectiveCanEdit && !isEditing && (
-            <button
-              onClick={() => effective.status === 'draft' ? navigate(`/events/${effective.id}/edit`) : setIsEditing(true)}
-              className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-            >
+            <Button variant="secondary" onClick={() => effective.status === 'draft' ? navigate(`/events/${effective.id}/edit`) : setIsEditing(true)}>
               Edit Event
-            </button>
+            </Button>
           )}
           {isEditing && (
             <>
-              <button
-                onClick={handleCancel}
-                className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors"
-              >
+              <Button variant="secondary" onClick={handleCancel}>
                 Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-                style={{ backgroundColor: '#38A169' }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
-              >
+              </Button>
+              <Button variant="primary" onClick={handleSave}>
                 Save Changes
-              </button>
+              </Button>
             </>
           )}
 
           {/* View Dashboard — Active + Live */}
           {effectiveCanViewDashboard && !isEditing && (
-            <button
-              onClick={() => navigate(`/dashboard?event_id=${effective.id}`)}
-              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] px-4 py-2 rounded-lg transition-colors"
-            >
+            <Button variant="primary" onClick={() => navigate(`/dashboard?event_id=${effective.id}`)}>
               View Dashboard
-            </button>
+            </Button>
           )}
 
           {/* View Report — Completed */}
           {effectiveCanViewReport && (
-            <button
+            <Button
+              variant="primary"
               onClick={() => reportToView && navigate(`/reports/${reportToView.id}`)}
               disabled={!reportToView}
               title={reportToView ? undefined : 'Report not generated yet'}
-              className="text-sm font-semibold text-white bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
             >
               View Report
-            </button>
+            </Button>
           )}
 
           {/* Activate Event — Draft only */}
           {effectiveCanStart && effective.status === 'draft' && !isEditing && (
-            <button
-              onClick={handleActivate}
-              className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-              style={{ backgroundColor: '#38A169' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
-            >
+            <Button variant="primary" onClick={handleActivate}>
               Activate Event
-            </button>
+            </Button>
           )}
 
           {/* Go Live — Active only */}
           {effectiveCanStart && effective.status === 'active' && !isEditing && (
-            <button
-              onClick={handleGoLive}
-              className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-              style={{ backgroundColor: '#38A169' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}
-            >
+            <Button variant="primary" onClick={handleGoLive}>
               Go Live
-            </button>
+            </Button>
           )}
 
           {/* End Event — Live only */}
           {effectiveCanEnd && !isEditing && (
             <button
               onClick={() => setShowEndConfirm(true)}
-              className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors"
-              style={{ backgroundColor: '#E53E3E' }}
-              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')}
-              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#E53E3E')}
+              className="text-sm font-semibold px-4 py-2 rounded-[var(--v-radius-sm)] transition-colors"
+              style={{ color: 'var(--v-pink)', border: '0.5px solid var(--v-pink)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255, 61, 113, 0.08)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               End Event
             </button>
@@ -440,7 +428,7 @@ function EventDetailContent({ event }: { event: Event }) {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
         <StatCard icon={Icons.bars} label="Bars" value={effectiveIsLive ? realBarsCount : effective.bars_count} sub="configured" />
         <StatCard icon={Icons.guests} label="Expected Guests" value={(effective.expected_guest_count ?? 0).toLocaleString()} sub="registered" />
         <StatCard icon={Icons.products} label="Products" value={effectiveIsLive ? products.length : '\u2014'} sub="configured" />
@@ -448,20 +436,20 @@ function EventDetailContent({ event }: { event: Event }) {
       </div>
 
       {/* Event Info Card */}
-      <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm overflow-hidden mb-6">
-        <div className="bg-[#F7FAFC] border-b border-[#E2E8F0] px-5 py-3">
-          <h2 className="text-xs font-bold text-[#4A5568] uppercase tracking-widest">Event Details</h2>
+      <div className="v-card overflow-hidden mb-3">
+        <div className="px-5 py-3" style={{ background: 'var(--v-surface-raised)', borderBottom: '0.5px solid var(--v-border)' }}>
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Event Details</h2>
         </div>
-        <div className="px-5 py-5 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
 
           {/* Event Name */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Event Name</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Event Name</p>
             {isEditing && !lockMatrix.name ? (
               <>
                 <input type="text" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.name}</p>
+                  className={inputCls} />
+                <p className="text-[10px] mt-1" style={{ color: 'var(--v-text-dim)' }}>Was: {effective.name}</p>
               </>
             ) : (
               <FieldDisplay locked={isEditing && lockMatrix.name}>{effective.name}</FieldDisplay>
@@ -470,14 +458,14 @@ function EventDetailContent({ event }: { event: Event }) {
 
           {/* Date */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Date</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Date</p>
             {isEditing && !lockMatrix.date ? (
               <>
                 <input type="datetime-local" value={toDatetimeLocal(draft.scheduled_at)} onChange={(e) => setDraft({ ...draft, scheduled_at: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30" />
+                  className={`${inputCls} [color-scheme:dark]`} />
                 <input type="datetime-local" value={toDatetimeLocal(draft.scheduled_end_at)} onChange={(e) => setDraft({ ...draft, scheduled_end_at: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {formatDate(effective.scheduled_at)} → {formatDate(effective.scheduled_end_at)}</p>
+                  className={`${inputCls} [color-scheme:dark] mt-1`} />
+                <p className="text-[10px] mt-1" style={{ color: 'var(--v-text-dim)' }}>Was: {formatDate(effective.scheduled_at)} → {formatDate(effective.scheduled_end_at)}</p>
               </>
             ) : (
               <FieldDisplay locked={isEditing && lockMatrix.date}>{formatDate(effective.scheduled_at)} → {formatDate(effective.scheduled_end_at)}</FieldDisplay>
@@ -486,19 +474,19 @@ function EventDetailContent({ event }: { event: Event }) {
 
           {/* Venue */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Venue</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Venue</p>
             {isEditing && !lockMatrix.venue ? (
               <>
                 <select
                   value={draft.venue_id}
                   onChange={(e) => setDraft({ ...draft, venue_id: e.target.value })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 bg-white"
+                  className={inputCls}
                 >
                   {venues.map((v) => (
                     <option key={v.id} value={v.id}>{v.name}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.venue.name}</p>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--v-text-dim)' }}>Was: {effective.venue.name}</p>
               </>
             ) : (
               <FieldDisplay locked={isEditing && lockMatrix.venue}>{effective.venue.name}</FieldDisplay>
@@ -507,12 +495,12 @@ function EventDetailContent({ event }: { event: Event }) {
 
           {/* Bars Count */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Number of Bars</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Number of Bars</p>
             {isEditing && !lockMatrix.barsCount ? (
               <>
                 <input type="number" min={1} value={draft.bars_count} onChange={(e) => setDraft({ ...draft, bars_count: Number(e.target.value) || 1 })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {effective.bars_count}</p>
+                  className={`${inputCls} tabular-nums`} />
+                <p className="text-[10px] mt-1" style={{ color: 'var(--v-text-dim)' }}>Was: {effective.bars_count}</p>
               </>
             ) : (
               <FieldDisplay locked={isEditing && lockMatrix.barsCount}>{effective.bars_count}</FieldDisplay>
@@ -521,18 +509,18 @@ function EventDetailContent({ event }: { event: Event }) {
 
           {/* Status */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Status</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Status</p>
             <StatusBadge status={effective.status} />
           </div>
 
           {/* Expected Guests */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Expected Guests</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Expected Guests</p>
             {isEditing && !lockMatrix.guests ? (
               <>
                 <input type="number" min={0} value={draft.expected_guest_count} onChange={(e) => setDraft({ ...draft, expected_guest_count: Number(e.target.value) || 0 })}
-                  className="w-full px-3 py-1.5 text-[#1A202C] font-medium border border-[#1E5A8D] rounded-md focus:outline-none focus:ring-2 focus:ring-[#1E5A8D]/30 tabular-nums" />
-                <p className="text-[10px] text-[#A0AEC0] mt-1">Was: {(effective.expected_guest_count ?? 0).toLocaleString()}</p>
+                  className={`${inputCls} tabular-nums`} />
+                <p className="text-[10px] mt-1" style={{ color: 'var(--v-text-dim)' }}>Was: {(effective.expected_guest_count ?? 0).toLocaleString()}</p>
               </>
             ) : (
               <FieldDisplay locked={isEditing && lockMatrix.guests}>{(effective.expected_guest_count ?? 0).toLocaleString()}</FieldDisplay>
@@ -541,48 +529,56 @@ function EventDetailContent({ event }: { event: Event }) {
 
           {/* Created */}
           <div>
-            <p className="text-[10px] font-bold text-[#4A5568] uppercase tracking-wide mb-0.5">Created</p>
-            <p className="text-[#1A202C] font-medium">{formatDate(effective.created_at)}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-0.5" style={{ color: 'var(--v-text-muted)' }}>Created</p>
+            <p className="font-medium" style={{ color: 'var(--v-text)' }}>{formatDate(effective.created_at)}</p>
           </div>
         </div>
       </div>
 
       {/* Bar list (live event only) */}
       {effectiveIsLive && (
-        <div className="bg-white border border-[#E2E8F0] rounded-xl shadow-sm overflow-hidden">
-          <div className="bg-[#F7FAFC] border-b border-[#E2E8F0] px-5 py-3 flex items-center justify-between">
-            <h2 className="text-xs font-bold text-[#4A5568] uppercase tracking-widest">Bars</h2>
-            <span className="text-xs text-[#4A5568]">{realBarsCount} bars</span>
+        <div className="v-card overflow-hidden">
+          <div className="px-5 py-3 flex items-center justify-between" style={{ background: 'var(--v-surface-raised)', borderBottom: '0.5px solid var(--v-border)' }}>
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Bars</h2>
+            <span className="text-xs" style={{ color: 'var(--v-text-muted)' }}>{realBarsCount} bars</span>
           </div>
           {barsQuery.isLoading ? (
-            <div className="px-5 py-8 text-center text-sm text-[#A0AEC0]">Loading bars…</div>
+            <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--v-text-muted)' }}>Loading bars…</div>
           ) : barsQuery.isError ? (
-            <div className="px-5 py-8 text-center text-sm text-[#E53E3E]">Failed to load bars.</div>
+            <div className="px-5 py-8 text-center text-sm" style={{ color: 'var(--v-pink)' }}>Failed to load bars.</div>
           ) : realBars.length === 0 ? (
-            <div className="px-5 py-8 text-center text-sm text-[#A0AEC0]">No bars configured for this event yet.</div>
+            <div className="px-5 py-8">
+              <EmptyState headline="No bars configured" body="No bars configured for this event yet." />
+            </div>
           ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[#E2E8F0]">
-                <th className="text-left px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Name</th>
-                <th className="text-left px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Type</th>
-                <th className="text-right px-5 py-3 text-[10px] font-bold text-[#4A5568] uppercase tracking-wide">Status</th>
+              <tr style={{ borderBottom: '0.5px solid var(--v-border)' }}>
+                <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Name</th>
+                <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Type</th>
+                <th className="text-right px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Status</th>
               </tr>
             </thead>
             <tbody>
               {realBars.map((bar) => (
-                <tr key={bar.id} className="border-b border-[#E2E8F0] last:border-0 hover:bg-[#F7FAFC] transition-colors">
-                  <td className="px-5 py-3 font-medium text-[#1A202C]">{bar.name}</td>
-                  <td className="px-5 py-3 text-[#4A5568] capitalize">{bar.bar_type}</td>
+                <tr
+                  key={bar.id}
+                  className="last:border-0 transition-colors"
+                  style={{ borderBottom: '0.5px solid var(--v-border)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td className="px-5 py-3 font-medium" style={{ color: 'var(--v-text)' }}>{bar.name}</td>
+                  <td className="px-5 py-3 capitalize" style={{ color: 'var(--v-text-muted)' }}>{bar.bar_type}</td>
                   <td className="px-5 py-3 text-right">
                     {bar.is_active ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-[#38A169]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#38A169]" />
+                      <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--v-green)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--v-green)' }} />
                         Active
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-[#A0AEC0]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#A0AEC0]" />
+                      <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--v-text-dim)' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--v-text-dim)' }} />
                         Inactive
                       </span>
                     )}
@@ -597,22 +593,26 @@ function EventDetailContent({ event }: { event: Event }) {
 
       {/* Go Live Confirmation Modal */}
       {showGoLiveConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowGoLiveConfirm(false)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(8,9,13,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => setShowGoLiveConfirm(false)}
+        >
+          <div className="max-w-md w-full mx-4 p-6" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-[#38A169]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(61, 255, 163, 0.12)' }}>
+                <svg className="w-5 h-5" style={{ color: 'var(--v-green)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#1A202C]">Go Live with {effective.name}?</h3>
-                <p className="text-sm text-[#4A5568] mt-1">This opens the POS, activates dashboards, and begins live data collection. The event configuration becomes locked.</p>
+                <h3 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>Go Live with {effective.name}?</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--v-text-muted)' }}>This opens the POS, activates dashboards, and begins live data collection. The event configuration becomes locked.</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowGoLiveConfirm(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Cancel</button>
-              <button onClick={handleGoLiveConfirmed} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors" style={{ backgroundColor: '#38A169' }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#2f8a59')} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#38A169')}>Yes, Go Live</button>
+              <Button variant="secondary" onClick={() => setShowGoLiveConfirm(false)}>Cancel</Button>
+              <Button variant="primary" onClick={handleGoLiveConfirmed}>Yes, Go Live</Button>
             </div>
           </div>
         </div>
@@ -620,22 +620,26 @@ function EventDetailContent({ event }: { event: Event }) {
 
       {/* Go Live Destination Choice Modal */}
       {showGoLiveDestination && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowGoLiveDestination(false)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(8,9,13,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => setShowGoLiveDestination(false)}
+        >
+          <div className="max-w-md w-full mx-4 p-6" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-[#1E5A8D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(0, 229, 212, 0.12)' }}>
+                <svg className="w-5 h-5" style={{ color: 'var(--v-cyan)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#1A202C]">{effective.name} is now live</h3>
-                <p className="text-sm text-[#4A5568] mt-1">Where do you want to go next?</p>
+                <h3 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>{effective.name} is now live</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--v-text-muted)' }}>Where do you want to go next?</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowGoLiveDestination(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Stay on Detail</button>
-              <button onClick={handleGoToDashboard} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors bg-[#1E5A8D] hover:bg-[#174a78]">Open Dashboard</button>
+              <Button variant="secondary" onClick={() => setShowGoLiveDestination(false)}>Stay on Detail</Button>
+              <Button variant="primary" onClick={handleGoToDashboard}>Open Dashboard</Button>
             </div>
           </div>
         </div>
@@ -643,22 +647,32 @@ function EventDetailContent({ event }: { event: Event }) {
 
       {/* End Event Confirmation Modal */}
       {showEndConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowEndConfirm(false)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(8,9,13,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => setShowEndConfirm(false)}
+        >
+          <div className="max-w-md w-full mx-4 p-6" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-[#E53E3E]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(255, 61, 113, 0.12)' }}>
+                <svg className="w-5 h-5" style={{ color: 'var(--v-pink)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-[#1A202C]">End {effective.name}?</h3>
-                <p className="text-sm text-[#4A5568] mt-1">This will lock the event, freeze all sales data, and start generating the post-event report. This cannot be undone.</p>
+                <h3 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>End {effective.name}?</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--v-text-muted)' }}>This will lock the event, freeze all sales data, and start generating the post-event report. This cannot be undone.</p>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowEndConfirm(false)} className="text-sm font-semibold text-[#4A5568] border border-[#E2E8F0] px-4 py-2 rounded-lg hover:bg-[#F7FAFC] transition-colors">Cancel</button>
-              <button onClick={handleEndConfirmed} className="text-sm font-semibold text-white px-4 py-2 rounded-lg transition-colors" style={{ backgroundColor: '#E53E3E' }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#c53030')} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#E53E3E')}>Yes, End Event</button>
+              <Button variant="secondary" onClick={() => setShowEndConfirm(false)}>Cancel</Button>
+              <button
+                onClick={handleEndConfirmed}
+                className="text-sm font-semibold px-4 py-2 rounded-[var(--v-radius-sm)] transition-colors"
+                style={{ color: 'var(--v-bg-base)', background: 'var(--v-pink)' }}
+              >
+                Yes, End Event
+              </button>
             </div>
           </div>
         </div>
@@ -683,8 +697,8 @@ export default function EventDetailPage() {
   if (isLoading) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 text-[#4A5568]">
-          <div className="w-4 h-4 border-2 border-[#CBD5E0] border-t-[#1E5A8D] rounded-full animate-spin" />
+        <div className="flex items-center gap-3" style={{ color: 'var(--v-text-muted)' }}>
+          <div className="w-4 h-4 rounded-full animate-spin" style={{ border: '2px solid var(--v-border)', borderTopColor: 'var(--v-cyan)' }} />
           <span className="text-sm">Loading event\u2026</span>
         </div>
       </div>
@@ -694,14 +708,15 @@ export default function EventDetailPage() {
   if (isError) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-          <p className="text-sm font-semibold text-[#E53E3E]">Failed to load event.</p>
+        <div className="rounded-[var(--v-radius-lg)] p-5" style={{ background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--v-pink)' }}>Failed to load event.</p>
           {error instanceof Error && (
-            <p className="text-xs text-[#A0AEC0] mt-1">{error.message}</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--v-text-dim)' }}>{error.message}</p>
           )}
           <button
             onClick={() => navigate('/events')}
-            className="mt-3 text-sm font-semibold text-[#1E5A8D] hover:underline"
+            className="mt-3 text-sm font-semibold hover:underline"
+            style={{ color: 'var(--v-cyan)' }}
           >
             \u2190 Back to Events
           </button>
@@ -713,14 +728,15 @@ export default function EventDetailPage() {
   if (!event) {
     return (
       <div className="p-6 max-w-5xl mx-auto">
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-xl p-5">
-          <p className="text-sm font-semibold text-[#1A202C]">Event not found.</p>
-          <p className="text-xs text-[#4A5568] mt-1">
+        <div className="v-card p-5">
+          <p className="text-sm font-semibold" style={{ color: 'var(--v-text)' }}>Event not found.</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--v-text-muted)' }}>
             The event may have been deleted or you do not have access.
           </p>
           <button
             onClick={() => navigate('/events')}
-            className="mt-3 text-sm font-semibold text-[#1E5A8D] hover:underline"
+            className="mt-3 text-sm font-semibold hover:underline"
+            style={{ color: 'var(--v-cyan)' }}
           >
             \u2190 Back to Events
           </button>

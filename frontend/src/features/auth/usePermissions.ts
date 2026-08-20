@@ -1,13 +1,17 @@
 /**
  * usePermissions — derives capability flags from the current user's role.
  * All access-control decisions in the UI go through this hook.
+ *
+ * Two-role model (Phase 2): owner and manager. Every flag is an explicit
+ * equality check — no fallback buckets — so a stale token carrying a
+ * retired role gets no capabilities rather than surprise ones.
  */
 import { useAuth } from './useAuth'
 
 export interface Permissions {
   /** Owner only — full multi-bar overview */
   canViewAllBars: boolean
-  /** Manager + Bartender — their assigned bar only */
+  /** Manager — their assigned bar only */
   canViewOwnBar: boolean
   /** Owner only — anomaly and theft detection flags */
   canSeeAnomalies: boolean
@@ -15,10 +19,9 @@ export interface Permissions {
   canSeeOperationalAlerts: boolean
   /** Owner only — revenue figures never shown to other roles */
   canSeeRevenue: boolean
-  /** Warehouse only — crate/box intake and dispatch scanning */
-  canScan: boolean
-  /** Bartender only — scanning a bottle when opening it at the bar */
+  /** Manager + Owner — DISPATCH scanning at the bar */
   canScanArrivalsAtBar: boolean
+  /** Manager + Owner — CONSUMED scanning at the bar (absorbed from the retired Bartender role) */
   canScanEmptiesAtBar:  boolean
   /** Owner only — full event report with AI narrative */
   canGenerateReport: boolean
@@ -28,17 +31,17 @@ export interface Permissions {
   canViewPredictions: boolean
   /** Owner only — override a model prediction */
   canOverridePrediction: boolean
-  /** Owner, Manager, Bartender — not Warehouse */
+  /** Owner + Manager */
   canChat: boolean
   /** Owner only */
   canCreateEvent: boolean
   /** Manager only */
   canRequestRestock: boolean
-  /** Owner + Warehouse — read-only warehouse stock list */
+  /** Owner + Manager — warehouse stock views and invoice lifecycle */
   canViewWarehouseStock: boolean
   /** Owner only — all bars, all severities including anomaly */
   canViewAllAlerts: boolean
-  /** Manager + Bartender: their bar id; Owner + Warehouse: null */
+  /** Manager: their bar id; Owner: null */
   assignedBarId: string | null
 }
 
@@ -48,21 +51,20 @@ export function usePermissions(): Permissions {
 
   return {
     canViewAllBars:          role === 'owner',
-    canViewOwnBar:           role === 'manager' || role === 'bartender',
+    canViewOwnBar:           role === 'manager',
     canSeeAnomalies:         role === 'owner',
     canSeeOperationalAlerts: role === 'owner' || role === 'manager',
     canSeeRevenue:           role === 'owner',
-    canScan:                 role === 'warehouse',
     canScanArrivalsAtBar:    role === 'manager' || role === 'owner',
-    canScanEmptiesAtBar:     role === 'bartender' || role === 'owner',
+    canScanEmptiesAtBar:     role === 'manager' || role === 'owner',
     canGenerateReport:       role === 'owner',
     canGenerateBarReport:    role === 'manager',
     canViewPredictions:      role === 'owner',
     canOverridePrediction:   role === 'owner',
-    canChat:                 role === 'owner' || role === 'manager' || role === 'bartender',
+    canChat:                 role === 'owner' || role === 'manager',
     canCreateEvent:          role === 'owner',
     canRequestRestock:       role === 'manager',
-    canViewWarehouseStock:   role === 'owner' || role === 'warehouse',
+    canViewWarehouseStock:   role === 'owner' || role === 'manager',
     canViewAllAlerts:        role === 'owner',
     assignedBarId:           user?.assignedBarId ?? null,
   }

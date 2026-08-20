@@ -1,6 +1,16 @@
 /**
  * AllocationPage — Phase C1 (Sundance 1 manual inventory mode).
  *
+ * Design-system conversion (Day 11 Phase 3): same editable grid, same
+ * paste-from-Excel flow, same POST /bar-stock/bulk-allocate save — UI-only
+ * restyle onto the dark design system used by Events/Bars/Catalog. No
+ * hook, type, or backend change.
+ *
+ * Deliberately still has NO navigation link anywhere (URL-only,
+ * /inventory/allocate) — per Day 11's investigation, giving this page
+ * proper nav reachability is a separate product decision, not part of
+ * this visual conversion.
+ *
  * Editable grid: products (rows) x bars (columns) for a chosen event.
  * Each cell is the TARGET allocated_qty for that (bar, product). Edits
  * are tracked locally; Save posts only the changed cells via
@@ -21,6 +31,9 @@ import {
   useBulkAllocate,
   type BulkAllocateItemError,
 } from '@/features/inventory/useBulkAllocate'
+import { Button, EmptyState, PageHeader } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls, Label } from '@/design-system/wizardForm'
 
 type Bar = { id: string; name: string; is_active?: boolean; bar_type?: string }
 type Product = { id: string; name: string; category?: string; is_archived?: boolean }
@@ -202,52 +215,50 @@ export default function AllocationPage() {
   const loading = barsQ.isLoading || stockQ.isLoading || productsQ.isLoading
 
   return (
-    <div className="p-6 space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-[#1A202C]">
-          Inventory Allocation
-        </h1>
-        <span className="text-sm text-[#718096]">
-          Starting bottle counts per bar (warehouse handoff)
-        </span>
-        <div className="ml-auto flex items-center gap-3">
-          <select
-            className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white"
-            value={effectiveEventId ?? ''}
-            onChange={(e) => {
-              setEventId(e.target.value)
-              setEdits({})
-              setBanner(null)
-              setItemErrors([])
-            }}
-          >
-            {events.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name} ({e.status})
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={onSave}
-            disabled={dirtyCells.length === 0 || bulk.isPending}
-            className="px-4 py-1.5 rounded-md text-sm font-medium text-white bg-[#3182CE] disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            {bulk.isPending
-              ? 'Saving…'
-              : `Save ${dirtyCells.length > 0 ? `(${dirtyCells.length})` : ''}`}
-          </button>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <PageHeader
+          title="Inventory Allocation"
+          subtitle="Starting bottle counts per bar (warehouse handoff)"
+          actions={
+            <div className="flex items-center gap-3">
+              <select
+                value={effectiveEventId ?? ''}
+                onChange={(e) => {
+                  setEventId(e.target.value)
+                  setEdits({})
+                  setBanner(null)
+                  setItemErrors([])
+                }}
+                className={`${inputCls} w-56`}
+              >
+                {events.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name} ({e.status})
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="primary"
+                onClick={onSave}
+                disabled={dirtyCells.length === 0 || bulk.isPending}
+              >
+                {bulk.isPending ? 'Saving…' : `Save${dirtyCells.length > 0 ? ` (${dirtyCells.length})` : ''}`}
+              </Button>
+            </div>
+          }
+        />
       </div>
 
       {/* Banner + per-item errors */}
       {banner !== null && (
         <div
-          className={`rounded-md px-4 py-2 text-sm ${
+          className="rounded-[var(--v-radius)] px-4 py-2.5 text-sm mb-4"
+          style={
             itemErrors.length > 0
-              ? 'bg-red-50 text-[#E53E3E] border border-red-200'
-              : 'bg-green-50 text-[#38A169] border border-green-200'
-          }`}
+              ? { background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)', color: 'var(--v-pink)' }
+              : { background: 'rgba(61, 255, 163, 0.08)', border: '0.5px solid var(--v-green)', color: 'var(--v-green)' }
+          }
         >
           {banner}
           {itemErrors.length > 0 && (
@@ -263,25 +274,32 @@ export default function AllocationPage() {
       )}
 
       {/* Search */}
-      <input
-        type="text"
-        placeholder="Filter products…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="border border-gray-300 rounded-md px-3 py-1.5 text-sm w-64"
-      />
+      <div className="mb-4 max-w-xs">
+        <Label>Filter products</Label>
+        <input
+          type="text"
+          placeholder="Filter products…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={inputCls}
+        />
+      </div>
 
       {/* C3 — Excel/CSV paste-in */}
-      <div>
+      <div className="mb-4">
         <button
           onClick={() => setShowPaste((v) => !v)}
-          className="text-sm text-[#3182CE] underline"
+          className="text-sm"
+          style={{ color: 'var(--v-cyan)' }}
         >
           {showPaste ? 'Hide paste panel' : 'Paste from Excel…'}
         </button>
         {showPaste && (
-          <div className="mt-2 space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50">
-            <p className="text-xs text-[#718096]">
+          <div
+            className="mt-2 space-y-2 p-3"
+            style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius)' }}
+          >
+            <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>
               Copy a range from Excel and paste it here. First row: bar names.
               First column: product names. Cells: quantities. Names must match
               the grid (case-insensitive). Nothing is saved until you press
@@ -292,17 +310,12 @@ export default function AllocationPage() {
               onChange={(e) => setPasteText(e.target.value)}
               rows={6}
               placeholder={'\tMain Bar\tBeer Bar\nGin Bombay 1L\t24\t0\nVodka Grey Goose 1L\t12\t6'}
-              className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm font-mono bg-white"
+              className={`${inputCls} font-mono`}
             />
             <div className="flex items-center gap-3">
-              <button
-                onClick={applyPaste}
-                className="px-3 py-1.5 rounded-md text-sm font-medium text-white bg-[#3182CE]"
-              >
-                Apply to grid
-              </button>
+              <Button variant="secondary" onClick={applyPaste}>Apply to grid</Button>
               {pasteReport !== null && (
-                <span className="text-xs text-[#4A5568]">{pasteReport}</span>
+                <span className="text-xs" style={{ color: 'var(--v-text-muted)' }}>{pasteReport}</span>
               )}
             </div>
           </div>
@@ -311,23 +324,33 @@ export default function AllocationPage() {
 
       {/* Grid */}
       {loading ? (
-        <div className="text-sm text-[#718096] py-8">Loading grid…</div>
-      ) : bars.length === 0 ? (
-        <div className="text-sm text-[#718096] py-8">
-          No active bars for this event yet — add bars first.
+        <div className="py-12 text-center text-sm" style={{ color: 'var(--v-text-muted)' }}>
+          <div className="inline-flex items-center gap-2">
+            <div className="w-4 h-4 rounded-full animate-spin" style={{ border: '2px solid var(--v-border)', borderTopColor: 'var(--v-cyan)' }} />
+            Loading grid…
+          </div>
         </div>
+      ) : bars.length === 0 ? (
+        <EmptyState headline="No active bars for this event" body="Add bars to this event before allocating starting stock." />
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <div
+          className="overflow-x-auto"
+          style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }}
+        >
           <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-medium text-[#4A5568] border-b border-gray-200 min-w-[220px]">
+            <thead>
+              <tr style={{ background: 'var(--v-surface-raised)', borderBottom: '0.5px solid var(--v-border)' }}>
+                <th
+                  className="sticky left-0 px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.06em] min-w-[220px]"
+                  style={{ background: 'var(--v-surface-raised)', color: 'var(--v-text-muted)' }}
+                >
                   Product
                 </th>
                 {bars.map((b) => (
                   <th
                     key={b.id}
-                    className="px-2 py-2 text-center font-medium text-[#4A5568] border-b border-gray-200 whitespace-nowrap"
+                    className="px-2 py-3 text-center text-[10px] font-bold uppercase tracking-[0.06em] whitespace-nowrap"
+                    style={{ color: 'var(--v-text-muted)' }}
                   >
                     {b.name}
                   </th>
@@ -335,12 +358,24 @@ export default function AllocationPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleProducts.map((p) => (
-                <tr key={p.id} className="odd:bg-white even:bg-gray-50/50">
-                  <td className="sticky left-0 bg-inherit px-3 py-1.5 border-b border-gray-100">
-                    <span className="text-[#1A202C]">{p.name}</span>
+              {visibleProducts.length === 0 ? (
+                <tr>
+                  <td colSpan={1 + bars.length} className="px-5 py-12">
+                    <EmptyState headline="No products match" body="Try a different filter." />
+                  </td>
+                </tr>
+              ) : visibleProducts.map((p) => (
+                <tr
+                  key={p.id}
+                  className="transition-colors last:border-0"
+                  style={{ borderBottom: '0.5px solid var(--v-border)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td className="sticky left-0 px-4 py-2" style={{ background: 'var(--v-surface)' }}>
+                    <span style={{ color: 'var(--v-text)' }}>{p.name}</span>
                     {p.category !== undefined && (
-                      <span className="ml-2 text-xs text-[#718096]">
+                      <span className="ml-2 text-xs" style={{ color: 'var(--v-text-dim)' }}>
                         {p.category}
                       </span>
                     )}
@@ -351,20 +386,18 @@ export default function AllocationPage() {
                       edits[key] !== undefined &&
                       edits[key] !== (baseline.get(key) ?? 0)
                     return (
-                      <td
-                        key={key}
-                        className="px-2 py-1 border-b border-gray-100 text-center"
-                      >
+                      <td key={key} className="px-2 py-1.5 text-center">
                         <input
                           type="number"
                           min={0}
                           value={cellValue(b.id, p.id)}
                           onChange={(e) => setCell(b.id, p.id, e.target.value)}
-                          className={`w-16 text-center border rounded px-1 py-0.5 ${
-                            dirty
-                              ? 'border-[#3182CE] bg-blue-50'
-                              : 'border-gray-200 bg-white'
-                          }`}
+                          className="w-16 text-center rounded-[var(--v-radius-sm)] px-1 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--v-cyan)]/30 focus:border-[var(--v-cyan)] transition-colors"
+                          style={{
+                            background: dirty ? 'rgba(0, 229, 212, 0.08)' : 'var(--v-bg-base)',
+                            border: `0.5px solid ${dirty ? 'var(--v-cyan)' : 'var(--v-border)'}`,
+                            color: 'var(--v-text)',
+                          }}
                         />
                       </td>
                     )

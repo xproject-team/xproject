@@ -9,7 +9,10 @@ import { createContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import { clearToken, getToken, setToken } from '@/lib/auth'
 
-export type UserRole = 'owner' | 'manager' | 'bartender' | 'warehouse'
+// Two-role model (Phase 2). Retired roles (bartender, warehouse) can still
+// appear at RUNTIME from stale tokens or historical data — display code must
+// tolerate unknown role strings with fallbacks, never exhaustive lookups.
+export type UserRole = 'owner' | 'manager'
 
 export interface AuthUser {
   id:           string
@@ -22,7 +25,7 @@ export interface AuthUser {
   /** Every role this user is authorized for (from /auth/roles-for-email). */
   assignedRoles: UserRole[]
   is_active:    boolean
-  /** Manager / Bartender only. Null for Owner / Warehouse. */
+  /** Manager only. Null for Owner. */
   assignedBarId: string | null
 }
 

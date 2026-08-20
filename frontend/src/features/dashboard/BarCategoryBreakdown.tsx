@@ -22,6 +22,8 @@ import type {
   BarCategoryTotalsDTO,
   BarTopDrinkDTO,
 } from '@/features/dashboard/hooks'
+import { EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 
 // ─── Color palette ──────────────────────────────────────────────────
@@ -123,11 +125,7 @@ const _FOOD_ORDER: BarCategoryBucketDTO['bucket'][] = [
 
 export function BarCategoryBreakdown({ bar, bar_type }: BarCategoryBreakdownProps) {
   if (!bar || bar.categories.length === 0) {
-    return (
-      <p className="text-sm text-[#A0AEC0] italic">
-        No sales yet by category.
-      </p>
-    )
+    return <EmptyState headline="No sales yet by category" body="No sales yet by category." />
   }
 
   // Render only buckets that actually exist on this event's menu (i.e. that
@@ -162,16 +160,17 @@ export function BarCategoryBreakdown({ bar, bar_type }: BarCategoryBreakdownProp
         return (
           <div
             key={b}
-            className="border rounded-lg px-3 py-2 text-center bg-white border-[#E2E8F0]"
+            className="rounded-[var(--v-radius)] px-3 py-2 text-center"
+            style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)' }}
           >
             <p
-              className="text-[10px] uppercase tracking-wide font-semibold"
-              style={{ color: _BUCKET_COLOR[b] ?? '#4A5568' }}
+              className="text-[10px] uppercase tracking-[0.06em] font-semibold"
+              style={{ color: _BUCKET_COLOR[b] ?? 'var(--v-text-muted)' }}
             >
               {_BUCKET_LABEL[b] ?? b.replace(/_/g, ' ')}
             </p>
-            <p className="text-lg font-bold mt-0.5 text-[#1A202C]">{units}</p>
-            <p className="text-[11px] text-[#4A5568]">{_formatEur(rev)}</p>
+            <p className="text-lg font-medium mt-0.5" style={{ color: 'var(--v-text)' }}>{units}</p>
+            <p className="text-[11px]" style={{ color: 'var(--v-text-muted)' }}>{_formatEur(rev)}</p>
           </div>
         )
       })}
@@ -192,25 +191,22 @@ interface BarTopDrinksProps {
 
 export function BarTopDrinks({ bar, bar_type: _bar_type }: BarTopDrinksProps) {
   if (!bar || bar.top_5_drinks.length === 0) {
-    return (
-      <p className="text-sm text-[#A0AEC0] italic">
-        No drink sales yet to rank.
-      </p>
-    )
+    return <EmptyState headline="No drink sales yet" body="No drink sales yet to rank." />
   }
 
   return (
     <div className="space-y-1.5">
       {bar.top_5_drinks.map((d: BarTopDrinkDTO, rank) => {
         const bucket = _bucketFor(d.category)
-        const color = _BUCKET_COLOR[bucket] ?? '#A0AEC0'
+        const color = _BUCKET_COLOR[bucket] ?? 'var(--v-text-dim)'
         return (
           <div
             key={d.product_name + rank}
-            className="flex items-center gap-3 bg-white border border-[#E2E8F0] rounded-lg px-3 py-1.5"
+            className="flex items-center gap-3 rounded-[var(--v-radius)] px-3 py-1.5"
+            style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)' }}
           >
             {/* Rank pill */}
-            <span className="text-[10px] font-bold text-[#A0AEC0] w-5 text-center">
+            <span className="text-[10px] font-bold w-5 text-center" style={{ color: 'var(--v-text-dim)' }}>
               #{rank + 1}
             </span>
             {/* Category color dot */}
@@ -220,18 +216,18 @@ export function BarTopDrinks({ bar, bar_type: _bar_type }: BarTopDrinksProps) {
               title={d.category}
             />
             {/* Product name */}
-            <span className="flex-1 text-sm text-[#1A202C] truncate" title={d.product_name}>
+            <span className="flex-1 text-sm truncate" style={{ color: 'var(--v-text)' }} title={d.product_name}>
               {d.product_name}
             </span>
             {/* Category label */}
-            <span className="text-[10px] text-[#A0AEC0] uppercase tracking-wide hidden sm:inline">
+            <span className="text-[10px] uppercase tracking-wide hidden sm:inline" style={{ color: 'var(--v-text-dim)' }}>
               {d.category.replace(/_/g, ' ')}
             </span>
             {/* Units + euros */}
-            <span className="text-sm font-semibold text-[#1A202C] tabular-nums w-12 text-right">
+            <span className="text-sm font-medium tabular-nums w-12 text-right" style={{ color: 'var(--v-text)' }}>
               {d.units}
             </span>
-            <span className="text-xs text-[#4A5568] tabular-nums w-14 text-right">
+            <span className="text-xs tabular-nums w-14 text-right" style={{ color: 'var(--v-text-muted)' }}>
               {_formatEur(d.revenue_eur)}
             </span>
           </div>

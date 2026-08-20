@@ -2,8 +2,8 @@
  * Sales breakdown modal — opens when Omar taps the Drinks or Food KPI card.
  *
  * Shows the full menu performance (GET /events/{id}/menu-performance):
- *   Drinks sold by category  -> green item bars under each family header
- *   Food sold by truck       -> orange item bars under each truck header
+ *   Drinks sold by category  -> categorical-palette item bars per family
+ *   Food sold by truck       -> cyan item bars under each truck header
  *
  * Keeps the main dashboard uncluttered; details live here on demand.
  */
@@ -14,6 +14,9 @@ import type {
   EventMenuPerformanceDTO,
   MenuItemLineDTO,
 } from '@/features/dashboard/hooks'
+import { colorForCategory } from '@/design-system/categoricalPalette'
+import { EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 const DRINK_FAMILY_LABEL: Record<DrinkFamily, string> = {
   cocktails: 'Cocktails',
@@ -23,8 +26,7 @@ const DRINK_FAMILY_LABEL: Record<DrinkFamily, string> = {
   other:     'Other',
 }
 
-const DRINK_COLOR = '#2F9E6E'
-const FOOD_COLOR = '#DD8C1E'
+const FOOD_COLOR = 'var(--v-cyan)'
 
 function maxUnits(items: MenuItemLineDTO[]): number {
   return items.reduce((m, i) => Math.max(m, i.units), 0)
@@ -39,13 +41,17 @@ interface ItemRowProps {
 
 function ItemRow({ name, units, max, color }: ItemRowProps) {
   const pct = max > 0 ? Math.round((units / max) * 100) : 0
+  const isZero = units === 0
+  const textColor = isZero ? 'var(--v-text-dim)' : 'var(--v-text)'
   return (
     <div className="flex items-center gap-3 py-0.5">
-      <span className="w-36 shrink-0 truncate text-sm text-[#1A202C]" title={name}>{name}</span>
-      <div className="flex-1 h-2 rounded-full bg-[#EDF2F7] overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+      <span className="w-36 shrink-0 truncate text-[13px]" style={{ color: textColor }} title={name}>{name}</span>
+      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--v-surface-raised)' }}>
+        {!isZero && (
+          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+        )}
       </div>
-      <span className="w-10 text-right text-sm font-semibold text-[#1A202C] tabular-nums">{units}</span>
+      <span className="w-10 text-right text-sm font-medium tabular-nums" style={{ color: textColor }}>{units}</span>
     </div>
   )
 }
@@ -74,20 +80,28 @@ export function SalesBreakdownModal({ menu, open, onClose }: SalesBreakdownModal
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(8,9,13,0.72)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[85vh] overflow-y-auto"
+        className="max-w-3xl w-full max-h-[85vh] overflow-y-auto"
+        style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#E2E8F0] sticky top-0 bg-white rounded-t-2xl">
-          <h2 className="text-base font-bold text-[#1A202C]">Sales breakdown</h2>
+        <div
+          className="flex items-center justify-between px-6 py-4 sticky top-0"
+          style={{ borderBottom: '0.5px solid var(--v-border)', background: 'var(--v-surface-raised)', borderRadius: 'var(--v-radius-lg) var(--v-radius-lg) 0 0' }}
+        >
+          <h2 className="text-base font-medium" style={{ color: 'var(--v-text)' }}>Sales breakdown</h2>
           <button
             onClick={onClose}
-            className="text-[#A0AEC0] hover:text-[#1A202C] text-2xl leading-none px-1"
+            className="text-2xl leading-none px-1 transition-colors"
+            style={{ color: 'var(--v-text-muted)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--v-text)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--v-text-muted)')}
             aria-label="Close"
           >
             &times;
@@ -96,26 +110,26 @@ export function SalesBreakdownModal({ menu, open, onClose }: SalesBreakdownModal
 
         <div className="p-6">
           {!hasData ? (
-            <p className="text-sm text-[#A0AEC0]">No sales yet.</p>
+            <EmptyState headline="No sales yet" body="No sales yet." />
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-10 gap-y-6">
 
               {/* Drinks sold by category */}
               <div>
-                <h3 className="text-sm font-semibold text-[#4A5568] mb-3">Drinks sold by category</h3>
+                <h3 className="text-[14px] font-medium mb-3" style={{ color: 'var(--v-text)' }}>Drinks sold by category</h3>
                 {drinks.length === 0 ? (
-                  <p className="text-xs text-[#A0AEC0]">No drinks on the menu.</p>
+                  <p className="text-xs" style={{ color: 'var(--v-text-dim)' }}>No drinks on the menu.</p>
                 ) : (
                   drinks.map((g) => (
                     <div key={g.family} className="mb-3 last:mb-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-[#A0AEC0]">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>
                           {DRINK_FAMILY_LABEL[g.family]}
                         </span>
-                        <span className="text-xs font-bold text-[#1A202C] tabular-nums">{g.subtotal_units}</span>
+                        <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--v-text)' }}>{g.subtotal_units}</span>
                       </div>
                       {g.items.map((i) => (
-                        <ItemRow key={i.product_id} name={i.product_name} units={i.units} max={drinkMax} color={DRINK_COLOR} />
+                        <ItemRow key={i.product_id} name={i.product_name} units={i.units} max={drinkMax} color={colorForCategory(g.family)} />
                       ))}
                     </div>
                   ))
@@ -124,17 +138,17 @@ export function SalesBreakdownModal({ menu, open, onClose }: SalesBreakdownModal
 
               {/* Food sold by truck */}
               <div>
-                <h3 className="text-sm font-semibold text-[#4A5568] mb-3">Food sold by truck</h3>
+                <h3 className="text-[14px] font-medium mb-3" style={{ color: 'var(--v-text)' }}>Food sold by truck</h3>
                 {food.length === 0 ? (
-                  <p className="text-xs text-[#A0AEC0]">No food trucks on the menu.</p>
+                  <p className="text-xs" style={{ color: 'var(--v-text-dim)' }}>No food trucks on the menu.</p>
                 ) : (
                   food.map((g) => (
                     <div key={g.bar_id} className="mb-3 last:mb-0">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[11px] font-bold uppercase tracking-widest text-[#A0AEC0]">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>
                           {g.bar_name}
                         </span>
-                        <span className="text-xs font-bold text-[#1A202C] tabular-nums">{g.subtotal_units}</span>
+                        <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--v-text)' }}>{g.subtotal_units}</span>
                       </div>
                       {g.items.map((i) => (
                         <ItemRow key={i.product_id} name={i.product_name} units={i.units} max={foodMax} color={FOOD_COLOR} />

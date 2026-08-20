@@ -5,31 +5,23 @@ import type { UserRole } from './AuthContext'
 
 
 const ROLE_LANDING: Record<UserRole, string> = {
-  owner:     '/dashboard',
-  manager:   '/dashboard',
-  bartender: '/dashboard',
-  warehouse: '/warehouse',
+  owner:   '/dashboard',
+  manager: '/dashboard',
 }
 
 const ROLE_LABEL: Record<UserRole, string> = {
-  owner:     'Owner',
-  manager:   'Manager',
-  bartender: 'Bartender',
-  warehouse: 'Warehouse Staff',
+  owner:   'Owner',
+  manager: 'Manager',
 }
 
 const ROLE_DESCRIPTION: Record<UserRole, string> = {
-  owner:     'Full operational control across all bars and events',
-  manager:   'Manage one bar during a live event',
-  bartender: 'Pour, scan, and track at your bar',
-  warehouse: 'Dispatch goods from warehouse to bars',
+  owner:   'Full operational control across all bars and events',
+  manager: 'Manage one bar during a live event',
 }
 
 const ROLE_COLOR: Record<UserRole, string> = {
-  owner:     '#1E5A8D',
-  manager:   '#6B21A8',
-  bartender: '#059669',
-  warehouse: '#DD6B20',
+  owner:   '#1E5A8D',
+  manager: '#6B21A8',
 }
 
 // ─── Component ───────────────────────────────────────────────────────────
@@ -195,7 +187,7 @@ export function LoginForm() {
         </form>
       )}
 
-      {/* ─── Step 2: Role picker — all 4 roles always visible ─── */}
+      {/* ─── Step 2: Role picker — Owner and Manager only ─── */}
       {step === 'role' && (
         <div className="space-y-4">
           <div className="text-center">
@@ -204,7 +196,7 @@ export function LoginForm() {
           </div>
 
           <div className="space-y-2.5">
-            {(['owner', 'manager', 'bartender', 'warehouse'] as UserRole[]).map((role) => (
+            {(['owner', 'manager'] as UserRole[]).map((role) => (
               <button
                 key={role}
                 type="button"

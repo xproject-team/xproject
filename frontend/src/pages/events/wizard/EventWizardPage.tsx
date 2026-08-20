@@ -41,6 +41,8 @@ import { WizardStep3Products }  from "./steps/WizardStep3Products"
 import { WizardStep3Bars }      from "./steps/WizardStep3Bars"
 import { WizardStep4Recharge }  from "./steps/WizardStep4Recharge"
 import { WizardStep5Invoices }  from "./steps/WizardStep5Invoices"
+import { Button } from "@/design-system/components"
+import "@/design-system/components/components.css"
 
 // Tabs metadata — keep in sync with current_step (1..6).
 const TABS: { num: 1 | 2 | 3 | 4 | 5 | 6; label: string }[] = [
@@ -299,8 +301,8 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
     if (fullEventQuery.isError) {
       return (
         <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-900 font-semibold">
+          <div className="p-4 rounded-lg" style={{ background: "rgba(255, 61, 113, 0.08)", border: "0.5px solid var(--v-pink)" }}>
+            <p className="text-sm font-semibold" style={{ color: "var(--v-pink)" }}>
               Could not load event: {(fullEventQuery.error as Error)?.message ?? "unknown error"}
             </p>
           </div>
@@ -308,7 +310,7 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
       )
     }
     return (
-      <div className="max-w-4xl mx-auto px-6 py-8 text-center text-[#718096]">
+      <div className="max-w-4xl mx-auto px-6 py-8 text-center" style={{ color: "var(--v-text-muted)" }}>
         Loading event…
       </div>
     )
@@ -319,20 +321,21 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1A202C]">
+          <h1 className="text-2xl font-medium" style={{ color: "var(--v-text)" }}>
             {isEditMode ? "Edit Event" : "Create Event"}
           </h1>
-          <p className="text-sm text-[#4A5568] mt-1">
+          <p className="text-sm mt-1" style={{ color: "var(--v-text-muted)" }}>
             {isEditMode
               ? `${state.name || "(loading…)"} · draft`
               : "New wizard flow · work-in-progress preview"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {!isEditMode && state.is_dirty && (
-            <span className="text-xs text-[#A0AEC0]">Draft auto-saved</span>
+            <span className="text-xs" style={{ color: "var(--v-text-dim)" }}>Draft auto-saved</span>
           )}
-          <button
+          <Button
+            variant="ghost"
             onClick={
               isEditMode
                 ? () => {
@@ -346,49 +349,62 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
                   }
                 : onDiscard
             }
-            className="text-sm text-[#718096] hover:text-[#E53E3E] px-3 py-1.5"
+            style={{ color: "var(--v-pink)" }}
           >
             {isEditMode ? "Cancel" : "Discard draft"}
-          </button>
+          </Button>
         </div>
       </div>
 
 
-      {/* Step tabs */}
-      <div className="flex items-center gap-2 mb-6 border-b border-[#E2E8F0]">
-        {TABS.map((tab) => {
-          const isActive   = state.current_step === tab.num
+      {/* Step tabs — completed: cyan check on tinted circle; current: filled
+          cyan circle with dark number; upcoming: surface-raised circle with
+          dim number. Connector segments are cyan behind completed steps. */}
+      <div className="flex items-start mb-6">
+        {TABS.map((tab, idx) => {
+          const isActive    = state.current_step === tab.num
+          const isCompleted = tab.num < state.current_step
           // Edit mode: all tabs reachable from the start; the whole
           // event is already loaded. Create mode: gate to reached steps.
           const isReachable = isEditMode || tab.num <= state.current_step
+
+          const circleStyle: React.CSSProperties = isCompleted
+            ? { background: "rgba(0, 229, 212, 0.12)", color: "var(--v-cyan)" }
+            : isActive
+              ? { background: "var(--v-cyan)", color: "var(--v-bg-base)" }
+              : { background: "var(--v-surface-raised)", color: "var(--v-text-dim)" }
+
           return (
-            <button
-              key={tab.num}
-              onClick={() => isReachable && goToStep(tab.num)}
-              disabled={!isReachable}
-              className={[
-                "flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px",
-                isActive
-                  ? "text-[#1E5A8D] border-[#1E5A8D]"
-                  : isReachable
-                    ? "text-[#718096] border-transparent hover:text-[#4A5568] hover:border-[#CBD5E0]"
-                    : "text-[#CBD5E0] border-transparent cursor-not-allowed",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "w-6 h-6 rounded-full flex items-center justify-center text-xs",
-                  isActive
-                    ? "bg-[#1E5A8D] text-white"
-                    : isReachable
-                      ? "bg-[#E2E8F0] text-[#4A5568]"
-                      : "bg-[#F7FAFC] text-[#CBD5E0]",
-                ].join(" ")}
+            <div key={tab.num} className="contents">
+              <button
+                onClick={() => isReachable && goToStep(tab.num)}
+                disabled={!isReachable}
+                className="flex flex-col items-center gap-1.5 shrink-0 w-16 disabled:cursor-not-allowed"
               >
-                {tab.num}
-              </span>
-              {tab.label}
-            </button>
+                <span
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors"
+                  style={circleStyle}
+                >
+                  {isCompleted ? (
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                  ) : tab.num}
+                </span>
+                <span
+                  className="text-xs font-medium whitespace-nowrap"
+                  style={{ color: isActive ? "var(--v-text)" : isReachable ? "var(--v-text-muted)" : "var(--v-text-dim)" }}
+                >
+                  {tab.label}
+                </span>
+              </button>
+              {idx < TABS.length - 1 && (
+                <div
+                  className="flex-1 h-px mt-[14px]"
+                  style={{ background: isCompleted ? "var(--v-cyan)" : "var(--v-border)" }}
+                />
+              )}
+            </div>
           )
         })}
       </div>
@@ -398,10 +414,10 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
 
       {/* Finalize error banner */}
       {finalizeBanner && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-          <p className="text-sm text-red-900 font-semibold">{finalizeBanner}</p>
+        <div className="mb-4 p-3 rounded-lg" style={{ background: "rgba(255, 61, 113, 0.08)", border: "0.5px solid var(--v-pink)" }}>
+          <p className="text-sm font-semibold" style={{ color: "var(--v-pink)" }}>{finalizeBanner}</p>
           {finalizeItemErrors.length > 0 && (
-            <ul className="mt-2 text-xs text-red-900 list-disc list-inside space-y-0.5">
+            <ul className="mt-2 text-xs list-disc list-inside space-y-0.5" style={{ color: "var(--v-pink)" }}>
               {finalizeItemErrors.map((e, i) => (
                 <li key={i}>
                   <span className="font-semibold">{e.section} #{e.index}:</span> {e.error}
@@ -414,22 +430,18 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
 
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <button
+        <Button
+          variant="ghost"
           onClick={goBack}
           disabled={
             state.current_step === 1 ||
             (state.current_step === 6 && state.event_id !== null)
           }
-          className={[
-            "px-4 py-2 text-sm font-semibold rounded-lg transition-colors",
-            state.current_step === 1
-              ? "text-[#CBD5E0] cursor-not-allowed"
-              : "text-[#4A5568] hover:bg-[#F7FAFC]",
-          ].join(" ")}
         >
           Back
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
           onClick={
             isEditMode
               ? state.current_step < 5
@@ -448,12 +460,6 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
             (state.current_step === 5 && updateFull.isPending) ||
             (state.current_step === 6 && state.event_id === null)
           }
-          className={[
-            "px-5 py-2 text-sm font-semibold rounded-lg transition-colors text-white",
-            createFull.isPending || updateFull.isPending
-              ? "bg-[#CBD5E0] cursor-not-allowed"
-              : "bg-[#1ABC9C] hover:bg-[#17a589]",
-          ].join(" ")}
         >
           {isEditMode
             ? state.current_step < 5
@@ -466,7 +472,7 @@ function EventWizardContent({ userId, hydrateEventId }: ContentProps) {
               : state.current_step === 5
                 ? createFull.isPending ? "Creating Event…" : "Create Event"
                 : "Done"}
-        </button>
+        </Button>
       </div>
     </div>
   )

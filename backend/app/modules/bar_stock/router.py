@@ -73,7 +73,7 @@ async def list_stock_for_event(
     - Warehouse overview: by-event/{event_id} (all stock rows)
     - 404 if event doesn't exist (vs. silent empty list)
     """
-    # Auto-fill bar_id for Manager/Bartender; assert access for everyone
+    # Auto-fill bar_id for Manager; assert access for everyone
     bar_id = resolve_bar_filter(current_user, bar_id)
     assert_bar_access(current_user, bar_id)
     service = BarStockService(db)

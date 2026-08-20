@@ -75,12 +75,11 @@ function FieldRow({ label, value, badge }: FieldRowProps) {
 
 // ─── Role badge color map ────────────────────────────────────────────────────
 
+// Two-role model — unknown/retired roles fall back to the neutral color
+// in roleBadge() below.
 const ROLE_BADGE_COLOR: Record<string, string> = {
-  owner:            '#1E5A8D',
-  warehouse_keeper: '#DD6B20',
-  warehouse:        '#DD6B20',
-  manager:          '#6B21A8',
-  bartender:        '#059669',
+  owner:   '#1E5A8D',
+  manager: '#6B21A8',
 }
 
 function roleBadge(role: string | undefined): { text: string; color: string } | null {

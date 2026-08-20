@@ -271,10 +271,14 @@ export interface FoodSummaryDTO {
 }
 
 export interface EventKpiSummaryDTO {
-  event_id:          string
-  total_revenue_eur: string   // drinks + food NET = Omar's take
-  drinks:            DrinksSummaryDTO
-  food:              FoodSummaryDTO
+  event_id:            string
+  total_revenue_eur:   string   // GROSS drinks + food + unmapped_revenue_eur (not net of the food-vendor share)
+  /** Confirmed revenue whose POS shop isn't mapped to a bar yet. Already
+   *  included in total_revenue_eur; surface it explicitly when > 0
+   *  rather than letting it disappear into the total unexplained. */
+  unmapped_revenue_eur: string
+  drinks:              DrinksSummaryDTO
+  food:                FoodSummaryDTO
 }
 
 export function useEventKpiSummary(eventId: string | null | undefined) {

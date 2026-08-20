@@ -19,11 +19,25 @@ import { api } from '@/lib/api'
 
 export interface ChannelResponse {
   id:              string
-  channel_type:    'bar' | 'dm' | 'general'
+  /** 'bar' | 'direct' (legacy 'dm') | 'strategic' | 'general' — matches live data */
+  channel_type:    string
   bar_id:          string | null
   name:            string
   unread_count:    number
   last_message_at: string | null       // ISO datetime
+  /** Owning event (bar channels only; null for DMs/strategic/general) */
+  event_id:           string | null
+  event_name:         string | null
+  event_status:       string | null    // draft|active|live|completed|cancelled
+  event_scheduled_at: string | null
+  /** Owning event is completed/cancelled → read-only archive */
+  is_archived:        boolean
+}
+
+export interface ChannelMemberInfo {
+  id:        string
+  full_name: string
+  role:      'owner' | 'manager'
 }
 
 export interface AttachmentResponse {
@@ -53,6 +67,8 @@ export const chatKeys = {
   channels:  () => [...chatKeys.all, 'channels'] as const,
   messages:  (channelId: string) =>
     [...chatKeys.all, 'channel', channelId, 'messages'] as const,
+  members:   (channelId: string) =>
+    [...chatKeys.all, 'channel', channelId, 'members'] as const,
 }
 
 // ─── Hooks ────────────────────────────────────────────────────────────
@@ -87,6 +103,21 @@ export function useChannelMessages(
       return res.data
     },
     enabled: channelId !== null,
+  })
+}
+
+/** The channel's real current members (Owner + Managers; DMs: the two
+ *  parties). Drives the mention picker and the channel-header roster. */
+export function useChannelMembers(channelId: string | null) {
+  return useQuery<ChannelMemberInfo[]>({
+    queryKey: channelId ? chatKeys.members(channelId) : ['chat', 'members', 'disabled'],
+    queryFn: async () => {
+      if (!channelId) return []
+      const res = await api.get<ChannelMemberInfo[]>(`/chat/channels/${channelId}/members`)
+      return res.data
+    },
+    enabled: channelId !== null,
+    staleTime: 60_000,
   })
 }
 

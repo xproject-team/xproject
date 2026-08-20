@@ -95,6 +95,10 @@ export type ScanType =
   | 'INSPECT'
   | 'CONSUMED'
 
+// READ-SIDE vocabulary, deliberately wider than the two-role auth model:
+// scanned_by_role is a historical audit snapshot and old scans recorded by
+// the retired roles must keep deserializing. Write-side maps are Partial
+// over this type and only know owner/manager.
 export type ScannerRole = 'owner' | 'manager' | 'bartender' | 'warehouse_keeper'
 export type InvoiceLineKind = 'catalog_product' | 'miscellaneous'
 export type DiscrepancyLineStatus = 'match' | 'short' | 'extra' | 'unexpected'

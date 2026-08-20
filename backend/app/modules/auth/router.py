@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.modules.auth.permissions import get_active_role
-from app.modules.auth.models import User, UserRole
+from app.modules.auth.models import ACTIVE_ROLES, User, UserRole
 from app.modules.auth.repository import (
     get_user_authorized_roles,
     get_user_by_email_with_roles,
@@ -88,6 +88,13 @@ async def get_current_user(
             except ValueError:
                 # Token contains an invalid role string — treat as expired
                 raise credentials_exc
+        # Retired roles (Phase 2 two-role model) are cut off here, the single
+        # choke point every request passes through: a still-unexpired token
+        # carrying a retired active_role (or an old token defaulting to a
+        # retired users.role) stops working the moment this deploys, instead
+        # of degrading guard-by-guard for up to 16 hours.
+        if user.role not in ACTIVE_ROLES:
+            raise credentials_exc
     if user is None:
         raise credentials_exc
     return user
@@ -113,15 +120,6 @@ async def login(
     Returns 401 on invalid credentials. Same response for unknown email and
     wrong password (prevents user enumeration attacks).
     """
-    service = AuthService(db)
-    user = await service.authenticate_user(form_data.username, form_data.password)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     active: UserRole | None = None
     if requested_role is not None:
         # Validate the requested role string parses to a known enum value
@@ -132,6 +130,25 @@ async def login(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown role: {requested_role!r}",
             )
+        # Retired roles are rejected BEFORE credential verification: the
+        # rejection is role-global ("bartender sign-in is closed" holds for
+        # every account), so answering early leaks nothing account-specific.
+        if active not in ACTIVE_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"The {active.value} role has been retired and can no longer sign in",
+            )
+
+    service = AuthService(db)
+    user = await service.authenticate_user(form_data.username, form_data.password)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if active is not None:
         # Validate the user is authorized for this role
         authorized = await get_user_authorized_roles(db, user.id)
         if active not in authorized:
@@ -139,6 +156,15 @@ async def login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User is not authorized for the requested role",
             )
+    elif user.role not in ACTIVE_ROLES:
+        # Legacy path (no requested_role): the token's active_role would
+        # default to users.role — refuse when that primary role is retired,
+        # otherwise a bartender/warehouse account could still mint a
+        # working retired-role token by omitting the role field.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"The {user.role.value} role has been retired and can no longer sign in",
+        )
 
     token = service.create_user_token(user, active_role=active)
     return TokenResponse(access_token=token, token_type="bearer")
@@ -161,7 +187,10 @@ async def roles_for_email(
     user = await get_user_by_email_with_roles(db, payload.email)
     if user is None or not user.is_active:
         return RolesForEmailResponse(email=payload.email, roles=[])
-    roles = sorted({ra.role.value for ra in user.role_assignments})
+    # Retired roles are never offered, even where a historical grant row
+    # still exists — an account whose only grant is retired gets an empty
+    # list, indistinguishable from an unknown email.
+    roles = sorted({ra.role.value for ra in user.role_assignments if ra.role in ACTIVE_ROLES})
     return RolesForEmailResponse(email=payload.email, roles=roles)
 
 
