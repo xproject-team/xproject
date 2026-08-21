@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/useAuth'
+import { useSignOut } from '@/features/auth/useSignOut'
 import type { UserRole } from '@/features/auth/AuthContext'
 import { MentionBell } from '@/features/chat/MentionBell'
 import { useLiveEvent } from '@/features/dashboard/hooks'
@@ -23,8 +24,9 @@ const FALLBACK_BADGE: RoleBadgeStyle = {
 }
 
 export function TopBar() {
-  const navigate         = useNavigate()
-  const { user, logout } = useAuth()
+  const navigate = useNavigate()
+  const { user } = useAuth()
+  const { signOut, switchRole } = useSignOut()
   const [menuOpen, setMenuOpen] = useState(false)
 
   const menuRef    = useRef<HTMLDivElement>(null)
@@ -76,17 +78,12 @@ export function TopBar() {
 
   function goSwitchRole() {
     setMenuOpen(false)
-    if (user?.email) {
-      try { localStorage.setItem('lastEmail', user.email) } catch { /* quota */ }
-    }
-    logout()
-    navigate('/login')
+    switchRole()
   }
 
   function goSignOut() {
     setMenuOpen(false)
-    logout()
-    navigate('/login')
+    signOut()
   }
 
   return (

@@ -1,6 +1,7 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import { useAuth } from '@/features/auth/useAuth'
+import { useSignOut } from '@/features/auth/useSignOut'
 import type { MockUser } from '@/lib/mockUsers'
 import '@/design-system/components/components.css'
 
@@ -198,16 +199,11 @@ function getNavItems(role: MockUser['role']): NavItem[] {
 
 export function Sidebar() {
   const { pathname } = useLocation()
-  const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  const { signOut } = useSignOut()
 
   const role: MockUser['role'] = user?.role ?? 'owner'
   const navItems = getNavItems(role)
-
-  function handleSwitch() {
-    logout()
-    navigate('/login')
-  }
 
   return (
     <aside className="v-glass w-60 text-[var(--v-text)] flex flex-col flex-shrink-0 relative z-10">
@@ -268,7 +264,7 @@ export function Sidebar() {
 
             {/* Sign out — was mislabeled 'Switch user' but only ever logged out */}
             <button
-              onClick={handleSwitch}
+              onClick={signOut}
               title="Sign out"
               aria-label="Sign out"
               className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--v-text-dim)] hover:text-[var(--v-text)] hover:bg-white/[0.04] transition-colors shrink-0"
