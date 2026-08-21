@@ -1,14 +1,17 @@
 """Regression coverage: ReportAggregator's revenue queries must exclude
-refunded StockTransaction rows.
+refunded rows.
 
-stock_transactions/models.py documents the invariant explicitly: "'refunded'
-for cup/bottle returns. Aggregation queries filter on status='confirmed' so
-refunds don't inflate revenue." _build_revenue_kpis, _build_bar_revenues, and
-_build_product_performance never applied that filter — a refunded line with
-price_cents still populated (exactly how order_ingester.py leaves it: refunds
-flip pos_line_status, never clear price_cents) would inflate every report
-revenue figure. Currently latent (no refunded+priced rows existed in
-production at audit time) but a real, confirmed bug independent of data.
+Since the Day 14 migration the euro figures come from event_orders: a
+fully-refunded order (confirmed_line_count == 0) must not contribute to
+total revenue or per-bar revenue — the same filter the dashboard and
+RevenueBreakdownService apply (docs/revenue-calculation-bible.md).
+
+_build_product_performance still reads stock_transactions lines (units /
+per-product detail has no event_orders equivalent), so the original
+line-level invariant stays covered too: "'refunded' for cup/bottle
+returns. Aggregation queries filter on status='confirmed' so refunds
+don't inflate revenue" — a refunded line keeps its price_cents (exactly
+how order_ingester.py leaves it) and must still be excluded.
 
 Same DB-backed pattern as test_reports_extended_sections.py.
 """
@@ -27,6 +30,7 @@ from tests.fixtures.alerts.factories import (
     delete_tenant_cascade,
     make_bar,
     make_event,
+    make_event_order,
     make_product,
     make_stock_transaction,
     make_tenant,
@@ -67,19 +71,20 @@ async def _sale(
     return st
 
 
-async def test_revenue_kpis_excludes_refunded_lines():
+async def test_revenue_kpis_excludes_fully_refunded_orders():
     async with TestSessionLocal() as session:
         tenant = await make_tenant(session)
         try:
             event = await make_event(session, tenant.id, status=EventStatus.COMPLETED)
             await _complete_event(session, event)
             bar = await make_bar(session, tenant.id, event.id)
-            product = await make_product(session, tenant.id)
 
-            await _sale(session, tenant.id, event.id, bar.id, product.id, qty=2, price_cents=1000)
-            await _sale(
-                session, tenant.id, event.id, bar.id, product.id,
-                qty=1, price_cents=5000, refunded=True,
+            await make_event_order(
+                session, tenant.id, event.id, bar_id=bar.id, fiscal_gross_cents=2000,
+            )
+            await make_event_order(  # fully refunded — must not count
+                session, tenant.id, event.id, bar_id=bar.id, fiscal_gross_cents=5000,
+                confirmed_line_count=0, refunded_line_count=1,
             )
 
             kpis = await ReportAggregator(session)._build_revenue_kpis(tenant.id, event.id, 8.0)
@@ -89,19 +94,20 @@ async def test_revenue_kpis_excludes_refunded_lines():
             await delete_tenant_cascade(session, tenant.id)
 
 
-async def test_bar_revenues_excludes_refunded_lines():
+async def test_bar_revenues_excludes_fully_refunded_orders():
     async with TestSessionLocal() as session:
         tenant = await make_tenant(session)
         try:
             event = await make_event(session, tenant.id, status=EventStatus.COMPLETED)
             await _complete_event(session, event)
             bar = await make_bar(session, tenant.id, event.id)
-            product = await make_product(session, tenant.id)
 
-            await _sale(session, tenant.id, event.id, bar.id, product.id, qty=3, price_cents=1000)
-            await _sale(
-                session, tenant.id, event.id, bar.id, product.id,
-                qty=1, price_cents=9000, refunded=True,
+            await make_event_order(
+                session, tenant.id, event.id, bar_id=bar.id, fiscal_gross_cents=3000,
+            )
+            await make_event_order(
+                session, tenant.id, event.id, bar_id=bar.id, fiscal_gross_cents=9000,
+                confirmed_line_count=0, refunded_line_count=1,
             )
 
             bar_revenues = await ReportAggregator(session)._build_bar_revenues(tenant.id, event.id)

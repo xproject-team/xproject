@@ -35,6 +35,7 @@ from tests.fixtures.alerts.factories import (
     delete_tenant_cascade,
     make_bar,
     make_event,
+    make_event_order,
     make_product,
     make_stock_transaction,
     make_tenant,
@@ -270,11 +271,12 @@ async def test_build_comparison_computes_revenue_delta_and_flags_missing_guest_d
         await session.flush()
 
         agg = ReportAggregator(session)
-        revenue_kpis = await agg._build_revenue_kpis(tenant.id, curr_event.id, 8.0)
-        # Force a known current revenue via a real sale.
+        # Force a known current revenue via a confirmed order (event_orders
+        # is the money-of-record since the Day 14 migration).
         bar = await make_bar(session, tenant.id, curr_event.id)
-        product = await make_product(session, tenant.id, name="Spritz")
-        await _sale(session, tenant.id, curr_event.id, bar.id, product.id, qty=1, price_cents=2200000)
+        await make_event_order(
+            session, tenant.id, curr_event.id, bar_id=bar.id, fiscal_gross_cents=2200000,
+        )
         revenue_kpis = await agg._build_revenue_kpis(tenant.id, curr_event.id, 8.0)
 
         guests = await agg._build_guests(tenant.id, curr_event.id)

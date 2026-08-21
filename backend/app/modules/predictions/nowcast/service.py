@@ -34,9 +34,9 @@ from app.modules.predictions.nowcast.schemas import (
     RevenueForecastResponse,
     confidence_tier,
 )
-from app.modules.stock_transactions.models import StockTransaction, TransactionSource
+from app.modules.stock_transactions.models import StockTransaction
 
-REVENUE_SOURCES = (TransactionSource.SLESH_POS, TransactionSource.MANUAL_BARTENDER)
+from app.modules.events.revenue import REVENUE_SOURCES  # single platform-wide definition
 
 
 class EventNotFoundError(Exception):

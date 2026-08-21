@@ -19,6 +19,7 @@ Spec: docs/report-module-spec.md §5 + §7.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Sequence
@@ -35,7 +36,9 @@ from app.modules.reports.models import Report
 from app.modules.reports.narrative import render_narrative
 from app.modules.reports.pdf import render_report_pdf
 from app.modules.reports.repository import ReportRepository
-from app.modules.reports.schemas import PortfolioKpis
+from app.modules.reports.schemas import PortfolioKpis, ReportData
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Domain exceptions ────────────────────────────────────────────────────────
@@ -90,6 +93,15 @@ class ReportService:
 
         Guarantees the UI can always render in EITHER language without
         asking the user to manually "Generate EN" as a separate action.
+
+        The sibling is derived from the ORIGINAL'S FROZEN data_json, not
+        re-aggregated: the two languages of one version must carry
+        identical numbers. Re-aggregating here would leak whatever the
+        aggregator computes TODAY into an old version's language pair —
+        after the Day 14 revenue-source migration that would mean an "EN
+        v1" disagreeing with the frozen "IT v1" by the full definitional
+        gap. Only the narrative (language-dependent prose) and the PDF
+        are re-rendered.
         """
         # First, the original so we know event_id + version to look up siblings
         original = await self.repo.get_by_id(tenant_id, report_id)
@@ -106,7 +118,7 @@ class ReportService:
             if s.version == original.version and s.language == language:
                 return s
 
-        # Sibling doesn't exist — generate it now.
+        # Sibling doesn't exist — derive it from the frozen snapshot.
         sibling = await self.repo.create(
             tenant_id=tenant_id,
             event_id=original.event_id,
@@ -114,6 +126,10 @@ class ReportService:
             version=original.version,
             generated_by=original.generated_by,
         )
+        if original.status == "ready" and original.data_json:
+            return await self._populate_sibling(sibling, original)
+        # No frozen snapshot to copy (original never reached ready) —
+        # fall back to full generation.
         return await self._populate_report(sibling)
 
     async def list_for_event(
@@ -244,6 +260,11 @@ class ReportService:
             except Exception:
                 # Language X failed — log and continue with the other one.
                 # The failed row is already persisted via _populate_report.
+                logger.exception(
+                    "auto-generation failed for event %s language %s "
+                    "(failed report row persisted; other language still attempted)",
+                    event_id, language,
+                )
                 continue
         return results
 
@@ -259,8 +280,13 @@ class ReportService:
     ) -> Report:
         """Create a new version of an existing report.
 
-        Sets old_report.superseded_by = new_report.id. The old row is NEVER
-        deleted — audit trail is sacrosanct.
+        Sets old_report.superseded_by = new_report.id ONLY AFTER the new
+        version generates successfully. Superseding first meant a failed
+        regenerate left the good ready report pointing at a failed row —
+        hidden behind the failed card in every latest-version view (C5,
+        Day 14 audit). On failure the old report stays untouched and
+        authoritative; the failed v+1 row remains for diagnostics.
+        The old row is NEVER deleted — audit trail is sacrosanct.
 
         If `language` is omitted, inherits from the original. Useful when
         Omar wants to refresh just the Italian report without touching the
@@ -271,7 +297,15 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
 
         target_language = language or old.language
-        new_version = old.version + 1
+        # Version off the LATEST row for (event, language), not off `old`:
+        # after a failed regenerate the failed v+1 row still exists, and
+        # old.version + 1 would collide with it on the unique
+        # (tenant, event, version, language) index. Regenerating from any
+        # version always appends past the highest existing one.
+        latest = await self.repo.get_latest_for_event(
+            tenant_id, old.event_id, target_language
+        )
+        new_version = (latest.version if latest is not None else old.version) + 1
 
         new = await self.repo.create(
             tenant_id=tenant_id,
@@ -281,9 +315,12 @@ class ReportService:
             generated_by=generated_by,
         )
 
-        await self.repo.supersede(old, new.id)
+        populated = await self._populate_report(new)
 
-        return await self._populate_report(new)
+        await self.repo.supersede(old, populated.id)
+        await self.db.commit()
+
+        return populated
 
     # ─── Private: the generation pipeline ─────────────────────────────────────
 
@@ -339,4 +376,41 @@ class ReportService:
             await self.db.commit()
             raise ReportGenerationError(
                 f"Report generation failed for {report.id}: {exc}"
+            ) from exc
+
+    async def _populate_sibling(self, sibling: Report, original: Report) -> Report:
+        """Populate a language sibling FROM the original's frozen snapshot.
+
+        The numbers are copied verbatim — only the language-dependent
+        parts (narrative prose, PDF labels) are re-rendered, plus the
+        sibling's own identity fields (report_id, language,
+        generated_at). This guarantees the language pair of one version
+        can never disagree numerically, no matter how the aggregator has
+        changed since the original was generated.
+        """
+        try:
+            await self.repo.mark_generating(sibling)
+
+            data = ReportData.model_validate(original.data_json)
+            data.report_id = sibling.id
+            data.language = sibling.language
+            data.generated_at = datetime.now(timezone.utc)
+            data.narrative = render_narrative(data, sibling.language)
+
+            data_json = data.model_dump(mode="json")
+            pdf_bytes = render_report_pdf(data)
+
+            await self.repo.mark_ready(
+                sibling,
+                data_json=data_json,
+                pdf_bytes=pdf_bytes,
+            )
+            await self.db.commit()
+            return sibling
+
+        except Exception as exc:
+            await self.repo.mark_failed(sibling, reason=f"{type(exc).__name__}: {exc}")
+            await self.db.commit()
+            raise ReportGenerationError(
+                f"Language-sibling generation failed for {sibling.id}: {exc}"
             ) from exc
