@@ -286,27 +286,45 @@ class ReportRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one() or 0
 
-    async def sum_lifetime_revenue(self, tenant_id: UUID) -> Decimal:
-        """Sum of total_revenue across all ready reports.
+    def _latest_ready_it_reports_subquery(self, tenant_id: UUID):
+        """Subquery: ONE row per event — its latest ready IT report.
 
-        Revenue lives in data_json['revenue_kpis']['total_revenue']. We use
-        Postgres JSONB extraction rather than hydrating every row, because
-        this runs on every index-page load.
-        Returns Decimal(0) if no reports exist yet.
+        Every cross-report aggregate must go through this: regeneration
+        leaves the superseded version at status='ready' too, so summing
+        or averaging over all ready rows double-counts every regenerated
+        event (C2, Day 14 audit). DISTINCT ON (event_id) ordered by
+        version DESC picks the newest ready snapshot per event.
         """
-        # JSONB numeric extraction: ->>'total_revenue' yields text, cast to NUMERIC.
-        # SQLAlchemy 2.x needs explicit precision/scale on as_numeric() or a
-        # manual cast via func.cast — the explicit cast is clearer here.
         revenue_text = Report.data_json["revenue_kpis"]["total_revenue"].astext
         revenue_numeric = func.cast(revenue_text, sa.Numeric(14, 2))
-        stmt = (
-            select(func.coalesce(func.sum(revenue_numeric), 0))
+        event_name = Report.data_json["event"]["event_name"].astext
+        return (
+            select(
+                Report.event_id.label("event_id"),
+                event_name.label("event_name"),
+                revenue_numeric.label("revenue"),
+            )
             .where(
                 Report.tenant_id == tenant_id,
                 Report.status == "ready",
                 Report.language == "it",  # avoid double-counting IT+EN pairs
             )
+            .distinct(Report.event_id)
+            .order_by(Report.event_id, Report.version.desc())
+            .subquery()
         )
+
+    async def sum_lifetime_revenue(self, tenant_id: UUID) -> Decimal:
+        """Sum of total_revenue across events' latest ready reports.
+
+        Revenue lives in data_json['revenue_kpis']['total_revenue']. We use
+        Postgres JSONB extraction rather than hydrating every row, because
+        this runs on every index-page load. One figure per event — see
+        _latest_ready_it_reports_subquery.
+        Returns Decimal(0) if no reports exist yet.
+        """
+        latest = self._latest_ready_it_reports_subquery(tenant_id)
+        stmt = select(func.coalesce(func.sum(latest.c.revenue), 0))
         result = await self.db.execute(stmt)
         value = result.scalar_one()
         return Decimal(str(value)) if value is not None else Decimal(0)
@@ -317,20 +335,14 @@ class ReportRepository:
     ) -> tuple[str, Decimal] | None:
         """Highest-revenue completed event: (event_name, revenue) or None.
 
-        Joins through data_json — same reason as sum_lifetime_revenue.
-        Used for the "Best Event" tile in PortfolioKpis.
+        Joins through data_json — same reason as sum_lifetime_revenue, and
+        the same one-figure-per-event rule: a superseded version's stale
+        number must never win the "Best Event" tile.
         """
-        event_name = Report.data_json["event"]["event_name"].astext
-        revenue_text = Report.data_json["revenue_kpis"]["total_revenue"].astext
-        revenue = func.cast(revenue_text, sa.Numeric(14, 2))
+        latest = self._latest_ready_it_reports_subquery(tenant_id)
         stmt = (
-            select(event_name, revenue)
-            .where(
-                Report.tenant_id == tenant_id,
-                Report.status == "ready",
-                Report.language == "it",
-            )
-            .order_by(desc(revenue))
+            select(latest.c.event_name, latest.c.revenue)
+            .order_by(desc(latest.c.revenue))
             .limit(1)
         )
         result = await self.db.execute(stmt)

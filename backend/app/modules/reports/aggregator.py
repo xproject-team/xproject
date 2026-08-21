@@ -7,9 +7,21 @@ EXCEPT for the `narrative` field — that's the NarrativeEngine's job (Phase
 1.5). The aggregator stays pure: it reads, it computes, it returns. No
 persistence, no side effects.
 
-Design decisions (locked in 2026-04-22 planning):
-  - Revenue = sales only: sources 'slesh_pos' + 'manual_bartender'.
-    Reconciliation corrections and manual_adjustment are NOT revenue.
+Design decisions (2026-04-22 planning, revenue source migrated Day 14
+Aug 2026 to match the dashboard — one revenue definition platform-wide):
+  - EURO figures = event_orders.fiscal_gross_cents over confirmed orders
+    (see events/revenue.py): Slesh's money-of-record. Includes food
+    trucks, no-recipe drinks, and orders whose POS shop isn't mapped to
+    a bar yet (surfaced as unmapped_revenue); excludes deposits and
+    fully-refunded orders; VAT included. Identical to the dashboard
+    header (EventKpiSummaryService).
+  - UNITS / per-product detail = stock_transactions rows with source in
+    REVENUE_SOURCES — event_orders has no line-level product data. Unit
+    figures are partial by design and never presented as summing to the
+    euro total.
+  - Old reports are NEVER regenerated to the new definition — frozen
+    data_json stays frozen; ReportData.revenue_source labels which
+    method a snapshot used.
   - Stock-out detection = heuristic (current_qty == 0). 90% accurate, fast.
     Rigorous timeline scan is a v1.1 upgrade if the narrative needs the
     exact stock-out minute.
@@ -18,7 +30,7 @@ Design decisions (locked in 2026-04-22 planning):
     Math is pre-maintained by the stock_transactions module; we don't
     re-derive it from stock_transactions SUMs.
 
-Spec: docs/report-module-spec.md §3 + §4.2.
+Spec: docs/report-module-spec.md §3 + §4.2; docs/revenue-calculation-bible.md.
 """
 from __future__ import annotations
 
@@ -36,7 +48,8 @@ from app.modules.bar_stock.models import BarStock
 from app.modules.bars.models import Bar
 from app.modules.customer_analytics.models import CustomerPurchase, CustomerSession
 from app.modules.customer_intelligence.constants import LIGHT_SPEND_MAX_CENTS, WHALE_SPEND_MIN_CENTS
-from app.modules.events.models import Event
+from app.modules.events.models import Event, EventOrder
+from app.modules.events.revenue import REVENUE_SOURCES, confirmed_order_conditions
 from app.modules.predictions.demand.loader import get_active_demand_predictor
 from app.modules.predictions.demand.predictor import HOUR_GRID
 from app.modules.predictions.demand.training_data import DRINK_CATEGORIES
@@ -66,11 +79,6 @@ from app.modules.venues.models import Venue
 # metrics are only meaningful from here forward (see _build_comparison's
 # docstring: NOT backfilled onto older reports by regenerating them).
 GUEST_METRICS_AVAILABLE_FROM = "August 2026"
-
-
-# Transaction sources that count as revenue. Adjustments and reconciliations
-# are housekeeping, not customer spend.
-REVENUE_SOURCES = ("slesh_pos", "manual_bartender")
 
 
 class EventNotFoundForReportError(Exception):
@@ -160,6 +168,7 @@ class ReportAggregator:
             version=version,
             language=language,
             generated_at=generated_at,
+            revenue_source="event_orders",
             event=event_info,
             revenue_kpis=revenue_kpis,
             bar_revenues=bar_revenues,
@@ -229,26 +238,30 @@ class ReportAggregator:
         event_id: UUID,
         duration_hours: float,
     ) -> ReportRevenueKpis:
-        """ReportRevenueKpis: total revenue, per-hour, peak window, top product."""
-        # Base predicate: all revenue-counting transactions for this event.
-        # pos_line_status='confirmed' excludes refunds — see the model's own
-        # documented invariant (stock_transactions/models.py).
-        revenue_filter = and_(
-            StockTransaction.tenant_id == tenant_id,
-            StockTransaction.event_id == event_id,
-            StockTransaction.source.in_(REVENUE_SOURCES),
-            StockTransaction.price_cents.is_not(None),
-            StockTransaction.pos_line_status == "confirmed",
-        )
+        """ReportRevenueKpis: total revenue, per-hour, peak window, top product.
 
-        # total_revenue: SUM(qty * price_cents) / 100, as Decimal.
-        # qty is NUMERIC(12,3), price_cents is INTEGER. Product is Decimal.
-        total_cents_expr = func.sum(
-            StockTransaction.qty * StockTransaction.price_cents
-        )
-        total_cents_stmt = select(func.coalesce(total_cents_expr, 0)).where(revenue_filter)
-        total_cents = (await self.db.execute(total_cents_stmt)).scalar_one()
-        total_revenue = (Decimal(total_cents) / Decimal(100)) if total_cents else Decimal(0)
+        Euro figures from event_orders (money-of-record, same definition
+        as the dashboard header — see events/revenue.py and the module
+        docstring). top_product stays on stock_transactions: event_orders
+        has no per-product line detail.
+        """
+        order_filter = and_(*confirmed_order_conditions(tenant_id, event_id))
+        fiscal_sum = func.coalesce(func.sum(EventOrder.fiscal_gross_cents), 0)
+        _penny = Decimal("0.01")
+
+        total_cents = (
+            await self.db.execute(select(fiscal_sum).where(order_filter))
+        ).scalar_one()
+        total_revenue = (Decimal(total_cents) / Decimal(100)).quantize(_penny)
+
+        # Confirmed orders whose POS shop has no bar mapping yet — real
+        # money, part of total_revenue, but unattributable to any bar.
+        unmapped_cents = (
+            await self.db.execute(
+                select(fiscal_sum).where(order_filter, EventOrder.bar_id.is_(None))
+            )
+        ).scalar_one()
+        unmapped_revenue = (Decimal(unmapped_cents) / Decimal(100)).quantize(_penny)
 
         # revenue_per_hour: simple division, avoid /0.
         revenue_per_hour = (
@@ -257,24 +270,31 @@ class ReportAggregator:
             else Decimal(0)
         )
 
-        # revenue_per_bar_avg: total / (count of bars that actually sold something).
+        # revenue_per_bar_avg: bar-attributed revenue / bars that sold.
+        # Unmapped money is excluded from BOTH sides — dividing the full
+        # total by the mapped-bar count would silently smear it across
+        # bars. count(distinct bar_id) skips NULLs, matching that.
         selling_bars_stmt = (
-            select(func.count(func.distinct(StockTransaction.bar_id)))
-            .where(revenue_filter)
+            select(func.count(func.distinct(EventOrder.bar_id))).where(order_filter)
         )
         selling_bars = (await self.db.execute(selling_bars_stmt)).scalar_one() or 0
+        mapped_revenue = Decimal(total_cents - unmapped_cents) / Decimal(100)
         revenue_per_bar_avg = (
-            total_revenue / Decimal(selling_bars)
+            (mapped_revenue / Decimal(selling_bars)).quantize(_penny)
             if selling_bars > 0
             else Decimal(0)
         )
 
-        # Peak hour: GROUP BY date_trunc('hour', created_at), pick highest sum.
-        hour_bucket = func.date_trunc("hour", StockTransaction.created_at).label("hr")
-        hour_rev = (total_cents_expr / 100.0).label("rev")
+        # Peak hour: GROUP BY date_trunc('hour', created_at_slesh) — the
+        # TRUE order timestamp from Slesh. The old stock_transactions
+        # version bucketed on created_at, which is the poller's ingestion
+        # time (median lag 25–48s, documented tail 6.6h) and could name
+        # the wrong hour.
+        hour_bucket = func.date_trunc("hour", EventOrder.created_at_slesh).label("hr")
+        hour_rev = (func.sum(EventOrder.fiscal_gross_cents) / 100.0).label("rev")
         peak_stmt = (
             select(hour_bucket, hour_rev)
-            .where(revenue_filter)
+            .where(order_filter)
             .group_by(hour_bucket)
             .order_by(desc(hour_rev))
             .limit(1)
@@ -285,14 +305,22 @@ class ReportAggregator:
             Decimal(str(peak_row[1])) if peak_row and peak_row[1] is not None else None
         )
 
-        # Top product by units sold.
+        # Top product by units sold — stock_transactions line detail
+        # (partial coverage by design; a units figure, never a euro total).
+        line_filter = and_(
+            StockTransaction.tenant_id == tenant_id,
+            StockTransaction.event_id == event_id,
+            StockTransaction.source.in_(REVENUE_SOURCES),
+            StockTransaction.price_cents.is_not(None),
+            StockTransaction.pos_line_status == "confirmed",
+        )
         top_stmt = (
             select(
                 Product.name,
                 func.sum(StockTransaction.qty).label("units"),
             )
             .join(Product, Product.id == StockTransaction.product_id)
-            .where(revenue_filter)
+            .where(line_filter)
             .group_by(Product.id, Product.name)
             .order_by(desc("units"))
             .limit(1)
@@ -305,6 +333,7 @@ class ReportAggregator:
             total_revenue=total_revenue,
             revenue_per_hour=revenue_per_hour,
             revenue_per_bar_avg=revenue_per_bar_avg,
+            unmapped_revenue=unmapped_revenue,
             top_product_name=top_product_name,
             top_product_units=top_product_units,
             peak_hour_start=peak_hour_start,
@@ -318,27 +347,27 @@ class ReportAggregator:
         tenant_id: UUID,
         event_id: UUID,
     ) -> list[ReportBarRevenue]:
-        """ReportBarRevenue rows ordered by revenue DESC with rank + pct."""
-        revenue_expr = (
-            func.sum(StockTransaction.qty * StockTransaction.price_cents) / 100.0
-        ).label("revenue")
-        txn_count_expr = func.count(StockTransaction.id).label("txn_count")
+        """ReportBarRevenue rows ordered by revenue DESC with rank + pct.
+
+        From event_orders grouped by bar (Day 14 migration). revenue_pct
+        is of the FULL event total including unmapped orders, so rows sum
+        below 100% when unmapped money exists — that remainder is
+        ReportRevenueKpis.unmapped_revenue, shown explicitly, never
+        redistributed. transactions_count counts confirmed orders.
+        """
+        order_filter = confirmed_order_conditions(tenant_id, event_id)
+        revenue_expr = (func.sum(EventOrder.fiscal_gross_cents) / 100.0).label("revenue")
+        order_count_expr = func.count(EventOrder.id).label("order_count")
 
         stmt = (
             select(
                 Bar.id,
                 Bar.name,
                 revenue_expr,
-                txn_count_expr,
+                order_count_expr,
             )
-            .join(StockTransaction, StockTransaction.bar_id == Bar.id)
-            .where(
-                StockTransaction.tenant_id == tenant_id,
-                StockTransaction.event_id == event_id,
-                StockTransaction.source.in_(REVENUE_SOURCES),
-                StockTransaction.price_cents.is_not(None),
-                StockTransaction.pos_line_status == "confirmed",
-            )
+            .join(EventOrder, EventOrder.bar_id == Bar.id)
+            .where(*order_filter)
             .group_by(Bar.id, Bar.name)
             .order_by(desc("revenue"))
         )
@@ -347,9 +376,18 @@ class ReportAggregator:
         if not rows:
             return []
 
-        total = sum((Decimal(str(r[2])) for r in rows), start=Decimal(0))
+        # pct denominator: the full confirmed-order total, unmapped included
+        # — the same figure the cover page shows as total_revenue.
+        total_cents = (
+            await self.db.execute(
+                select(func.coalesce(func.sum(EventOrder.fiscal_gross_cents), 0))
+                .where(*order_filter)
+            )
+        ).scalar_one()
+        total = Decimal(total_cents) / Decimal(100)
+
         result: list[ReportBarRevenue] = []
-        for rank, (bar_id, bar_name, revenue_val, txn_count) in enumerate(rows, start=1):
+        for rank, (bar_id, bar_name, revenue_val, order_count) in enumerate(rows, start=1):
             revenue = Decimal(str(revenue_val)) if revenue_val is not None else Decimal(0)
             pct = float(revenue / total * 100) if total > 0 else 0.0
             result.append(
@@ -358,7 +396,7 @@ class ReportAggregator:
                     bar_name=bar_name,
                     revenue=revenue,
                     revenue_pct=round(pct, 2),
-                    transactions_count=int(txn_count or 0),
+                    transactions_count=int(order_count or 0),
                     rank=rank,
                 )
             )
@@ -762,6 +800,11 @@ class ReportAggregator:
         aggregates already use. There is no calendar-quarter/season
         boundary defined anywhere else in this codebase to reuse.
         """
+        # Latest ready version per (event, language) — regeneration leaves
+        # the superseded version at status='ready' too, so any query over
+        # "all ready reports" double-counts regenerated events (C2). The
+        # previous-event lookup and both season averages below all pick
+        # ONE row per event via DISTINCT ON ... version DESC.
         prev_stmt = (
             select(Report.data_json, Event.name, Event.scheduled_at)
             .join(Event, Event.id == Report.event_id)
@@ -772,26 +815,54 @@ class ReportAggregator:
                 Report.event_id != event_id,
                 Event.scheduled_at < event.scheduled_at,
             )
-            .order_by(desc(Event.scheduled_at))
+            .order_by(desc(Event.scheduled_at), desc(Report.version))
             .limit(1)
         )
         prev_row = (await self.db.execute(prev_stmt)).first()
 
         revenue_text = Report.data_json["revenue_kpis"]["total_revenue"].astext
         revenue_numeric = func.cast(revenue_text, sa.Numeric(14, 2))
-        season_stmt = select(
-            func.count(), func.coalesce(func.avg(revenue_numeric), 0),
-        ).where(
-            Report.tenant_id == tenant_id, Report.status == "ready",
-            Report.language == language, Report.event_id != event_id,
+        season_sub = (
+            select(
+                revenue_numeric.label("revenue"),
+                Report.data_json["revenue_source"].astext.label("revenue_source"),
+            )
+            .where(
+                Report.tenant_id == tenant_id, Report.status == "ready",
+                Report.language == language, Report.event_id != event_id,
+            )
+            .distinct(Report.event_id)
+            .order_by(Report.event_id, Report.version.desc())
+            .subquery()
         )
-        season_n, season_avg_revenue = (await self.db.execute(season_stmt)).one()
+        season_stmt = select(
+            func.count(),
+            func.coalesce(func.avg(season_sub.c.revenue), 0),
+            func.count().filter(
+                season_sub.c.revenue_source.is_distinct_from("event_orders")
+            ),
+        )
+        season_n, season_avg_revenue, season_old_method_n = (
+            (await self.db.execute(season_stmt)).one()
+        )
 
         if prev_row is None and not season_n:
             return ReportComparison(
                 available=False, unavailable_reason="no prior events to compare against",
                 guest_metrics_available_from=GUEST_METRICS_AVAILABLE_FROM,
             )
+
+        # Mixed measurement basis: this report's revenue is event_orders
+        # money; any compared report whose snapshot predates the Day 14
+        # migration (no revenue_source marker) was measured from stock
+        # movements. The delta then carries a definitional component —
+        # renderers footnote it, the narrative skips its
+        # revenue-vs-previous sentence.
+        prev_uses_old_method = (
+            prev_row is not None
+            and (prev_row[0] or {}).get("revenue_source") != "event_orders"
+        )
+        mixed_revenue_sources = prev_uses_old_method or bool(season_old_method_n)
 
         metrics: list[ReportComparisonMetric] = []
         current_revenue = float(revenue_kpis.total_revenue)
@@ -807,6 +878,7 @@ class ReportAggregator:
         )
         metrics.append(ReportComparisonMetric(
             label="Total Revenue",
+            unit="eur",
             current_value=current_revenue,
             previous_event_value=prev_revenue,
             previous_event_delta_pct=_pct_delta(current_revenue, prev_revenue),
@@ -819,19 +891,27 @@ class ReportAggregator:
                 float(prev_data["guests"]["identified_total"])
                 if prev_data and prev_data.get("guests") else None
             )
+            guest_season_sub = (
+                select(func.cast(
+                    Report.data_json["guests"]["identified_total"].astext, sa.Numeric(10, 2),
+                ).label("identified"))
+                .where(
+                    Report.tenant_id == tenant_id, Report.status == "ready",
+                    Report.language == language, Report.event_id != event_id,
+                    Report.data_json["guests"].isnot(None),
+                )
+                .distinct(Report.event_id)
+                .order_by(Report.event_id, Report.version.desc())
+                .subquery()
+            )
             guest_season_stmt = select(
                 func.count(),
-                func.coalesce(func.avg(func.cast(
-                    Report.data_json["guests"]["identified_total"].astext, sa.Numeric(10, 2),
-                )), 0),
-            ).where(
-                Report.tenant_id == tenant_id, Report.status == "ready",
-                Report.language == language, Report.event_id != event_id,
-                Report.data_json["guests"].isnot(None),
+                func.coalesce(func.avg(guest_season_sub.c.identified), 0),
             )
             guest_season_n, guest_season_avg = (await self.db.execute(guest_season_stmt)).one()
             metrics.append(ReportComparisonMetric(
                 label="Identified Guests",
+                unit="count",
                 current_value=float(guests.identified_total),
                 previous_event_value=prev_guests,
                 previous_event_delta_pct=_pct_delta(float(guests.identified_total), prev_guests),
@@ -848,6 +928,7 @@ class ReportAggregator:
             season_avg_n_events=season_n or 0,
             metrics=metrics,
             guest_metrics_available_from=GUEST_METRICS_AVAILABLE_FROM,
+            mixed_revenue_sources=mixed_revenue_sources,
         )
 
     # ─── Section E: Top and Lowest-Selling Products ──────────────────────────
