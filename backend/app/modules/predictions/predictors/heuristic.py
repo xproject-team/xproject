@@ -51,8 +51,10 @@ from app.modules.predictions.schemas import (
 from app.modules.reports.schemas import ReportEventInfo
 from app.modules.stock_transactions.models import StockTransaction
 
-# Revenue-counting transaction sources (matches the Reports aggregator).
-REVENUE_SOURCES = ("slesh_pos", "manual_bartender")
+# Revenue-counting transaction sources — re-exported for existing
+# importers (event_kpi_service, category_totals_service); the definition
+# lives in events/revenue.py alongside the money-of-record rules.
+from app.modules.events.revenue import REVENUE_SOURCES  # noqa: E402,F401
 
 # Category mapping heuristic — maps product names to the 5 UI categories.
 # Rough keyword matching; future versions will use a proper product_category

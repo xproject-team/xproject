@@ -1,8 +1,8 @@
 """Shared role-based access guards for tenant + bar scoping.
 
 Used by list endpoints to enforce that non-Owner roles cannot query data
-for bars they aren't assigned to. Owner bypasses; Manager/Bartender are
-locked to their assignedBarId.
+for bars they aren't assigned to. Owner bypasses; Manager is locked to
+their assignedBarId.
 
 Spec: docs/bar-dashboard-spec.md S9.
 """
@@ -22,13 +22,11 @@ class BarAccessDeniedError(Exception):
 def assert_bar_access(user: User, requested_bar_id: UUID | None) -> None:
     """Verify the user is allowed to query data scoped to requested_bar_id.
 
-    Behavior:
+    Behavior (two-role model):
       - Owner: always allowed (returns silently).
-      - Warehouse: bar context isn't meaningful — allowed when bar_id is
-        None, denied when a specific bar_id is requested.
-      - Manager / Bartender: allowed ONLY when requested_bar_id matches
-        their assigned bar. None (no filter) is treated as "all bars" and
-        denied for non-Owner roles — they must scope explicitly.
+      - Manager: allowed ONLY when requested_bar_id matches their assigned
+        bar. None (no filter) is treated as "all bars" and denied for
+        non-Owner roles — they must scope explicitly.
 
     Raises HTTPException 403 with structured detail when denied. Routers
     can let the exception propagate; FastAPI will return the right status.
@@ -38,7 +36,6 @@ def assert_bar_access(user: User, requested_bar_id: UUID | None) -> None:
 
     # Non-Owner roles MUST scope their queries
     if requested_bar_id is None:
-        # Manager / Bartender / Warehouse cannot query "all bars"
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -47,18 +44,7 @@ def assert_bar_access(user: User, requested_bar_id: UUID | None) -> None:
             },
         )
 
-    if user.role == UserRole.WAREHOUSE:
-        # Warehouse staff don't have a bar context; they see warehouse-level
-        # data only. Bar-scoped queries don't apply.
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "warehouse_no_bar_context",
-                "message": "Warehouse staff don't have bar-scoped access.",
-            },
-        )
-
-    # Manager + Bartender: lock to their assigned bar
+    # Manager: lock to their assigned bar
     user_bar_id = getattr(user, "bar_id", None) or getattr(user, "assigned_bar_id", None)
     if user_bar_id is None:
         raise HTTPException(
@@ -82,8 +68,8 @@ def assert_bar_access(user: User, requested_bar_id: UUID | None) -> None:
 def resolve_bar_filter(user: User, requested_bar_id: UUID | None) -> UUID | None:
     """Convenience helper: returns the bar_id to filter by.
 
-    For Manager / Bartender, if they didn't pass bar_id explicitly, returns
-    their assigned bar (so the frontend doesn't have to remember to pass it).
+    For Manager, if they didn't pass bar_id explicitly, returns their
+    assigned bar (so the frontend doesn't have to remember to pass it).
     For Owner, returns whatever they passed (None = all bars).
 
     After this returns, the caller still calls assert_bar_access to verify

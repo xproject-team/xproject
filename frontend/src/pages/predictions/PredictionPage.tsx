@@ -1,14 +1,25 @@
 /**
  * PredictionPage — demand forecasts for the currently live event.
  *
- * Replaces the 460-line mock scaffold with real backend-wired data:
- *   - Picks the live event via useLiveEvent() (same pattern as Dashboard)
- *   - Fetches the latest prediction for that event
- *   - Renders 3 states honestly:
- *       (a) No active event       → calm message, "Go to Events"
- *       (b) No prediction yet     → "Generate Predictions" CTA
- *       (c) status=insufficient_data → empty state with user message
- *       (d) status=ready          → 5 prediction cards + forecast chart
+ * Design-system conversion (Day 12 Phase 3): same data/behavior as
+ * before (useLiveEvent, usePredictionForEvent, useGeneratePrediction) —
+ * UI-only restyle onto the dark design system used by Events/Bars/
+ * Catalog/Inventory/Warehouse. No hook, type, or backend change.
+ *
+ * Renders 5 states honestly, same as before:
+ *   (a) No active event       → EmptyState, "Go to Events"
+ *   (b) No prediction yet     → EmptyState, "Generate Predictions" CTA
+ *   (c) status=insufficient_data → EmptyState explaining what's needed
+ *   (d) status=ready          → MetricTiles + category table + risk flags
+ *   (e) status=failed         → a distinct (non-EmptyState) error card
+ *
+ * Two figures on this page are NOT computed from the tenant's data —
+ * peak-hour's ~32% revenue share and the "1 bartender per 50 guests"
+ * staffing ratio are both fixed constants in predictors/heuristic.py
+ * (its own comments: "Track 2 will compute/learn the real value").
+ * They're marked with a small muted "Estimate" tag (EstimateTag below)
+ * so they don't read with the same authority as the genuinely
+ * history-derived numbers next to them.
  *
  * Intentionally REJECTED from the old mockup:
  *   - MOCK_PREDICTIONS hardcoded data (145 units beer, 82% confidence, etc.)
@@ -23,18 +34,18 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 
-import { Button } from '@/shared/ui/Button'
-import { Card } from '@/shared/ui/Card'
 import { useLiveEvent } from '@/features/dashboard/hooks'
 import {
   useGeneratePrediction,
   usePredictionForEvent,
   type PredictionCategoryDemand,
   type PredictionData,
-  type PredictionRange,
   type PredictionResponse,
   type PredictionRiskFlag,
 } from '@/features/predictions/usePredictions'
+import { Badge, Button, EmptyState, MetricTile, PageHeader } from '@/design-system/components'
+import type { BadgeVariant } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -60,161 +71,110 @@ function fmtInt(value: string | number | null | undefined): string {
   return Math.round(n).toString()
 }
 
-// ─── Confidence-tier badge ───────────────────────────────────────────────────
+// ─── Shared bits ──────────────────────────────────────────────────────────────
 
-function ConfidenceBadge({
-  tier,
-  count,
-}: {
-  tier: 'low' | 'medium' | 'high'
-  count: number
-}) {
-  const config = {
-    low:    { bg: '#FEEBC8', text: '#744210', label: 'Low confidence' },
-    medium: { bg: '#BEE3F8', text: '#2C5282', label: 'Medium confidence' },
-    high:   { bg: '#C6F6D5', text: '#22543D', label: 'High confidence' },
-  }[tier]
+/** Marks a figure that is a fixed rule-of-thumb constant, not computed
+ * from this tenant's history — peak-hour's ~32% share and the staffing
+ * ratio are the two on this page. Deliberately muted/small so it never
+ * competes visually with the real, history-derived numbers next to it. */
+function EstimateTag() {
+  return (
+    <p className="text-[10px] mt-1.5 uppercase tracking-wide" style={{ color: 'var(--v-text-dim)' }}>
+      Estimate — not computed from your data
+    </p>
+  )
+}
+
+function ConfidenceBar({ pct }: { pct: number }) {
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--v-surface)' }}>
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'var(--v-cyan)' }} />
+      </div>
+      <span className="text-[11px] tabular-nums" style={{ color: 'var(--v-text-dim)' }}>
+        {Math.round(pct)}%
+      </span>
+    </div>
+  )
+}
+
+const CONFIDENCE_TIER_BADGE: Record<'low' | 'medium' | 'high', BadgeVariant> = {
+  low: 'warning',
+  medium: 'info',
+  high: 'success',
+}
+const CONFIDENCE_TIER_LABEL: Record<'low' | 'medium' | 'high', string> = {
+  low: 'Low confidence',
+  medium: 'Medium confidence',
+  high: 'High confidence',
+}
+
+function ConfidenceBadge({ tier, count }: { tier: 'low' | 'medium' | 'high'; count: number }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span
-        className="inline-flex items-center px-2 py-0.5 rounded-full font-semibold"
-        style={{ backgroundColor: config.bg, color: config.text }}
-      >
-        {config.label}
-      </span>
-      <span className="text-[#718096]">
+      <Badge variant={CONFIDENCE_TIER_BADGE[tier]}>{CONFIDENCE_TIER_LABEL[tier]}</Badge>
+      <span style={{ color: 'var(--v-text-muted)' }}>
         Based on {count} past event{count === 1 ? '' : 's'}
       </span>
     </div>
   )
 }
 
-// ─── Range display (low / mid / high with confidence) ────────────────────────
-
-function RangeBlock({
-  label,
-  range,
-  suffix = '',
-  icon,
-}: {
-  label: string
-  range: PredictionRange
-  suffix?: string
-  icon?: string
-}) {
-  return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
-          {label}
-        </p>
-        {icon && <span className="text-lg">{icon}</span>}
-      </div>
-      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
-        {suffix === '€' ? fmtEur(range.mid) : `${fmtInt(range.mid)}${suffix}`}
-      </p>
-      <p className="text-xs text-[#718096] mt-1">
-        Range:{' '}
-        {suffix === '€'
-          ? `${fmtEur(range.low)} – ${fmtEur(range.high)}`
-          : `${fmtInt(range.low)}–${fmtInt(range.high)}${suffix}`}
-      </p>
-      <div className="flex items-center gap-2 mt-3">
-        <div className="flex-1 h-1 bg-[#E2E8F0] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#1E5A8D]"
-            style={{ width: `${range.confidence_pct}%` }}
-          />
-        </div>
-        <span className="text-[11px] text-[#718096] font-mono">
-          {Math.round(range.confidence_pct)}%
-        </span>
-      </div>
-    </div>
-  )
-}
-
-// ─── Cards ───────────────────────────────────────────────────────────────────
+// ─── Cards (MetricTiles) ──────────────────────────────────────────────────────
 
 function RevenueCard({ data }: { data: PredictionData }) {
   const vsLast = data.revenue.vs_last_event_pct
+  const r = data.revenue.total
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
-          Forecast Revenue
-        </p>
-        <span className="text-lg">💰</span>
-      </div>
-      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
-        {fmtEur(data.revenue.total.mid)}
-      </p>
-      <p className="text-xs text-[#718096] mt-1">
-        Range: {fmtEur(data.revenue.total.low)} – {fmtEur(data.revenue.total.high)}
+    <MetricTile label="Forecast revenue" value={fmtEur(r.mid)} accent="cyan">
+      <p className="text-xs mt-1" style={{ color: 'var(--v-text-dim)' }}>
+        Range: {fmtEur(r.low)} – {fmtEur(r.high)}
       </p>
       {vsLast !== null && (
-        <p
-          className="text-xs font-semibold mt-2"
-          style={{ color: vsLast >= 0 ? '#22543D' : '#742A2A' }}
-        >
+        <p className="text-xs font-medium mt-1.5" style={{ color: vsLast >= 0 ? 'var(--v-green)' : 'var(--v-pink)' }}>
           {vsLast >= 0 ? '↑' : '↓'} {Math.abs(vsLast).toFixed(1)}% vs last event
         </p>
       )}
-      <div className="flex items-center gap-2 mt-3">
-        <div className="flex-1 h-1 bg-[#E2E8F0] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#1E5A8D]"
-            style={{ width: `${data.revenue.total.confidence_pct}%` }}
-          />
-        </div>
-        <span className="text-[11px] text-[#718096] font-mono">
-          {Math.round(data.revenue.total.confidence_pct)}%
-        </span>
-      </div>
-    </div>
+      <ConfidenceBar pct={r.confidence_pct} />
+    </MetricTile>
   )
 }
 
 function PeakHourCard({ data }: { data: PredictionData }) {
   if (!data.peak_hour) {
     return (
-      <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
-        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest mb-2">
-          Peak Hour
-        </p>
-        <p className="text-sm text-[#A0AEC0] italic">No clear peak detected.</p>
-      </div>
+      <MetricTile label="Peak hour" value="—">
+        <p className="text-xs mt-1" style={{ color: 'var(--v-text-dim)' }}>No clear peak detected.</p>
+      </MetricTile>
     )
   }
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-sm">
-      <div className="flex items-start justify-between mb-2">
-        <p className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest">
-          Peak Hour
-        </p>
-        <span className="text-lg">🔥</span>
-      </div>
-      <p className="text-3xl font-bold text-[#1A202C] leading-tight">
-        {fmtTime(data.peak_hour.window_start)}
+    <MetricTile
+      label="Peak hour"
+      value={`${fmtTime(data.peak_hour.window_start)} – ${fmtTime(data.peak_hour.window_end)}`}
+      accent="amber"
+    >
+      <p className="text-xs mt-1" style={{ color: 'var(--v-text-muted)' }}>
+        <span style={{ color: 'var(--v-text)', fontWeight: 500 }}>
+          ~{Math.round(data.peak_hour.predicted_revenue_share_pct)}%
+        </span>{' '}
+        of event revenue
       </p>
-      <p className="text-xs text-[#718096] mt-1">
-        to {fmtTime(data.peak_hour.window_end)}
-      </p>
-      <p className="text-xs text-[#4A5568] mt-2">
-        <b>~{Math.round(data.peak_hour.predicted_revenue_share_pct)}%</b> of event revenue
-      </p>
-    </div>
+      <EstimateTag />
+    </MetricTile>
   )
 }
 
 function StaffCard({ data }: { data: PredictionData }) {
+  const r = data.staff.total_bartenders
   return (
-    <RangeBlock
-      label="Staff Recommendation"
-      range={data.staff.total_bartenders}
-      suffix=" bartenders"
-      icon="👥"
-    />
+    <MetricTile label="Staff recommendation" value={`${fmtInt(r.mid)} bartenders`} accent="violet">
+      <p className="text-xs mt-1" style={{ color: 'var(--v-text-dim)' }}>
+        Range: {fmtInt(r.low)}–{fmtInt(r.high)} bartenders
+      </p>
+      <ConfidenceBar pct={r.confidence_pct} />
+      <EstimateTag />
+    </MetricTile>
   )
 }
 
@@ -229,112 +189,108 @@ const CATEGORY_LABELS: Record<PredictionCategoryDemand['category'], string> = {
 }
 
 const TREND_ICON = { up: '↑', stable: '→', down: '↓' } as const
-const TREND_COLOR = { up: '#22543D', stable: '#4A5568', down: '#742A2A' } as const
+const TREND_COLOR = { up: 'var(--v-green)', stable: 'var(--v-text-dim)', down: 'var(--v-pink)' } as const
 
 function CategoryDemandTable({ data }: { data: PredictionData }) {
   if (!data.category_demand.length) return null
   return (
-    <Card className="mt-4">
-      <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
-        Demand by Category
-      </h3>
+    <div
+      className="overflow-hidden mt-4"
+      style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }}
+    >
+      <div className="px-5 py-4" style={{ borderBottom: '0.5px solid var(--v-border)' }}>
+        <h3 className="text-sm font-medium" style={{ color: 'var(--v-text)' }}>Demand by category</h3>
+      </div>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[11px] font-semibold text-[#718096] uppercase tracking-widest border-b border-[#E2E8F0]">
-            <th className="text-left py-2 pr-3">Category</th>
-            <th className="text-right py-2 px-3">Predicted Units</th>
-            <th className="text-right py-2 px-3">Range</th>
-            <th className="text-right py-2 px-3">Confidence</th>
-            <th className="text-center py-2 pl-3">Trend</th>
+          <tr style={{ background: 'var(--v-surface-raised)', borderBottom: '0.5px solid var(--v-border)' }}>
+            <th className="text-left px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Category</th>
+            <th className="text-right px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Predicted units</th>
+            <th className="text-right px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Range</th>
+            <th className="text-right px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Confidence</th>
+            <th className="text-center px-5 py-3 text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: 'var(--v-text-muted)' }}>Trend</th>
           </tr>
         </thead>
         <tbody>
           {data.category_demand.map((cat) => (
             <tr
               key={cat.category}
-              className="border-b border-[#F1F5F9] last:border-0"
+              className="transition-colors last:border-0"
+              style={{ borderBottom: '0.5px solid var(--v-border)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <td className="py-2 pr-3 text-[#1A202C] font-medium">
+              <td className="px-5 py-3 font-medium" style={{ color: 'var(--v-text)' }}>
                 {CATEGORY_LABELS[cat.category]}
               </td>
-              <td className="py-2 px-3 text-right text-[#1A202C] font-semibold">
+              <td className="px-5 py-3 text-right tabular-nums font-medium" style={{ color: 'var(--v-text)' }}>
                 {fmtInt(cat.units.mid)}
               </td>
-              <td className="py-2 px-3 text-right text-[#4A5568]">
+              <td className="px-5 py-3 text-right tabular-nums" style={{ color: 'var(--v-text-muted)' }}>
                 {fmtInt(cat.units.low)}–{fmtInt(cat.units.high)}
               </td>
-              <td className="py-2 px-3 text-right text-[#4A5568]">
+              <td className="px-5 py-3 text-right tabular-nums" style={{ color: 'var(--v-text-muted)' }}>
                 {Math.round(cat.units.confidence_pct)}%
               </td>
-              <td
-                className="py-2 pl-3 text-center font-bold"
-                style={{ color: TREND_COLOR[cat.trend] }}
-              >
+              <td className="px-5 py-3 text-center font-bold" style={{ color: TREND_COLOR[cat.trend] }}>
                 {TREND_ICON[cat.trend]}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-    </Card>
+    </div>
   )
 }
 
 // ─── Risk flags ──────────────────────────────────────────────────────────────
 
+function riskSeverity(pct: number): 'critical' | 'warning' | 'low' {
+  if (pct >= 80) return 'critical'
+  if (pct >= 50) return 'warning'
+  return 'low'
+}
+const RISK_BADGE: Record<'critical' | 'warning' | 'low', BadgeVariant> = {
+  critical: 'danger',
+  warning: 'warning',
+  low: 'neutral',
+}
+
 function RiskFlagsCard({ flags }: { flags: PredictionRiskFlag[] }) {
-  if (flags.length === 0) {
-    return (
-      <Card className="mt-4">
-        <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
-          Stock-Out Risk Flags
-        </h3>
-        <p className="text-sm text-[#38A169] flex items-center gap-2">
-          <span className="text-lg">✓</span>
+  return (
+    <div
+      className="p-5 mt-4"
+      style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderRadius: 'var(--v-radius-lg)' }}
+    >
+      <h3 className="text-sm font-medium mb-3" style={{ color: 'var(--v-text)' }}>
+        Stock-out risk flags{flags.length > 0 ? ` (${flags.length})` : ''}
+      </h3>
+      {flags.length === 0 ? (
+        <p className="text-sm flex items-center gap-2" style={{ color: 'var(--v-green)' }}>
+          <span className="text-base">✓</span>
           No stock-out risks detected — allocation looks safe.
         </p>
-      </Card>
-    )
-  }
-  return (
-    <Card className="mt-4">
-      <h3 className="text-xs font-semibold text-[#718096] uppercase tracking-widest mb-3">
-        Stock-Out Risk Flags ({flags.length})
-      </h3>
-      <div className="space-y-2">
-        {flags.map((f) => {
-          const pct = Math.round(f.stockout_probability * 100)
-          const severity = pct >= 80 ? 'critical' : pct >= 50 ? 'warning' : 'low'
-          const bg = severity === 'critical'
-            ? '#FED7D7'
-            : severity === 'warning'
-              ? '#FEEBC8'
-              : '#E2E8F0'
-          const fg = severity === 'critical'
-            ? '#742A2A'
-            : severity === 'warning'
-              ? '#744210'
-              : '#4A5568'
-          return (
-            <div
-              key={`${f.bar_id}-${f.product_id}`}
-              className="flex items-center justify-between text-sm border-b border-[#F1F5F9] pb-2 last:border-0"
-            >
-              <div>
-                <p className="font-semibold text-[#1A202C]">{f.product_name}</p>
-                <p className="text-xs text-[#718096]">at {f.bar_name}</p>
-              </div>
-              <span
-                className="px-2 py-0.5 rounded-full text-[11px] font-bold"
-                style={{ backgroundColor: bg, color: fg }}
+      ) : (
+        <div className="space-y-2.5">
+          {flags.map((f) => {
+            const pct = Math.round(f.stockout_probability * 100)
+            return (
+              <div
+                key={`${f.bar_id}-${f.product_id}`}
+                className="flex items-center justify-between gap-3 pb-2.5 last:pb-0"
+                style={{ borderBottom: '0.5px solid var(--v-border)' }}
               >
-                {pct}% risk
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </Card>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate" style={{ color: 'var(--v-text)' }}>{f.product_name}</p>
+                  <p className="text-xs" style={{ color: 'var(--v-text-muted)' }}>at {f.bar_name}</p>
+                </div>
+                <Badge variant={RISK_BADGE[riskSeverity(pct)]}>{pct}% risk</Badge>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -342,22 +298,15 @@ function RiskFlagsCard({ flags }: { flags: PredictionRiskFlag[] }) {
 
 function NoActiveEventState() {
   return (
-    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
-      <p className="text-4xl mb-3">📅</p>
-      <p className="text-[#4A5568] font-semibold mb-1">
-        No active event
-      </p>
-      <p className="text-xs text-[#718096] max-w-sm mx-auto mb-4">
-        Predictions run against a live or upcoming event. Go to the Events page
-        to start one, then come back to see the forecast.
-      </p>
-      <Link
-        to="/events"
-        className="inline-block bg-[#1E5A8D] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-[#17456D]"
-      >
-        Open Events
-      </Link>
-    </div>
+    <EmptyState
+      headline="No active event"
+      body="Predictions run against a live or upcoming event. Go to the Events page to start one, then come back to see the forecast."
+      action={
+        <Link to="/events">
+          <Button variant="primary">Open Events</Button>
+        </Link>
+      }
+    />
   )
 }
 
@@ -369,43 +318,34 @@ function GenerateCtaState({
   isPending: boolean
 }) {
   return (
-    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
-      <p className="text-4xl mb-3">📊</p>
-      <p className="text-[#1A202C] font-semibold mb-1">
-        Ready to forecast this event
-      </p>
-      <p className="text-xs text-[#718096] max-w-sm mx-auto mb-5">
-        Click below to generate demand predictions based on your completed
-        events. The first run takes a few seconds.
-      </p>
-      <Button variant="primary" size="md" onClick={onGenerate} disabled={isPending}>
-        {isPending ? 'Generating…' : '⚡ Generate Predictions'}
-      </Button>
-    </div>
+    <EmptyState
+      headline="Ready to forecast this event"
+      body="Click below to generate demand predictions based on your completed events. The first run takes a few seconds."
+      action={
+        <Button variant="primary" onClick={onGenerate} disabled={isPending}>
+          {isPending ? 'Generating…' : '+ Generate Predictions'}
+        </Button>
+      }
+    />
   )
 }
 
 function InsufficientDataState({ message }: { message: string }) {
   return (
-    <div className="bg-white border border-dashed border-[#CBD5E0] rounded-xl p-12 text-center max-w-xl mx-auto">
-      <p className="text-4xl mb-3">📊</p>
-      <p className="text-[#1A202C] font-semibold mb-1">
-        Not enough history yet
-      </p>
-      <p className="text-sm text-[#4A5568] leading-relaxed max-w-md mx-auto mb-4">
-        {message}
-      </p>
-      <p className="text-xs text-[#A0AEC0]">
-        Predictions appear automatically once your first event completes.
-      </p>
-    </div>
+    <EmptyState
+      headline="Not enough history yet"
+      body={`${message} Predictions appear automatically once your first eligible event completes with recorded sales.`}
+    />
   )
 }
 
 function FailedState({ reason }: { reason: string | null }) {
   return (
-    <div className="bg-[#FED7D7] text-[#742A2A] text-sm rounded-xl p-4 max-w-xl mx-auto">
-      <p className="font-semibold mb-1">Prediction failed</p>
+    <div
+      className="text-sm p-4 max-w-xl mx-auto rounded-[var(--v-radius)]"
+      style={{ background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)', color: 'var(--v-pink)' }}
+    >
+      <p className="font-medium mb-1">Prediction failed</p>
       <p className="text-xs">{reason ?? 'Unknown error — try regenerating.'}</p>
     </div>
   )
@@ -413,8 +353,11 @@ function FailedState({ reason }: { reason: string | null }) {
 
 function PendingState() {
   return (
-    <div className="text-center py-12 text-sm text-[#A0AEC0]">
-      Generating predictions…
+    <div className="py-12 text-center text-sm" style={{ color: 'var(--v-text-muted)' }}>
+      <div className="inline-flex items-center gap-2">
+        <div className="w-4 h-4 rounded-full animate-spin" style={{ border: '2px solid var(--v-border)', borderTopColor: 'var(--v-cyan)' }} />
+        Generating predictions…
+      </div>
     </div>
   )
 }
@@ -445,21 +388,13 @@ function ReadyState({
     <>
       {/* Meta row */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <ConfidenceBadge
-          tier={data.confidence_tier}
-          count={data.based_on_event_count}
-        />
+        <ConfidenceBadge tier={data.confidence_tier} count={data.based_on_event_count} />
         <div className="flex items-center gap-3">
-          <span className="text-[11px] text-[#A0AEC0]">
+          <span className="text-[11px]" style={{ color: 'var(--v-text-dim)' }}>
             v{prediction.version} · {generatedAt}
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onRegenerate}
-            disabled={regenPending}
-          >
-            🔄 {regenPending ? 'Regenerating…' : 'Regenerate'}
+          <Button variant="secondary" onClick={onRegenerate} disabled={regenPending}>
+            {regenPending ? 'Regenerating…' : 'Regenerate'}
           </Button>
         </div>
       </div>
@@ -506,17 +441,12 @@ export default function PredictionPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[#1A202C]">Demand Predictions</h1>
-          <p className="text-sm text-[#718096] mt-1">
-            {liveEvent
-              ? `Pre-event forecast · ${liveEvent.name}`
-              : 'Pre-event forecast based on completed event history'}
-          </p>
-        </div>
+    <div className="p-6 max-w-6xl mx-auto">
+      <div className="mb-6">
+        <PageHeader
+          title="Demand Predictions"
+          subtitle={liveEvent ? `Pre-event forecast · ${liveEvent.name}` : 'Pre-event forecast based on completed event history'}
+        />
       </div>
 
       {/* State rendering */}

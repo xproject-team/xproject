@@ -8,13 +8,25 @@
  * - 7b.4: per-product stock table (next)
  * - 7b.5: chat section wiring (next)
  * - Alerts section: silent hide until alerts backend (v1.1)
+ *
+ * Day 4/5 restyle: converted to the Vera Event design system + relaid out
+ * (hero chart full-width on top, 2-col grid for breakdown/stock/alerts,
+ * chat full-width at the bottom).
+ *
+ * Day 6 fix: every section now reads the event the dashboard actually
+ * resolved (eventId/eventStartMs/nowMs/isLive, threaded down from
+ * DashboardContent) instead of independently re-deriving "whatever event
+ * is live right now" via useLiveEvent(). That mismatch was the source of
+ * the post-event bug — completed events have no live event, so every
+ * section here read as empty even though the dashboard cards for the
+ * same event showed real data. useLiveEvent() is no longer used in this
+ * file; every hook it touches already accepted an explicit eventId.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   useAllProducts,
   useBarSupplierStock,
-  useLiveEvent,
   useTransactionsForEvent,
   useBarCategoryTotals,
 } from '@/features/dashboard/hooks'
@@ -22,7 +34,7 @@ import { BarMiniChart } from '@/features/dashboard/BarMiniChart'
 import {
   BarCategoryBreakdown,
   BarTopDrinks,
-} from '@/features/dashboard/BarCategoryBreakdown' 
+} from '@/features/dashboard/BarCategoryBreakdown'
 import type { ProductLike } from '@/features/dashboard/category-resolver'
 import type { BarKpi, BarStatus } from '@/lib/mockData'
 import {
@@ -32,26 +44,34 @@ import {
   useMarkChannelRead,
 } from '@/features/chat/useChat'
 import { useAlertsForEvent, useAcknowledgeAlert } from '@/features/alerts/useAlerts'
+import { Badge, Button, EmptyState, type BadgeVariant } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
-// Style maps
 const STATUS_DOT: Record<BarStatus, string> = {
-  healthy: 'bg-[#38A169]',
-  warning: 'bg-[#D69E2E]',
-  critical: 'bg-[#E53E3E] animate-pulse',
+  healthy: 'var(--v-green)',
+  warning: 'var(--v-amber)',
+  critical: 'var(--v-pink)',
 }
 
-const STATUS_LABEL: Record<BarStatus, { text: string; cls: string }> = {
-  healthy: { text: 'Healthy', cls: 'bg-green-100 text-[#38A169]' },
-  warning: { text: 'Low Stock', cls: 'bg-yellow-100 text-[#D69E2E]' },
-  critical: { text: 'Critical', cls: 'bg-red-100 text-[#E53E3E]' },
+const STATUS_BADGE: Record<BarStatus, { text: string; variant: BadgeVariant }> = {
+  healthy: { text: 'Healthy', variant: 'success' },
+  warning: { text: 'Low Stock', variant: 'warning' },
+  critical: { text: 'Critical', variant: 'danger' },
 }
 
 function SectionHeader({ title }: { title: string }) {
   return (
-    <h2 className="text-[10px] font-bold text-[#4A5568] uppercase tracking-widest mb-3 pb-2 border-b border-[#E2E8F0]">
+    <h2
+      className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-3 pb-2"
+      style={{ color: 'var(--v-text-muted)', borderBottom: '0.5px solid var(--v-border)' }}
+    >
       {title}
     </h2>
   )
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <section className="v-card p-4">{children}</section>
 }
 
 // Revenue chart subcomponent — DASH.4 rewrite (May 27 2026).
@@ -59,51 +79,40 @@ function SectionHeader({ title }: { title: string }) {
 // 5 lines (total + beer / cocktails / premium_cocktails / wine).
 // Same data + same colors as the card chart, just bigger with legend
 // and Y-axis visible. Locked May 27 2026 with Hesam.
+//
+// eventStartMs/nowMs are passed down from DashboardContent — the exact
+// same values already used for the main dashboard chart and every
+// BarCard's mini chart — instead of re-derived from useLiveEvent(),
+// which only ever has a value while some event is live.
 interface RevenueChartProps {
   barId: string
+  eventId: string
+  eventStartMs: number
+  nowMs: number
 }
 
-function RevenueChart({ barId }: RevenueChartProps) {
-  const liveEventQuery     = useLiveEvent()
-  const transactionsQuery  = useTransactionsForEvent(liveEventQuery.data?.id ?? null)
+function RevenueChart({ barId, eventId, eventStartMs, nowMs }: RevenueChartProps) {
+  const transactionsQuery  = useTransactionsForEvent(eventId)
   const productsQuery      = useAllProducts()
 
-  const eventStartIso = liveEventQuery.data?.started_at ?? null
-
-  if (liveEventQuery.isLoading || transactionsQuery.isLoading || productsQuery.isLoading) {
+  if (transactionsQuery.isLoading || productsQuery.isLoading) {
     return (
-      <div className="h-56 flex items-center justify-center text-xs text-[#A0AEC0] italic">
+      <div className="h-56 flex items-center justify-center text-xs italic" style={{ color: 'var(--v-text-muted)' }}>
         Loading chart data...
       </div>
     )
   }
 
-  if (!eventStartIso) {
-    return (
-      <div className="h-56 flex items-center justify-center text-xs text-[#A0AEC0] italic">
-        No event start time available yet.
-      </div>
-    )
-  }
-
-  const eventStartMs = new Date(eventStartIso).getTime()
-  const nowMs        = Date.now()
-
   return (
-    <div className="space-y-2">
-      <BarMiniChart
-        barId={barId}
-        transactions={transactionsQuery.data ?? []}
-        products={(productsQuery.data ?? []) as ProductLike[]}
-        eventStartMs={eventStartMs}
-        nowMs={nowMs}
-        height={280}
-      />
-      <p className="text-[10px] text-[#A0AEC0] italic">
-        ML Predicted overlay arrives when MLPredictor is wired
-        (Phase 2 resumption).
-      </p>
-    </div>
+    <BarMiniChart
+      barId={barId}
+      transactions={transactionsQuery.data ?? []}
+      products={(productsQuery.data ?? []) as ProductLike[]}
+      eventStartMs={eventStartMs}
+      nowMs={nowMs}
+      height={280}
+      showLegend
+    />
   )
 }
 
@@ -123,7 +132,7 @@ function StockTable({ barId, eventId }: StockTableProps) {
 
   if (stockQuery.isLoading) {
     return (
-      <div className="text-xs text-[#A0AEC0] italic py-6 text-center">
+      <div className="text-xs italic py-6 text-center" style={{ color: 'var(--v-text-muted)' }}>
         Loading stock…
       </div>
     )
@@ -137,11 +146,7 @@ function StockTable({ barId, eventId }: StockTableProps) {
   })
 
   if (rows.length === 0) {
-    return (
-      <div className="text-xs text-[#A0AEC0] italic py-6 text-center">
-        No stock dispatched to this bar yet.
-      </div>
-    )
+    return <EmptyState headline="No stock dispatched" body="No stock dispatched to this bar yet." />
   }
 
   return (
@@ -149,13 +154,9 @@ function StockTable({ barId, eventId }: StockTableProps) {
       {rows.map((r) => {
         // Color by status
         const barColor =
-          r.status === 'critical' ? '#DC2626'
-          : r.status === 'low'    ? '#D97706'
-          :                         '#16A34A'
-        const bgColor =
-          r.status === 'critical' ? '#FEE2E2'
-          : r.status === 'low'    ? '#FEF3C7'
-          :                         '#DCFCE7'
+          r.status === 'critical' ? 'var(--v-pink)'
+          : r.status === 'low'    ? 'var(--v-amber)'
+          :                         'var(--v-green)'
         const statusBadge =
           r.status === 'critical' ? '🔴 CRITICAL'
           : r.status === 'low'    ? '🟡 LOW'
@@ -166,43 +167,36 @@ function StockTable({ barId, eventId }: StockTableProps) {
         return (
           <div
             key={r.supplier_product_id}
-            className="border border-[#E2E8F0] rounded-lg p-3 bg-white"
+            className="rounded-[var(--v-radius)] p-3"
+            style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)' }}
           >
             <div className="flex items-center justify-between mb-1.5 gap-2">
-              <span className="text-sm font-medium text-[#1A202C] truncate" title={r.item_name}>
+              <span className="text-sm font-medium truncate" style={{ color: 'var(--v-text)' }} title={r.item_name}>
                 {r.item_name}
               </span>
               <div className="flex items-center gap-1.5 shrink-0">
                 {r.accurate && (
                   <span
-                    className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200"
+                    className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                    style={{ background: 'rgba(61, 255, 163, 0.12)', color: 'var(--v-green)', border: '0.5px solid var(--v-green)' }}
                     title="Sole ingredient — exact depletion (no worst-case)"
                   >
                     accurate
                   </span>
                 )}
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wide tabular-nums"
-                  style={{ color: barColor }}
-                >
+                <span className="text-[10px] font-bold uppercase tracking-wide tabular-nums" style={{ color: barColor }}>
                   {statusBadge}
                 </span>
               </div>
             </div>
             {/* Loading bar */}
-            <div
-              className="w-full h-3 rounded-full overflow-hidden"
-              style={{ backgroundColor: bgColor }}
-            >
+            <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: 'var(--v-border)' }}>
               <div
                 className="h-full transition-all duration-500"
-                style={{
-                  width: `${pctClamped}%`,
-                  backgroundColor: barColor,
-                }}
+                style={{ width: `${pctClamped}%`, backgroundColor: barColor }}
               />
             </div>
-            <div className="flex items-center justify-between mt-1 text-[11px] text-[#4A5568]">
+            <div className="flex items-center justify-between mt-1 text-[11px]" style={{ color: 'var(--v-text-muted)' }}>
               <span className="tabular-nums">
                 {Math.round(r.remaining_ml).toLocaleString()} ml / {Math.round(r.dispatched_ml).toLocaleString()} ml
               </span>
@@ -211,16 +205,16 @@ function StockTable({ barId, eventId }: StockTableProps) {
               </span>
             </div>
             {(r.consumed_ml_certain > 0 || r.consumed_ml_uncertain > 0) && (
-              <div className="flex items-center gap-3 mt-1 text-[10px] text-[#718096] tabular-nums">
+              <div className="flex items-center gap-3 mt-1 text-[10px] tabular-nums" style={{ color: 'var(--v-text-dim)' }}>
                 {r.consumed_ml_certain > 0 && (
                   <span title="From sole-ingredient categories — exact attribution">
-                    <span className="text-emerald-700 font-semibold">●</span>{' '}
+                    <span className="font-semibold" style={{ color: 'var(--v-green)' }}>●</span>{' '}
                     {Math.round(r.consumed_ml_certain).toLocaleString()} ml certain
                   </span>
                 )}
                 {r.consumed_ml_uncertain > 0 && (
                   <span title="From multi-ingredient categories — worst-case attribution">
-                    <span className="text-amber-600 font-semibold">●</span>{' '}
+                    <span className="font-semibold" style={{ color: 'var(--v-amber)' }}>●</span>{' '}
                     up to {Math.round(r.consumed_ml_uncertain).toLocaleString()} ml worst-case
                   </span>
                 )}
@@ -269,7 +263,7 @@ function ChatSection({ barId, barName }: ChatSectionProps) {
   // Loading channel list
   if (channelsQuery.isLoading) {
     return (
-      <p className="text-xs text-[#A0AEC0] italic py-6 text-center">
+      <p className="text-xs italic py-6 text-center" style={{ color: 'var(--v-text-muted)' }}>
         Loading chat&hellip;
       </p>
     )
@@ -279,11 +273,7 @@ function ChatSection({ barId, barName }: ChatSectionProps) {
   // Shouldn't happen for newly-created bars (auto-hook) but can for bars
   // that pre-date the auto-hook without being backfilled.
   if (channel === null) {
-    return (
-      <p className="text-xs text-[#A0AEC0] italic py-6 text-center">
-        No chat channel for this bar yet.
-      </p>
-    )
+    return <EmptyState headline="No chat channel" body="No chat channel for this bar yet." />
   }
 
   return <ChatSectionInner channel={channel} barName={barName} />
@@ -328,7 +318,7 @@ function ChatSectionInner({ channel, barName }: ChatSectionInnerProps) {
   return (
     <>
       {messagesQuery.isLoading ? (
-        <p className="text-xs text-[#A0AEC0] italic mb-4 py-4 text-center">
+        <p className="text-xs italic mb-4 py-4 text-center" style={{ color: 'var(--v-text-muted)' }}>
           Loading messages&hellip;
         </p>
       ) : ordered.length > 0 ? (
@@ -336,25 +326,26 @@ function ChatSectionInner({ channel, barName }: ChatSectionInnerProps) {
           {ordered.map((msg) => (
             <div
               key={msg.id}
-              className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-3 py-2.5"
+              className="rounded-[var(--v-radius)] px-3 py-2.5"
+              style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)' }}
             >
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs font-semibold text-[#1A202C]">
+                <span className="text-xs font-semibold" style={{ color: 'var(--v-text)' }}>
                   {msg.sender_name ?? 'Unknown sender'}
                 </span>
-                <span className="text-[10px] font-mono text-[#4A5568]">
+                <span className="text-[10px] font-mono" style={{ color: 'var(--v-text-dim)' }}>
                   {new Date(msg.created_at).toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
                 </span>
               </div>
-              <p className="text-xs text-[#4A5568] leading-snug">{msg.body}</p>
+              <p className="text-xs leading-snug" style={{ color: 'var(--v-text-muted)' }}>{msg.body}</p>
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-[#A0AEC0] italic mb-4 py-4 text-center">
+        <p className="text-xs italic mb-4 py-4 text-center" style={{ color: 'var(--v-text-muted)' }}>
           No messages for this bar yet.
         </p>
       )}
@@ -367,18 +358,12 @@ function ChatSectionInner({ channel, barName }: ChatSectionInnerProps) {
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }}
           placeholder={'Send message to ' + barName + ' manager...'}
           disabled={postMessage.isPending}
-          className="flex-1 text-sm border border-[#E2E8F0] rounded-lg px-3 py-2 bg-white text-[#1A202C] placeholder:text-[#CBD5E0] focus:outline-none focus:ring-2 focus:ring-[#1ABC9C]/30 focus:border-[#1ABC9C] transition disabled:opacity-60"
+          className="flex-1 text-sm rounded-lg px-3 py-2 focus:outline-none transition disabled:opacity-60"
+          style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', color: 'var(--v-text)' }}
         />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim() || postMessage.isPending}
-          className="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ backgroundColor: '#1ABC9C' }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#17a589')}
-          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#1ABC9C')}
-        >
+        <Button variant="primary" onClick={handleSend} disabled={!input.trim() || postMessage.isPending}>
           {postMessage.isPending ? 'Sending…' : 'Send'}
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -386,6 +371,17 @@ function ChatSectionInner({ channel, barName }: ChatSectionInnerProps) {
 interface Props {
   bar: BarKpi | null
   onClose: () => void
+  /** The event the dashboard is currently showing — live, completed, or
+   *  preview. Every data-fetching section below reads THIS event, not
+   *  whatever happens to be tenant-wide live right now. */
+  eventId: string
+  /** Same values DashboardContent already computes for the main chart
+   *  and every BarCard's mini chart — reused here, not re-derived. */
+  eventStartMs: number
+  nowMs: number
+  /** True only while eventId's own status is 'live'. Drives the "Live
+   *  event" pill — distinct from "is some other event live somewhere". */
+  isLive: boolean
 }
 
 // AlertsSection - Apr 20 2026 cross-page integration
@@ -395,37 +391,36 @@ function AlertsSection({ barId, eventId }: AlertsSectionProps) {
   const ackMutation = useAcknowledgeAlert()
   const alerts = (alertsQuery.data?.items ?? []).filter((a) => a.bar_id === barId)
   if (alerts.length === 0) {
-    return <p className="text-sm text-[#718096] italic">No active alerts for this bar.</p>
+    return <EmptyState headline="No active alerts" body="No active alerts for this bar." />
   }
   return (
     <div className="space-y-3">
       {alerts.map((alert) => {
         const isCritical = alert.severity === 'critical'
         const isWarning = alert.severity === 'warning'
-        const pillCls = isCritical ? 'bg-red-100 text-[#E53E3E] border-red-200'
-          : isWarning ? 'bg-amber-100 text-[#B7791F] border-amber-200'
-          : 'bg-blue-100 text-[#2B6CB0] border-blue-200'
-        const borderCls = isCritical ? 'border-[#E53E3E] bg-red-50'
-          : isWarning ? 'border-[#D69E2E] bg-amber-50'
-          : 'border-[#3182CE] bg-blue-50'
+        const color = isCritical ? 'var(--v-pink)' : isWarning ? 'var(--v-amber)' : 'var(--v-cyan)'
+        const variant: BadgeVariant = isCritical ? 'danger' : isWarning ? 'warning' : 'info'
         return (
-          <div key={alert.id} className={'rounded-lg border-l-4 p-3 ' + borderCls}>
+          <div
+            key={alert.id}
+            className="rounded-[var(--v-radius)] p-3"
+            style={{ background: 'var(--v-surface)', border: '0.5px solid var(--v-border)', borderLeft: `3px solid ${color}` }}
+          >
             <div className="flex items-start justify-between gap-3 mb-1.5">
-              <span className={'text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ' + pillCls}>
-                {alert.severity}
-              </span>
+              <Badge variant={variant}>{alert.severity}</Badge>
               <button
                 onClick={() => ackMutation.mutate({ alert_id: alert.id, version: alert.version })}
                 disabled={ackMutation.isPending}
-                className="text-[11px] font-semibold text-[#4A5568] hover:text-[#1A202C] border border-[#E2E8F0] hover:border-[#CBD5E0] bg-white px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+                style={{ color: 'var(--v-text-muted)', border: '0.5px solid var(--v-border)', background: 'var(--v-surface-raised)' }}
               >
                 Acknowledge
               </button>
             </div>
-            <p className="text-[11px] font-bold text-[#1A202C] mb-1">{alert.title}</p>
-            <p className="text-[12px] text-[#2D3748] leading-snug">{alert.message}</p>
+            <p className="text-[11px] font-bold mb-1" style={{ color: 'var(--v-text)' }}>{alert.title}</p>
+            <p className="text-[12px] leading-snug" style={{ color: 'var(--v-text-muted)' }}>{alert.message}</p>
             {alert.suggested_action && (
-              <p className="mt-2 text-[11px] text-[#4A5568] italic">{'→ ' + alert.suggested_action}</p>
+              <p className="mt-2 text-[11px] italic" style={{ color: 'var(--v-text-dim)' }}>{'→ ' + alert.suggested_action}</p>
             )}
           </div>
         )
@@ -434,7 +429,7 @@ function AlertsSection({ barId, eventId }: AlertsSectionProps) {
   )
 }
 
-export function BarDetailOverlay({ bar, onClose }: Props) {
+export function BarDetailOverlay({ bar, onClose, eventId, eventStartMs, nowMs, isLive }: Props) {
   const isOpen = bar !== null
 
   const prevBarRef = useRef<BarKpi | null>(null)
@@ -448,12 +443,8 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [isOpen, onClose])
 
-  // Resolve the currently-live event so subcomponents can fetch scoped data
-  const mainLiveEventQuery = useLiveEvent()
-  const liveEventId = mainLiveEventQuery.data?.id ?? null
-
   // DASH.6 — fetch per-bar category totals for the Drinks Breakdown section.
-  const categoryTotalsQuery = useBarCategoryTotals(liveEventId)
+  const categoryTotalsQuery = useBarCategoryTotals(eventId)
   const barCategoryRow =
     categoryTotalsQuery.data?.bars.find((br) => br.bar_id === b?.id) ?? null
 
@@ -462,34 +453,44 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
   return (
     <>
       <div
-        className={[
-          'fixed inset-0 bg-black/50 z-40 transition-opacity duration-300',
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none',
-        ].join(' ')}
+        className="fixed inset-0 z-40 transition-opacity duration-300"
+        style={{
+          background: 'rgba(8,9,13,0.72)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          opacity: isOpen ? 1 : 0,
+          pointerEvents: isOpen ? 'auto' : 'none',
+        }}
         onClick={onClose}
       />
 
       <div
-        className={[
-          'fixed right-0 top-0 h-full w-[70%] bg-[#F7FAFC] z-50 shadow-2xl flex flex-col',
-          'transition-transform duration-300 ease-in-out',
-          isOpen ? 'translate-x-0' : 'translate-x-full',
-        ].join(' ')}
+        className="fixed right-0 top-0 h-full w-[70%] z-50 flex flex-col transition-transform duration-300 ease-in-out"
+        style={{
+          background: 'var(--v-surface-raised)',
+          borderLeft: '0.5px solid var(--v-border)',
+          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+        }}
       >
         {b && (
           <>
-            <header className="flex items-center justify-between px-6 py-4 bg-white border-b border-[#E2E8F0] shrink-0 shadow-sm">
+            <header
+              className="flex items-center justify-between px-6 py-4 shrink-0"
+              style={{ borderBottom: '0.5px solid var(--v-border)' }}
+            >
               <div className="flex items-center gap-2.5">
-                <div className={'w-3 h-3 rounded-full shrink-0 ' + STATUS_DOT[b.status]} />
-                <h1 className="text-lg font-bold text-[#1A202C]">{b.name}</h1>
-                <span className={'text-xs font-semibold px-2 py-0.5 rounded-full ' + STATUS_LABEL[b.status].cls}>
-                  {STATUS_LABEL[b.status].text}
-                </span>
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: STATUS_DOT[b.status] }} />
+                <h1 className="text-lg font-medium" style={{ color: 'var(--v-text)' }}>{b.name}</h1>
+                <Badge variant={STATUS_BADGE[b.status].variant}>{STATUS_BADGE[b.status].text}</Badge>
+                {isLive && <Badge variant="info">Live event</Badge>}
               </div>
               <button
                 onClick={onClose}
                 aria-label="Close"
-                className="w-8 h-8 flex items-center justify-center rounded-full border border-[#E2E8F0] text-[#4A5568] hover:text-[#1A202C] hover:bg-[#F7FAFC] transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                style={{ border: '0.5px solid var(--v-border)', color: 'var(--v-text-muted)' }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--v-text)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--v-text-muted)')}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -498,53 +499,58 @@ export function BarDetailOverlay({ bar, onClose }: Props) {
             </header>
 
             <div className="flex-1 overflow-y-auto">
-              <div className="p-6 space-y-5">
+              <div className="p-6 space-y-3">
 
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
+                {/* Hero — hourly stacked chart, full width, ~2x dashboard height */}
+                <Card>
                   <SectionHeader title="Revenue" />
                   <div className="flex items-end gap-3 mb-4">
-                    <p className="text-3xl font-bold text-[#1A202C]">
+                    <p className="text-3xl font-medium" style={{ color: 'var(--v-text)' }}>
                       &euro;{revenueEuros.toLocaleString()}
                     </p>
-                    <span className="text-xs font-semibold bg-[#F7FAFC] text-[#4A5568] border border-[#E2E8F0] px-2 py-1 rounded-full mb-1">
-                      Live event
-                    </span>
                   </div>
-                  <RevenueChart barId={b.id} />
-                </section>
+                  <RevenueChart barId={b.id} eventId={eventId} eventStartMs={eventStartMs} nowMs={nowMs} />
+                </Card>
 
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
-                  <SectionHeader
-                    title={b.bar_type === 'food' ? 'Food Breakdown' : 'Drinks Breakdown'}
-                  />
-                  {categoryTotalsQuery.isLoading ? (
-                    <p className="text-sm text-[#A0AEC0] italic">Loading breakdown...</p>
-                  ) : (
-                    <>
+                {/* Two-column grid, 12px gap: left = Drinks breakdown + Top 5,
+                    right = Stock + Alerts. DOM order [breakdown, stock, top5,
+                    alerts] over a 2-col grid naturally groups each pair into
+                    its own column via row-major auto-flow. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+                  <Card>
+                    <SectionHeader title={b.bar_type === 'food' ? 'Food Breakdown' : 'Drinks Breakdown'} />
+                    {categoryTotalsQuery.isLoading ? (
+                      <p className="text-sm italic" style={{ color: 'var(--v-text-muted)' }}>Loading breakdown...</p>
+                    ) : (
                       <BarCategoryBreakdown bar={barCategoryRow} bar_type={b.bar_type} />
-                      <div className="mt-4">
-                        <h3 className="text-[11px] uppercase tracking-wide font-semibold text-[#4A5568] mb-2">
-                          {b.bar_type === 'food' ? 'Top 5 items (by units)' : 'Top 5 drinks (by units)'}
-                        </h3>
-                        <BarTopDrinks bar={barCategoryRow} bar_type={b.bar_type} />
-                      </div>
-                    </>
-                  )}
-                </section>
+                    )}
+                  </Card>
 
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
-                  <SectionHeader title={'Stock'} />
-                  <StockTable barId={b.id} eventId={liveEventId} />
-                </section>
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
-                  <SectionHeader title="Alerts" />
-                  <AlertsSection barId={b.id} eventId={liveEventId} />
-                </section>
+                  <Card>
+                    <SectionHeader title="Stock" />
+                    <StockTable barId={b.id} eventId={eventId} />
+                  </Card>
 
-                <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-sm">
+                  <Card>
+                    <SectionHeader title={b.bar_type === 'food' ? 'Top 5 items (by units)' : 'Top 5 drinks (by units)'} />
+                    {categoryTotalsQuery.isLoading ? (
+                      <p className="text-sm italic" style={{ color: 'var(--v-text-muted)' }}>Loading breakdown...</p>
+                    ) : (
+                      <BarTopDrinks bar={barCategoryRow} bar_type={b.bar_type} />
+                    )}
+                  </Card>
+
+                  <Card>
+                    <SectionHeader title="Alerts" />
+                    <AlertsSection barId={b.id} eventId={eventId} />
+                  </Card>
+                </div>
+
+                {/* Chat — full width */}
+                <Card>
                   <SectionHeader title="Chat" />
                   <ChatSection barId={b.id} barName={b.name} />
-                </section>
+                </Card>
 
               </div>
             </div>

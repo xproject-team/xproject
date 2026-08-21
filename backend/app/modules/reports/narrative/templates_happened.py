@@ -41,8 +41,18 @@ def _fmt_hm(dt) -> str:
 def _revenue_delta_pct(d: ReportData) -> float | None:
     """previous_event_delta_pct off the "Total Revenue" comparison row, or
     None if comparison data / that row isn't available. Computed once so
-    condition and extract never risk disagreeing on which row they mean."""
+    condition and extract never risk disagreeing on which row they mean.
+
+    Also None when the comparison mixes revenue-measurement methods
+    (mixed_revenue_sources — previous report predates the Day 14
+    event_orders migration): the delta then carries a definitional
+    component, and prose stating it as plain fact would claim more
+    confidence than the number warrants. The comparison TABLE still
+    shows it, with its footnote; the narrative just doesn't editorialize.
+    """
     if d.comparison is None or not d.comparison.available:
+        return None
+    if d.comparison.mixed_revenue_sources:
         return None
     for m in d.comparison.metrics:
         if m.label == "Total Revenue":

@@ -2,6 +2,8 @@ import { useSearchParams } from 'react-router-dom'
 
 import ProductsListPage from '@/pages/products/ProductsListPage'
 import { EventRecipesTab } from '@/pages/catalog/EventRecipesTab'
+import { PageHeader } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 type Tab = 'products' | 'recipes'
 
@@ -27,31 +29,44 @@ export default function CatalogPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Top tab bar */}
-      <div className="flex items-center gap-1 border-b border-[#E2E8F0] px-6 pt-3">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setActive(t.key)}
-            className={[
-              'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors',
-              active === t.key
-                ? 'border-[#1E5A8D] text-[#1E5A8D]'
-                : 'border-transparent text-[#4A5568] hover:text-[#1A202C]',
-            ].join(' ')}
-            title={t.hint}
-          >
-            {t.label}
-          </button>
-        ))}
+    <div>
+      {/* ProductsListPage/EventRecipesTab each self-centre at max-w-6xl —
+          same route is also reachable standalone at /products, so that
+          page owns its own layout rather than relying on this shell. Only
+          the tab chrome itself is centred here, to avoid doubling the
+          padding when embedded. */}
+      <div className="p-6 pb-0 max-w-6xl mx-auto">
+        <div className="mb-6">
+          <PageHeader
+            title="Catalog"
+            subtitle="Products and recipes shared across your events"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 mb-2">
+          {TABS.map((t) => {
+            const isActive = active === t.key
+            return (
+              <button
+                key={t.key}
+                onClick={() => setActive(t.key)}
+                title={t.hint}
+                className="text-sm font-medium px-4 py-2 rounded-full transition-colors"
+                style={{
+                  background: isActive ? 'rgba(0, 229, 212, 0.12)' : 'transparent',
+                  color: isActive ? 'var(--v-cyan)' : 'var(--v-text-muted)',
+                }}
+              >
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Tab content — only the active one mounts */}
-      <div className="flex-1 overflow-hidden flex flex-col">
-        {active === 'products' && <ProductsListPage />}
-        {active === 'recipes'  && <EventRecipesTab  />}
-      </div>
+      {active === 'products' && <ProductsListPage />}
+      {active === 'recipes'  && <EventRecipesTab  />}
     </div>
   )
 }

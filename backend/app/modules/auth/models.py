@@ -17,11 +17,23 @@ from app.core.tenancy import TenantScopedModel, _utcnow
 
 
 class UserRole(str, PyEnum):
-    """Valid user roles. Stored as a Postgres ENUM type."""
+    """Valid user roles. Stored as a Postgres ENUM type.
+
+    BARTENDER and WAREHOUSE are retired (Phase 2 two-role model): the
+    members stay defined because historical rows still carry them, but
+    they are excluded from ACTIVE_ROLES below — no login, token, or
+    grant may use them.
+    """
     OWNER = "owner"
     MANAGER = "manager"
     BARTENDER = "bartender"
     WAREHOUSE = "warehouse"
+
+
+# Roles a session may authenticate or act as. Everything not in here is
+# retired: rejected at login, rejected on token validation, and never
+# offered by the frontend role picker.
+ACTIVE_ROLES: frozenset[UserRole] = frozenset({UserRole.OWNER, UserRole.MANAGER})
 
 
 class Tenant(Base):

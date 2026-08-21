@@ -49,6 +49,15 @@ BAR_TO_CHANNEL = {
 
 
 async def seed() -> None:
+    # ── RETIRED (Phase 2 two-role model) ──────────────────────────────
+    # This seeder created BARTENDER accounts (with a hardcoded password)
+    # and role-derived channel membership. The Bartender role no longer
+    # exists as a login role; re-running this would resurrect retired-role
+    # accounts that can never sign in. Kept for historical reference only.
+    raise RuntimeError(
+        "app.seeds.communication_tree is retired: the Bartender role was "
+        "removed in Phase 2 (Owner + Manager only). Do not re-run."
+    )
     async with AsyncSessionLocal() as db:
         # ── Load existing users + bars ──
         omar = (await db.execute(

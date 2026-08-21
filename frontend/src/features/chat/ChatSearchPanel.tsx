@@ -1,8 +1,12 @@
 /**
  * Search panel overlay for chat. Appears when user types in the search bar.
  * Shows ranked results; click one jumps to that channel.
+ *
+ * Message bodies render as React TEXT via highlightSegments — never through
+ * dangerouslySetInnerHTML (the old path was a stored XSS: a message body
+ * containing markup executed in the searcher's browser).
  */
-import { highlightMatches, useChatSearch, type SearchResultItem } from './useChatSearch'
+import { highlightSegments, useChatSearch, type SearchResultItem } from './useChatSearch'
 
 
 interface ChatSearchPanelProps {
@@ -18,31 +22,37 @@ export function ChatSearchPanel({ query, onResultClick }: ChatSearchPanelProps) 
   if (trimmed.length === 0) return null
 
   return (
-    <div className="absolute top-full left-0 right-0 mt-1 max-h-[480px] overflow-y-auto bg-white border border-[#E2E8F0] rounded-xl shadow-lg z-50">
+    <div
+      className="absolute top-full left-0 right-0 mt-1 max-h-[480px] overflow-y-auto rounded-[var(--v-radius)] z-50 shadow-xl"
+      style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}
+    >
       {isLoading && (
-        <div className="px-4 py-6 text-xs text-[#718096] text-center">
+        <div className="px-4 py-6 text-xs text-center" style={{ color: 'var(--v-text-muted)' }}>
           Searching…
         </div>
       )}
 
       {isError && (
-        <div className="px-4 py-6 text-xs text-[#E74C3C] text-center">
-          ⚠ Search failed — try again
+        <div className="px-4 py-6 text-xs text-center" style={{ color: 'var(--v-pink)' }}>
+          Search failed — try again
         </div>
       )}
 
       {!isLoading && !isError && data && data.length === 0 && (
-        <div className="px-4 py-6 text-xs text-[#718096] text-center">
-          No messages match &ldquo;<span className="font-semibold">{trimmed}</span>&rdquo;
+        <div className="px-4 py-6 text-xs text-center" style={{ color: 'var(--v-text-muted)' }}>
+          No messages match “<span className="font-semibold" style={{ color: 'var(--v-text)' }}>{trimmed}</span>”
         </div>
       )}
 
       {!isLoading && data && data.length > 0 && (
         <>
-          <div className="px-4 py-2 text-[10px] uppercase tracking-wide text-[#A0AEC0] border-b border-[#EDF2F7]">
+          <div
+            className="px-4 py-2 text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--v-text-dim)', borderBottom: '0.5px solid var(--v-border)' }}
+          >
             {data.length} result{data.length === 1 ? '' : 's'}
           </div>
-          <ul className="divide-y divide-[#EDF2F7]">
+          <ul>
             {data.map((item) => (
               <SearchResultRow key={item.message_id} item={item} query={trimmed} onClick={() => onResultClick(item.channel_id, item.message_id)} />
             ))}
@@ -71,23 +81,34 @@ function SearchResultRow({
   })
 
   return (
-    <li>
+    <li style={{ borderBottom: '0.5px solid var(--v-border)' }}>
       <button
         type="button"
         onClick={onClick}
-        className="w-full text-left px-4 py-3 hover:bg-[#F7FAFC] transition-colors"
+        className="w-full text-left px-4 py-3 transition-colors hover:bg-white/[0.04]"
       >
-        <div className="flex items-center gap-2 text-[11px] text-[#718096] mb-1">
-          <span className="font-semibold text-[#1E5A8D]">#{item.channel_name}</span>
+        <div className="flex items-center gap-2 text-[11px] mb-1" style={{ color: 'var(--v-text-muted)' }}>
+          <span className="font-semibold" style={{ color: 'var(--v-cyan)' }}>#{item.channel_name}</span>
           <span>·</span>
           <span>{item.sender_name ?? '(deleted user)'}</span>
           <span>·</span>
           <span>{when}</span>
         </div>
-        <p
-          className="text-sm text-[#1A202C] line-clamp-2 [&>mark]:bg-yellow-200 [&>mark]:text-[#1A202C] [&>mark]:px-0.5 [&>mark]:rounded"
-          dangerouslySetInnerHTML={{ __html: highlightMatches(item.body, query) }}
-        />
+        <p className="text-sm line-clamp-2" style={{ color: 'var(--v-text)' }}>
+          {highlightSegments(item.body, query).map((seg, i) =>
+            seg.match ? (
+              <mark
+                key={i}
+                className="px-0.5 rounded"
+                style={{ background: 'rgba(255, 216, 77, 0.35)', color: 'var(--v-text)' }}
+              >
+                {seg.text}
+              </mark>
+            ) : (
+              <span key={i}>{seg.text}</span>
+            ),
+          )}
+        </p>
       </button>
     </li>
   )

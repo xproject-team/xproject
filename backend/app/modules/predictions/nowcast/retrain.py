@@ -54,7 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.events.models import Event, EventStatus
 from app.modules.predictions.models import ModelArtifact
 from app.modules.predictions.nowcast.predictor import DATA_DIR, FORMAT_VERSION, fit_shape_and_r2
-from app.modules.stock_transactions.models import StockTransaction, TransactionSource
+from app.modules.stock_transactions.models import StockTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ ARTIFACTS_DIR = Path(__file__).parent.parent / "artifacts" / "nowcast"
 
 # Same "confirmed revenue" convention as nowcast/service.py — parent
 # transactions only (price_cents non-null), slesh_pos + manual_bartender.
-REVENUE_SOURCES = (TransactionSource.SLESH_POS, TransactionSource.MANUAL_BARTENDER)
+from app.modules.events.revenue import REVENUE_SOURCES  # noqa: E402
 
 # Explicit dtypes, not just column names: an all-object-dtype empty
 # frame (pd.DataFrame(columns=[...])'s default) concatenated with a

@@ -22,7 +22,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import Tenant
-from app.modules.events.models import Event, EventStatus
+from app.modules.events.models import Event, EventOrder, EventStatus
 from app.modules.bars.models import Bar
 from app.modules.products.models import Product, ProductType, ProductCategory, ProductUnit
 from app.modules.bar_stock.models import BarStock
@@ -203,6 +203,40 @@ async def make_stock_transaction(
     return st
 
 
+async def make_event_order(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    event_id: uuid.UUID,
+    *,
+    bar_id: uuid.UUID | None = None,
+    fiscal_gross_cents: int = 1000,
+    subtotal_cents: int | None = None,
+    order_type: str = "experience",
+    confirmed_line_count: int = 1,
+    refunded_line_count: int = 0,
+    created_at_slesh: datetime | None = None,
+) -> EventOrder:
+    """One Slesh order-summary row (the money-of-record the dashboard and
+    reports sum). bar_id=None models an order from an unmapped POS shop;
+    confirmed_line_count=0 models a fully-refunded order."""
+    eo = EventOrder(
+        tenant_id=tenant_id,
+        event_id=event_id,
+        slesh_order_id=uuid.uuid4().hex,
+        bar_id=bar_id,
+        order_type=order_type,
+        subtotal_cents=subtotal_cents if subtotal_cents is not None else fiscal_gross_cents,
+        fiscal_gross_cents=fiscal_gross_cents,
+        cart_line_count=confirmed_line_count + refunded_line_count,
+        confirmed_line_count=confirmed_line_count,
+        refunded_line_count=refunded_line_count,
+        created_at_slesh=created_at_slesh or datetime.now(timezone.utc),
+    )
+    session.add(eo)
+    await session.flush()
+    return eo
+
+
 async def make_sale_with_children(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -279,6 +313,7 @@ async def delete_tenant_cascade(session: AsyncSession, tenant_id: uuid.UUID) -> 
         Report,
         CustomerPurchase,
         CustomerSession,
+        EventOrder,
         StockTransaction,
         EventProduct,
         RecipeItem,

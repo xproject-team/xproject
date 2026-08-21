@@ -1,0 +1,183 @@
+/*
+ * Layout-only styles for the /design-system preview route. Not part of the
+ * reusable component library (that's components/components.css) — this
+ * file is specific to arranging the preview page itself.
+ */
+
+.vds-page {
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.vds-shell {
+  position: relative;
+  z-index: 1;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--v-space-6) var(--v-space-5) var(--v-space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-space-7);
+}
+
+.vds-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-space-4);
+}
+
+.vds-section__title {
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--v-text-muted);
+  margin: 0;
+}
+
+.vds-section__desc {
+  font-size: 13px;
+  color: var(--v-text-dim);
+  margin: calc(-1 * var(--v-space-3)) 0 0;
+}
+
+/* Palette */
+
+.vds-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--v-space-3);
+}
+
+.vds-swatch__chip {
+  height: 64px;
+  border-radius: var(--v-radius-sm);
+  border: 0.5px solid var(--v-border);
+}
+
+.vds-swatch__meta {
+  margin-top: var(--v-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vds-swatch__role {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--v-text);
+}
+
+.vds-swatch__hex {
+  font-size: 11px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  color: var(--v-text-dim);
+}
+
+/* Generic flex row for grouping component variants */
+
+.vds-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--v-space-3);
+}
+
+.vds-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--v-space-3);
+}
+
+/* Chrome demo (glass sidebar + header fragment) */
+
+.vds-chrome-demo {
+  position: relative;
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--v-space-4);
+  height: 240px;
+  border-radius: var(--v-radius-lg);
+  overflow: hidden;
+  border: 0.5px solid var(--v-border);
+}
+
+/* .v-glass prefix raises specificity above .v-glass's own rules so these
+   overrides apply regardless of CSS module import order. */
+.v-glass.vds-sidebar-demo {
+  padding: var(--v-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--v-space-2);
+  border-radius: 0;
+  border: none;
+  border-right: 0.5px solid var(--v-border);
+}
+
+.vds-nav-item {
+  font-size: 13px;
+  padding: var(--v-space-2) var(--v-space-3);
+  border-radius: var(--v-radius-sm);
+  color: var(--v-text-muted);
+}
+
+.vds-nav-item--active {
+  color: var(--v-text);
+  background: rgba(0, 229, 212, 0.1);
+  border-left: 2px solid var(--v-cyan);
+}
+
+.v-glass.vds-header-demo {
+  padding: var(--v-space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 0;
+  border: none;
+  align-self: start;
+}
+
+.vds-header-demo__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--v-text);
+}
+
+/* Chart card */
+
+.vds-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 460 / 190;
+  margin-top: var(--v-space-4);
+}
+
+.vds-chart-legend {
+  display: flex;
+  gap: var(--v-space-4);
+  margin-top: var(--v-space-3);
+}
+
+.vds-chart-legend__item {
+  display: flex;
+  align-items: center;
+  gap: var(--v-space-2);
+  font-size: 12px;
+  color: var(--v-text-muted);
+}
+
+.vds-chart-legend__swatch {
+  width: 16px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.vds-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: var(--v-space-2);
+}

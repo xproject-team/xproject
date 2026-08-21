@@ -7,7 +7,7 @@ and returns a byte blob of the generated PDF. Does NOT touch disk, DB, or
 network. ReportService persists the bytes into reports.pdf_bytes.
 
 Stack: ReportLab 4.x + Matplotlib 3.x (Agg backend, no GUI).
-Layout: 5 pages on A4 portrait, 2cm margins. ~3 min read time.
+Layout: A4 portrait, 2cm margins. ~3 min read time.
 
 Sections (page order approved 2026-07-31, extends spec §3):
   0. Cover page             — event identity + hero revenue + guests (planning figure)
@@ -16,8 +16,13 @@ Sections (page order approved 2026-07-31, extends spec §3):
   3. Guests                 — identified-guest detail (a FLOOR, not a headcount)
   4. Revenue Breakdown      — bar chart + revenue decomposition + top/lowest products
   5. Forecast vs. Actual    — demand-model band-hit-rate detail
-  6. Stock Reality Check (per-bar tables)
-  7. Alerts Timeline
+  6. Alerts Timeline
+
+(Stock Reality Check was removed Day 14, matching the web view's 2026-08-10
+removal: it rendered bar_stock rows, a table the live depletion system
+abandoned in June for event_storage's supplier-stock model — the PDF was
+presenting stale numbers with full confidence. The aggregator still stores
+stock_rows in data_json; no renderer shows them.)
 
 Every new section (1, 3, 4's decomposition/products, 5) degrades gracefully:
 when its ReportData field is None (older report, feature shipped later) or
@@ -62,7 +67,6 @@ from app.modules.reports.schemas import (
     ReportComparisonMetric,
     ReportData,
     ReportProductRow,
-    ReportStockRow,
 )
 
 
@@ -84,14 +88,8 @@ LABELS_IT = {
     "revenue_per_hour": "per ora",
     "revenue_per_bar_avg": "media bar",
     "top_product": "Prodotto top",
-    "stock_section": "Stato delle Scorte",
-    "stock_empty": "Nessun dato di scorta disponibile.",
+    "unmapped_revenue_note": "Include {amount} da ordini non ancora associati a un bar.",
     "product": "Prodotto",
-    "opening": "Iniziali",
-    "closing": "Finali",
-    "consumed": "Consumati",
-    "burn_rate": "Consumo/h",
-    "stockout": "ESAURITO",
     "alerts_section": "Cronologia Alert",
     "alerts_empty": "Nessun alert registrato — la serata è filata liscia.",
     "time": "Ora",
@@ -111,6 +109,7 @@ LABELS_IT = {
     "vs_previous": "vs. Evento Precedente",
     "vs_season": "vs. Media Stagione",
     "guest_metrics_note": "Il confronto sugli ospiti è disponibile a partire da {date}.",
+    "mixed_revenue_note": "Il fatturato degli eventi precedenti è stato misurato con il metodo precedente (movimenti di magazzino) — piccole differenze sono di natura definitoria.",
 
     # Guests (Section A)
     "guests_section": "Ospiti",
@@ -170,14 +169,8 @@ LABELS_EN = {
     "revenue_per_hour": "per hour",
     "revenue_per_bar_avg": "bar average",
     "top_product": "Top product",
-    "stock_section": "Stock Reality Check",
-    "stock_empty": "No stock data available.",
+    "unmapped_revenue_note": "Includes {amount} from orders not yet mapped to a bar.",
     "product": "Product",
-    "opening": "Opening",
-    "closing": "Closing",
-    "consumed": "Consumed",
-    "burn_rate": "Burn/h",
-    "stockout": "STOCK-OUT",
     "alerts_section": "Alerts Timeline",
     "alerts_empty": "No alerts recorded — the night ran smoothly.",
     "time": "Time",
@@ -197,6 +190,7 @@ LABELS_EN = {
     "vs_previous": "vs. Previous Event",
     "vs_season": "vs. Season Average",
     "guest_metrics_note": "Guest comparison is available from {date} onward.",
+    "mixed_revenue_note": "Earlier events' revenue was measured with the previous method (stock movements) — small differences are definitional.",
 
     # Guests (Section A)
     "guests_section": "Guests",
@@ -250,8 +244,7 @@ COLOR_TEXT_MUTED   = colors.HexColor("#4A5568")
 COLOR_TEXT_LIGHT   = colors.HexColor("#718096")
 COLOR_BORDER       = colors.HexColor("#E2E8F0")
 COLOR_BG_LIGHT     = colors.HexColor("#F7FAFC")
-COLOR_STOCKOUT_BG  = colors.HexColor("#FFF5F5")
-COLOR_STOCKOUT     = colors.HexColor("#742A2A")
+COLOR_STOCKOUT     = colors.HexColor("#742A2A")  # also the out-of-band accent in Forecast
 COLOR_WHITE        = colors.white
 
 SEVERITY_COLORS = {
@@ -371,6 +364,20 @@ def _fmt_cents(value) -> str:
         return _fmt_eur(float(value) / 100.0)
     except (TypeError, ValueError):
         return "—"
+
+
+def _fmt_metric_value(value, unit: str | None) -> str:
+    """Comparison-table value, formatted by the metric's declared unit.
+
+    'eur' → currency, 'count' → whole number. None (a report generated
+    before units were stored) keeps the legacy one-decimal rendering so
+    frozen snapshots re-render exactly as they always did.
+    """
+    if unit == "eur":
+        return _fmt_eur(value)
+    if unit == "count":
+        return _fmt_num(value, 0)
+    return _fmt_num(value, 1)
 
 
 # ─── Revenue chart (matplotlib -> PNG bytes) ─────────────────────────────────
@@ -495,7 +502,7 @@ def _comparison_section(data: ReportData, styles, labels):
     for metric in data.comparison.metrics:
         table_data.append([
             metric.label,
-            _fmt_num(metric.current_value, 1),
+            _fmt_metric_value(metric.current_value, metric.unit),
             _fmt_pct(metric.previous_event_delta_pct, signed=True),
             _fmt_pct(metric.season_avg_delta_pct, signed=True),
         ])
@@ -530,6 +537,12 @@ def _comparison_section(data: ReportData, styles, labels):
             labels["guest_metrics_note"].format(date=data.comparison.guest_metrics_available_from),
             styles["BodyMuted"],
         ))
+
+    # Mixed measurement basis (Day 14 migration): earlier events'
+    # figures came from the old stock-movement method — the delta
+    # carries a definitional component, so say so under the table.
+    if data.comparison.mixed_revenue_sources:
+        out.append(Paragraph(labels["mixed_revenue_note"], styles["BodyMuted"]))
 
     return out
 
@@ -693,6 +706,16 @@ def _revenue_section(data: ReportData, styles, labels):
     out.append(Spacer(1, 6))
     out.append(kpi_table)
 
+    # Unmapped-order money: part of the total, attributable to no bar.
+    # Shown explicitly rather than letting the bar chart appear to
+    # account for everything (Day 14 migration; dashboard precedent).
+    unmapped = getattr(data.revenue_kpis, "unmapped_revenue", None)
+    if unmapped:
+        out.append(Paragraph(
+            labels["unmapped_revenue_note"].format(amount=_fmt_eur(unmapped)),
+            styles["BodyMuted"],
+        ))
+
     out.extend(_decomposition_subsection(data, styles, labels))
     out.extend(_products_subsection(data, styles, labels))
 
@@ -785,64 +808,6 @@ def _products_subsection(data: ReportData, styles, labels):
     return out
 
 
-def _stock_section(data: ReportData, styles, labels):
-    out = [Paragraph(labels["stock_section"].upper(), styles["SectionHeading"])]
-
-    if not data.stock_rows:
-        out.append(Paragraph(labels["stock_empty"], styles["BodyMuted"]))
-        return out
-
-    # Group by bar
-    grouped: dict[str, list[ReportStockRow]] = {}
-    for row in data.stock_rows:
-        grouped.setdefault(row.bar_name, []).append(row)
-
-    for bar_name, rows in grouped.items():
-        out.append(Paragraph(f"<b>{bar_name}</b>", styles["Subheading"]))
-
-        table_data = [[
-            labels["product"], labels["opening"], labels["closing"],
-            labels["consumed"], labels["burn_rate"], "",
-        ]]
-        for r in rows:
-            stockout_badge = labels["stockout"] if r.stock_out_occurred else ""
-            table_data.append([
-                r.product_name,
-                _fmt_num(r.opening_qty, 0),
-                _fmt_num(r.closing_qty, 0),
-                _fmt_num(r.consumed_qty, 0),
-                _fmt_num(r.burn_rate_per_hour, 1),
-                stockout_badge,
-            ])
-
-        t = Table(table_data, colWidths=[5.5 * cm, 2 * cm, 2 * cm, 2 * cm, 2.5 * cm, 3 * cm])
-        style_cmds = [
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("TEXTCOLOR", (0, 0), (-1, 0), COLOR_TEXT_LIGHT),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-            ("LINEBELOW", (0, 0), (-1, 0), 0.5, COLOR_BORDER),
-            ("ALIGN", (1, 0), (4, -1), "RIGHT"),
-            ("ALIGN", (5, 0), (5, -1), "RIGHT"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 1), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 1), (-1, -1), 4),
-        ]
-        # Tint stock-out rows
-        for i, r in enumerate(rows, start=1):
-            if r.stock_out_occurred:
-                style_cmds.append(("BACKGROUND", (0, i), (-1, i), COLOR_STOCKOUT_BG))
-                style_cmds.append(("TEXTCOLOR", (5, i), (5, i), COLOR_STOCKOUT))
-                style_cmds.append(("FONTNAME", (5, i), (5, i), "Helvetica-Bold"))
-                style_cmds.append(("FONTSIZE", (5, i), (5, i), 7))
-
-        t.setStyle(TableStyle(style_cmds))
-        out.append(t)
-        out.append(Spacer(1, 10))
-
-    return out
-
-
 def _alerts_section(data: ReportData, styles, labels):
     out = [Paragraph(labels["alerts_section"].upper(), styles["SectionHeading"])]
 
@@ -927,8 +892,6 @@ def render_report_pdf(data: ReportData) -> bytes:
     story.extend(_revenue_section(data, styles, labels))
     story.append(PageBreak())
     story.extend(_forecast_section(data, styles, labels))
-    story.append(PageBreak())
-    story.extend(_stock_section(data, styles, labels))
     story.append(PageBreak())
     story.extend(_alerts_section(data, styles, labels))
 

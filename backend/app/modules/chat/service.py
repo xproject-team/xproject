@@ -1,17 +1,55 @@
-"""Business logic for the chat module — channels, messages, permissions."""
+"""Business logic for the chat module — channels, messages, permissions.
 
+Access model (Phase 2 two-role redesign):
+  Membership is DERIVED FROM ROLE, not stored. ChannelMember rows are no
+  longer permission — they only carry the per-user last_read_at cursor,
+  lazily created on first read. The derived check gates by channel type:
+
+    bar / general   → Owner + Manager (every active user in the tenant)
+    strategic       → Owner ONLY (most likely to hold sensitive discussion;
+                      deriving it to everyone would silently widen access
+                      vs the old row model)
+    direct / dm     → still row-based: a DM is private between two people
+    anything else   → Owner only (fail closed for unknown future types)
+
+  Channels of COMPLETED / CANCELLED events are read-only archives: posting,
+  editing, deleting, and attaching are rejected with 409.
+"""
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import User, UserRole
+from app.modules.bars.models import Bar
+from app.modules.events.models import Event, EventStatus
 from app.modules.chat.models import ChatAttachment, Channel, ChannelMember, ChatMention, ChatMessage
 from app.modules.chat.mention_parser import parse_mentions
 from app.core import storage
 import json
+
+logger = logging.getLogger(__name__)
+
+# Channel types whose access derives from role (no member rows involved)
+ROLE_DERIVED_TYPES = ("bar", "general")
+STRATEGIC_TYPES = ("strategic",)
+DM_TYPES = ("direct", "dm")  # docstring says 'dm', seed data wrote 'direct' — accept both
+
+ARCHIVED_EVENT_STATUSES = (EventStatus.COMPLETED, EventStatus.CANCELLED)
+
+
+def role_may_access_channel_type(role: UserRole, channel_type: str) -> bool:
+    """Pure derived-access rule for non-DM channels (DMs are row-based).
+
+    Owner+Manager for bar/general; Owner only for strategic and for any
+    unknown future type (fail closed).
+    """
+    if channel_type in ROLE_DERIVED_TYPES:
+        return role in (UserRole.OWNER, UserRole.MANAGER)
+    return role == UserRole.OWNER
 
 
 class ChatService:
@@ -20,110 +58,213 @@ class ChatService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    # ─── Permission helper ────────────────────────────────────────────
+    # ─── Permission helpers ───────────────────────────────────────────
 
-    async def _ensure_member(
-        self,
-        channel_id: UUID,
-        user_id: UUID,
-        tenant_id: UUID,
-    ) -> ChannelMember:
-        """Raise 403 unless user is a member of channel within tenant."""
-        stmt = select(ChannelMember).where(
-            and_(
-                ChannelMember.channel_id == channel_id,
-                ChannelMember.user_id == user_id,
-                ChannelMember.tenant_id == tenant_id,
-            )
+    async def _get_channel(self, channel_id: UUID, tenant_id: UUID) -> Channel:
+        """Load a channel within the tenant. 404 if absent — cross-tenant
+        requests get the same 404 as a nonexistent id (no existence leak)."""
+        stmt = select(Channel).where(
+            and_(Channel.id == channel_id, Channel.tenant_id == tenant_id)
         )
-        result = await self.db.execute(stmt)
-        member = result.scalar_one_or_none()
-        if member is None:
+        channel = (await self.db.execute(stmt)).scalar_one_or_none()
+        if channel is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Channel not found",
+            )
+        return channel
+
+    async def _ensure_access(self, channel_id: UUID, user: User) -> Channel:
+        """Raise 404/403 unless `user` may access the channel; return it.
+
+        Role-derived for bar/general/strategic; row-based for DMs.
+        """
+        channel = await self._get_channel(channel_id, user.tenant_id)
+
+        if channel.channel_type in DM_TYPES:
+            member_stmt = select(ChannelMember.id).where(
+                and_(
+                    ChannelMember.channel_id == channel.id,
+                    ChannelMember.user_id == user.id,
+                    ChannelMember.tenant_id == user.tenant_id,
+                )
+            )
+            if (await self.db.execute(member_stmt)).scalar_one_or_none() is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You are not a member of this conversation",
+                )
+            return channel
+
+        if not role_may_access_channel_type(user.role, channel.channel_type):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not a member of this channel",
+                detail="Your role does not have access to this channel",
             )
-        return member
+        return channel
+
+    async def _channel_event_status(self, channel: Channel) -> EventStatus | None:
+        """The status of the event this bar channel belongs to (None for
+        event-less channels: DMs, strategic, general)."""
+        if channel.bar_id is None:
+            return None
+        stmt = (
+            select(Event.status)
+            .join(Bar, Bar.event_id == Event.id)
+            .where(Bar.id == channel.bar_id)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
+    async def _ensure_not_archived(self, channel: Channel) -> None:
+        """Raise 409 for write operations on a completed/cancelled event's
+        channel — archives are read-only, enforced here rather than only
+        hidden in the UI."""
+        event_status = await self._channel_event_status(channel)
+        if event_status in ARCHIVED_EVENT_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This event has ended — its chat is archived and read-only",
+            )
 
     # ─── Public methods ───────────────────────────────────────────────
 
-    async def list_user_channels(
-        self,
-        user_id: UUID,
-        tenant_id: UUID,
-    ) -> list[dict]:
-        """Return all channels this user belongs to, with unread counts.
+    async def list_user_channels(self, user: User) -> list[dict]:
+        """Return all channels this user can access, with unread counts and
+        the owning event (for the current-vs-archived sidebar grouping).
 
-        Each row: {channel, unread_count, last_message_at}
+        Access is role-derived (see module docstring); the member row, when
+        present, only supplies last_read_at. One aggregated query — the old
+        implementation ran 2 extra queries per channel.
+
+        Each row: {channel, unread_count, last_message_at,
+                   event_id, event_name, event_status, event_scheduled_at}
         """
-        # Channels where user is a member
         member_subq = (
             select(ChannelMember.channel_id, ChannelMember.last_read_at)
             .where(
                 and_(
-                    ChannelMember.user_id == user_id,
-                    ChannelMember.tenant_id == tenant_id,
+                    ChannelMember.user_id == user.id,
+                    ChannelMember.tenant_id == user.tenant_id,
                 )
             )
             .subquery()
         )
 
-        # Join channels with member info
+        # Visibility predicate mirrors _ensure_access, in SQL form
+        dm_with_row = and_(
+            Channel.channel_type.in_(DM_TYPES),
+            member_subq.c.channel_id.isnot(None),
+        )
+        if user.role == UserRole.OWNER:
+            # Owner: everything except DMs they aren't party to
+            access_pred = or_(Channel.channel_type.notin_(DM_TYPES), dm_with_row)
+        else:
+            access_pred = or_(Channel.channel_type.in_(ROLE_DERIVED_TYPES), dm_with_row)
+
+        # Unread = messages newer than last_read_at, excluding own messages.
+        # is_distinct_from (not !=) so messages from DELETED senders
+        # (sender_id NULL) still count — plain != is SQL-NULL against NULL
+        # and silently undercounted them.
+        unread_expr = func.count(ChatMessage.id).filter(
+            and_(
+                ChatMessage.sender_id.is_distinct_from(user.id),
+                or_(
+                    member_subq.c.last_read_at.is_(None),
+                    ChatMessage.created_at > member_subq.c.last_read_at,
+                ),
+            )
+        )
+
         stmt = (
-            select(Channel, member_subq.c.last_read_at)
-            .join(member_subq, member_subq.c.channel_id == Channel.id)
-            .where(Channel.tenant_id == tenant_id)
+            select(
+                Channel,
+                Event.id.label("event_id"),
+                Event.name.label("event_name"),
+                Event.status.label("event_status"),
+                Event.scheduled_at.label("event_scheduled_at"),
+                func.max(ChatMessage.created_at).label("last_message_at"),
+                unread_expr.label("unread_count"),
+            )
+            .select_from(Channel)
+            .outerjoin(member_subq, member_subq.c.channel_id == Channel.id)
+            .outerjoin(Bar, Bar.id == Channel.bar_id)
+            .outerjoin(Event, Event.id == Bar.event_id)
+            .outerjoin(ChatMessage, ChatMessage.channel_id == Channel.id)
+            .where(and_(Channel.tenant_id == user.tenant_id, access_pred))
+            .group_by(Channel.id, Event.id, member_subq.c.last_read_at)
             .order_by(Channel.name)
         )
-        result = await self.db.execute(stmt)
-        rows = result.all()
+        rows = (await self.db.execute(stmt)).all()
 
-        out: list[dict] = []
-        for channel, last_read_at in rows:
-            # Latest message timestamp
-            last_msg_stmt = select(func.max(ChatMessage.created_at)).where(
-                ChatMessage.channel_id == channel.id
+        return [
+            {
+                "channel": row.Channel,
+                "unread_count": row.unread_count,
+                "last_message_at": row.last_message_at,
+                "event_id": row.event_id,
+                "event_name": row.event_name,
+                "event_status": row.event_status,
+                "event_scheduled_at": row.event_scheduled_at,
+            }
+            for row in rows
+        ]
+
+    async def list_channel_members(self, channel_id: UUID, user: User) -> list[User]:
+        """The REAL current members of a channel, for the mention picker
+        and the channel header — derived the same way access is:
+
+          bar/general → every active Owner + Manager in the tenant
+          strategic   → active Owners only
+          direct/dm   → the users with member rows
+
+        Requires access to the channel.
+        """
+        channel = await self._ensure_access(channel_id, user)
+
+        if channel.channel_type in DM_TYPES:
+            stmt = (
+                select(User)
+                .join(ChannelMember, ChannelMember.user_id == User.id)
+                .where(
+                    and_(
+                        ChannelMember.channel_id == channel.id,
+                        User.is_active.is_(True),
+                    )
+                )
+                .order_by(User.full_name)
             )
-            last_msg_at = (await self.db.execute(last_msg_stmt)).scalar_one()
-
-            # Unread count = messages newer than last_read_at,
-            # excluding the user's own messages.
-            if last_read_at is None:
-                unread_stmt = select(func.count(ChatMessage.id)).where(
+        else:
+            allowed_roles = (
+                (UserRole.OWNER,)
+                if channel.channel_type not in ROLE_DERIVED_TYPES
+                else (UserRole.OWNER, UserRole.MANAGER)
+            )
+            stmt = (
+                select(User)
+                .where(
                     and_(
-                        ChatMessage.channel_id == channel.id,
-                        ChatMessage.sender_id != user_id,
+                        User.tenant_id == user.tenant_id,
+                        User.is_active.is_(True),
+                        User.role.in_(allowed_roles),
                     )
                 )
-            else:
-                unread_stmt = select(func.count(ChatMessage.id)).where(
-                    and_(
-                        ChatMessage.channel_id == channel.id,
-                        ChatMessage.created_at > last_read_at,
-                        ChatMessage.sender_id != user_id,
-                    )
-                )
-            unread = (await self.db.execute(unread_stmt)).scalar_one()
-
-            out.append({
-                "channel": channel,
-                "unread_count": unread,
-                "last_message_at": last_msg_at,
-            })
-        return out
+                .order_by(User.full_name)
+            )
+        return list((await self.db.execute(stmt)).scalars().all())
 
     async def get_channel_messages(
         self,
         channel_id: UUID,
-        user_id: UUID,
-        tenant_id: UUID,
+        user: User,
         limit: int = 50,
     ) -> list[dict]:
         """Return latest N messages (newest first), with sender names joined.
 
-        Permission: user must be a member of channel.
+        Permission: role-derived access (DMs row-based). Archived channels
+        stay readable — only writes are blocked.
         """
-        await self._ensure_member(channel_id, user_id, tenant_id)
+        await self._ensure_access(channel_id, user)
+        user_id, tenant_id = user.id, user.tenant_id
 
         # JOIN chat_messages with users for sender name
         stmt = (
@@ -149,16 +290,18 @@ class ChatService:
     async def post_message(
         self,
         channel_id: UUID,
-        sender_id: UUID,
-        tenant_id: UUID,
+        user: User,
         body: str,
         attachment_ids: list[UUID] | None = None,
     ) -> ChatMessage:
         """Post a new message to a channel.
 
-        Permission: sender must be a member of channel.
+        Permission: role-derived access (DMs row-based). 409 when the
+        channel's event is completed/cancelled — archives are read-only.
         """
-        await self._ensure_member(channel_id, sender_id, tenant_id)
+        channel = await self._ensure_access(channel_id, user)
+        await self._ensure_not_archived(channel)
+        sender_id, tenant_id = user.id, user.tenant_id
 
         message = ChatMessage(
             tenant_id=tenant_id,
@@ -192,9 +335,9 @@ class ChatService:
                 await self.db.commit()
 
         # ─── Resolve @mentions ──────────────────────────────────────────
-        # Fetch all users in the same tenant (candidate pool for the parser).
-        # Scales fine for MVP — Noma Group has ~4 users. For larger tenants
-        # we'd add a per-channel-members scoping instead.
+        # Candidate pool = every active user in the tenant. Under the
+        # two-role model that IS the member set of bar/general channels
+        # (Owner + Managers), so no per-channel scoping is needed.
         mentioned_user_ids: list[UUID] = []
         try:
             users_stmt = select(User.id, User.full_name).where(
@@ -220,8 +363,9 @@ class ChatService:
                 await self.db.commit()
         except Exception:
             # Mention parsing must never fail the message post.
-            # The message is already committed; mentions are a bonus.
-            pass
+            # The message is already committed; mentions are a bonus —
+            # but swallowing silently hid every parser bug, so log it.
+            logger.warning("mention parsing failed for message %s", message.id, exc_info=True)
 
         # Broadcast to all WebSocket subscribers of this channel.
         # Failures in broadcast must NEVER fail the REST request.
@@ -283,31 +427,29 @@ class ChatService:
                 }
                 await _ws_publish(f"user:{uid}", json.dumps(mention_payload))
         except Exception:
-            pass  # broadcast is best-effort; DB is source of truth
+            # Broadcast is best-effort; DB is source of truth. Logged so a
+            # dead Redis doesn't silently turn live chat into pull-to-refresh.
+            logger.warning("chat broadcast failed for message %s", message.id, exc_info=True)
 
         return message
 
     async def create_attachment_slot(
         self,
         channel_id:   UUID,
-        user_id:      UUID,
-        tenant_id:    UUID,
+        user:         User,
         filename:     str,
         content_type: str,
         size_bytes:   int,
     ) -> tuple[ChatAttachment, str]:
         """Create an upload slot and return (attachment_row, presigned_upload_url).
 
-        Verifies the user is a member of the channel before issuing the URL.
-        The attachment row is created NOW (with message_id=None); the message
-        is created later when the user actually sends it.
+        Verifies channel access before issuing the URL, and refuses archived
+        channels (attachments are a write). The attachment row is created NOW
+        (with message_id=None); the message is created later on send.
         """
-        # Membership check — only members of the channel can attach
-        await self._ensure_member(
-            channel_id=channel_id,
-            user_id=user_id,
-            tenant_id=tenant_id,
-        )
+        channel = await self._ensure_access(channel_id, user)
+        await self._ensure_not_archived(channel)
+        user_id, tenant_id = user.id, user.tenant_id
 
         # Size cap — 25MB. Keeps storage costs sane and prevents silly abuse.
         # Larger files would need chunked uploads (out of MVP scope).
@@ -359,24 +501,24 @@ class ChatService:
     async def search_messages(
         self,
         query:      str,
-        user_id:    UUID,
-        tenant_id:  UUID,
+        user:       User,
         limit:      int = 30,
     ) -> list[dict]:
-        """Full-text search across all channels the user is a member of.
+        """Full-text search across all channels the user can access.
 
         Returns list of dicts:
             { "message": ChatMessage, "channel_name": str, "sender_name": str, "rank": float }
 
         Uses Postgres' ts_rank for relevance ordering. Results scoped to:
         - Same tenant as the searcher
-        - Only channels where user is an active member
-        - Not soft-deleted
+        - Only channels the role-derived access model grants (DMs row-based)
         """
         # Empty query short-circuits to empty results (avoid expensive wildcard)
         q = query.strip()
         if not q:
             return []
+
+        user_id, tenant_id = user.id, user.tenant_id
 
         from sqlalchemy import func, literal
 
@@ -385,8 +527,9 @@ class ChatService:
         from sqlalchemy.dialects.postgresql import REGCONFIG
         tsq = func.plainto_tsquery(cast(literal("english"), REGCONFIG), q)
 
-        # Subquery: channels where this user is an active member (not removed)
-        members_subq = (
+        # Subquery: channels this user may access — same predicate shape as
+        # list_user_channels (role-derived; DMs need a member row)
+        dm_member_subq = (
             select(ChannelMember.channel_id)
             .where(
                 and_(
@@ -394,6 +537,19 @@ class ChatService:
                     ChannelMember.tenant_id == tenant_id,
                 )
             )
+            .scalar_subquery()
+        )
+        dm_with_row = and_(
+            Channel.channel_type.in_(DM_TYPES),
+            Channel.id.in_(dm_member_subq),
+        )
+        if user.role == UserRole.OWNER:
+            access_pred = or_(Channel.channel_type.notin_(DM_TYPES), dm_with_row)
+        else:
+            access_pred = or_(Channel.channel_type.in_(ROLE_DERIVED_TYPES), dm_with_row)
+        members_subq = (
+            select(Channel.id)
+            .where(and_(Channel.tenant_id == tenant_id, access_pred))
             .scalar_subquery()
         )
 
@@ -459,6 +615,9 @@ class ChatService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only edit your own messages",
             )
+        # Archived channels are read-only — history can't be rewritten
+        channel = await self._get_channel(message.channel_id, tenant_id)
+        await self._ensure_not_archived(channel)
 
         message.body = new_body
         message.edited_at = datetime.now(timezone.utc)
@@ -505,7 +664,7 @@ class ChatService:
             }
             await _ws_publish(f"chat:{message.channel_id}", json.dumps(payload))
         except Exception:
-            pass
+            logger.warning("edit broadcast failed for message %s", message.id, exc_info=True)
 
         return message
 
@@ -538,6 +697,9 @@ class ChatService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only delete your own messages",
             )
+        # Archived channels are read-only — history can't be rewritten
+        channel = await self._get_channel(message.channel_id, tenant_id)
+        await self._ensure_not_archived(channel)
 
         channel_id     = message.channel_id
         message_id_str = str(message.id)
@@ -555,7 +717,7 @@ class ChatService:
             }
             await _ws_publish(f"chat:{channel_id}", json.dumps(payload))
         except Exception:
-            pass
+            logger.warning("delete broadcast failed for message %s", message_id_str, exc_info=True)
 
         return channel_id
 
@@ -633,14 +795,29 @@ class ChatService:
             mention.read_at = datetime.now(timezone.utc)
             await self.db.commit()
 
-    async def mark_channel_read(
-        self,
-        channel_id: UUID,
-        user_id: UUID,
-        tenant_id: UUID,
-    ) -> None:
-        """Update user's last_read_at on this channel to NOW."""
-        member = await self._ensure_member(channel_id, user_id, tenant_id)
+    async def mark_channel_read(self, channel_id: UUID, user: User) -> None:
+        """Update user's last_read_at on this channel to NOW.
+
+        Member rows are no longer permission — they're only the per-user
+        read cursor, lazily created here on first use.
+        """
+        await self._ensure_access(channel_id, user)
+
+        stmt = select(ChannelMember).where(
+            and_(
+                ChannelMember.channel_id == channel_id,
+                ChannelMember.user_id == user.id,
+                ChannelMember.tenant_id == user.tenant_id,
+            )
+        )
+        member = (await self.db.execute(stmt)).scalar_one_or_none()
+        if member is None:
+            member = ChannelMember(
+                tenant_id=user.tenant_id,
+                channel_id=channel_id,
+                user_id=user.id,
+            )
+            self.db.add(member)
         member.last_read_at = datetime.now(timezone.utc)
         await self.db.commit()
 # ─── Auto-provision hook used by BarService.create_bar ────────────
@@ -684,13 +861,7 @@ class ChatService:
         self.db.add(channel)
         await self.db.flush()
 
-        if owner is not None:
-            member = ChannelMember(
-                tenant_id  = tenant_id,
-                channel_id = channel.id,
-                user_id    = owner.id,
-            )
-            self.db.add(member)
-            await self.db.flush()
-
+        # No member enrollment: access is role-derived (Owner + Managers see
+        # every bar channel automatically); member rows appear lazily as
+        # read cursors when someone first opens the channel.
         return channel

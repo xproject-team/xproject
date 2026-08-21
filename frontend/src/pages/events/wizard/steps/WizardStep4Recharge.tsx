@@ -28,18 +28,13 @@ import { useMemo } from "react"
 
 import { SleshShopPicker } from "../SleshShopPicker"
 import type { WizardState, BarDraft } from "../types"
+import { inputCls, Label, stepCardCls, rowCardCls, warningBannerCls, warningBannerStyle } from "@/design-system/wizardForm"
+import { EmptyState } from "@/design-system/components"
+import "@/design-system/components/components.css"
 
 interface Props {
   state: WizardState
   onChange: (next: Partial<WizardState>) => void
-}
-
-// Re-use the same style tokens as Step 1/3 so the wizard looks unified.
-const inputCls =
-  "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]"
-
-function Label({ children }: { children: React.ReactNode }) {
-  return <label className="block text-xs font-semibold text-[#4A5568] mb-1">{children}</label>
 }
 
 function makeClientId(): string {
@@ -128,10 +123,10 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
   return (
     <div className="space-y-6">
       {/* ── Section 1: Recharge stations ─────────────────────────── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+      <div className={stepCardCls}>
         <div className="mb-4">
-          <h3 className="text-base font-semibold text-[#1A202C]">Recharge stations</h3>
-          <p className="text-sm text-[#718096] mt-1">
+          <h3 className="text-base font-medium" style={{ color: "var(--v-text)" }}>Recharge stations</h3>
+          <p className="text-sm mt-1" style={{ color: "var(--v-text-muted)" }}>
             Where guests load credit onto their wristbands. Most events have one
             station inside plus optionally one at the entrance. Each station
             links to a Slesh shop so top-up transactions route correctly.
@@ -139,14 +134,20 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
         </div>
 
         {rechargeBars.length === 0 ? (
-          <div className="text-center py-8 border-2 border-dashed border-[#E2E8F0] rounded-lg">
-            <p className="text-sm text-[#A0AEC0] mb-3">No recharge stations configured.</p>
-            <button
-              onClick={addBar}
-              className="text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-4 py-2 border border-[#CBD5E0] rounded-lg"
-            >
-              + Add recharge station
-            </button>
+          <div className="text-center py-8 rounded-[var(--v-radius)]" style={{ border: "2px dashed var(--v-border)" }}>
+            <EmptyState
+              headline="No recharge stations configured"
+              body="Add a station to get started."
+              action={
+                <button
+                  onClick={addBar}
+                  className="text-sm font-semibold px-4 py-2 rounded-lg"
+                  style={{ color: "var(--v-cyan)", border: "0.5px solid var(--v-border)" }}
+                >
+                  + Add recharge station
+                </button>
+              }
+            />
           </div>
         ) : (
           <div className="space-y-3">
@@ -160,7 +161,8 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
             ))}
             <button
               onClick={addBar}
-              className="w-full text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-4 py-2 border border-dashed border-[#CBD5E0] rounded-lg hover:bg-[#F7FAFC]"
+              className="w-full text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              style={{ color: "var(--v-cyan)", border: "1px dashed var(--v-border)" }}
             >
               + Add recharge station
             </button>
@@ -168,9 +170,9 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
         )}
 
         {rechargeBars.length > 0 && unlinkedCount > 0 && (
-          <div className="mt-5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-900">
-              <span className="font-semibold">{unlinkedCount} of {rechargeBars.length} stations</span>{" "}
+          <div className={`mt-5 ${warningBannerCls}`} style={warningBannerStyle}>
+            <p className="text-xs" style={{ color: "var(--v-text-muted)" }}>
+              <span className="font-semibold" style={{ color: "var(--v-amber)" }}>{unlinkedCount} of {rechargeBars.length} stations</span>{" "}
               not linked to a Slesh shop.
             </p>
           </div>
@@ -178,10 +180,10 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
       </div>
 
       {/* ── Section 2: Denominations ─────────────────────────────── */}
-      <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+      <div className={stepCardCls}>
         <div className="mb-4">
-          <h3 className="text-base font-semibold text-[#1A202C]">Top-up denominations</h3>
-          <p className="text-sm text-[#718096] mt-1">
+          <h3 className="text-base font-medium" style={{ color: "var(--v-text)" }}>Top-up denominations</h3>
+          <p className="text-sm mt-1" style={{ color: "var(--v-text-muted)" }}>
             Preset amounts (in euros) shown to users at recharge stations. Staff
             override is the larger set staff can apply when guests want a custom
             amount. Comma-separated integers.
@@ -198,7 +200,7 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
               onChange={(e) => setUserDenoms(e.target.value)}
             />
             {state.topup_denominations_user.length > 0 && (
-              <p className="mt-1 text-[10px] text-[#A0AEC0]">
+              <p className="mt-1 text-[10px]" style={{ color: "var(--v-text-dim)" }}>
                 {state.topup_denominations_user.length} preset
                 {state.topup_denominations_user.length === 1 ? "" : "s"}
               </p>
@@ -213,7 +215,7 @@ export function WizardStep4Recharge({ state, onChange }: Props) {
               onChange={(e) => setStaffDenoms(e.target.value)}
             />
             {state.topup_denominations_staff.length > 0 && (
-              <p className="mt-1 text-[10px] text-[#A0AEC0]">
+              <p className="mt-1 text-[10px]" style={{ color: "var(--v-text-dim)" }}>
                 {state.topup_denominations_staff.length} preset
                 {state.topup_denominations_staff.length === 1 ? "" : "s"}
               </p>
@@ -240,7 +242,7 @@ interface RowProps {
 
 function RechargeBarRow({ bar, onChange, onRemove }: RowProps) {
   return (
-    <div className="border border-[#E2E8F0] rounded-lg p-4 bg-[#F7FAFC]">
+    <div className={rowCardCls}>
       {/* Top row: name | device count | remove */}
       <div className="grid grid-cols-12 gap-3 mb-3">
         <div className="col-span-12 sm:col-span-8">
@@ -267,7 +269,10 @@ function RechargeBarRow({ bar, onChange, onRemove }: RowProps) {
         <div className="col-span-2 sm:col-span-1 flex items-end justify-end">
           <button
             onClick={onRemove}
-            className="w-full h-[38px] flex items-center justify-center text-[#E53E3E] hover:bg-red-50 rounded-lg text-lg"
+            className="w-full h-[38px] flex items-center justify-center rounded-lg text-lg transition-colors"
+            style={{ color: "var(--v-pink)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 61, 113, 0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             aria-label={`Remove ${bar.name || "this station"}`}
             title="Remove station"
           >

@@ -50,10 +50,26 @@ class ReportEventInfo(BaseModel):
 
 
 class ReportRevenueKpis(BaseModel):
-    """Top-line revenue numbers shown on Section 2."""
+    """Top-line revenue numbers shown on Section 2.
+
+    Since the Day 14 migration, the euro figures come from event_orders
+    (fiscal_gross_cents on confirmed orders — the money-of-record from
+    Slesh, matching the dashboard header exactly; deposits excluded, VAT
+    included). top_product_* stays on stock_transactions: event_orders
+    has no per-product line detail. See events/revenue.py.
+
+    revenue_per_bar_avg divides only BAR-ATTRIBUTED revenue by the count
+    of bars that sold — unmapped orders (no bar) are excluded from both
+    sides rather than smeared across bars. unmapped_revenue surfaces
+    that remainder explicitly; it is included in total_revenue.
+    """
     total_revenue: Decimal
     revenue_per_hour: Decimal
     revenue_per_bar_avg: Decimal
+    # Confirmed-order revenue whose POS shop has no bar mapping yet.
+    # Included in total_revenue; not attributable to any bar_revenues
+    # row. 0 on reports generated before the Day 14 migration.
+    unmapped_revenue: Decimal = Decimal(0)
     top_product_name: str | None = None
     top_product_units: int | None = None
     peak_hour_start: datetime | None = None   # HH:00 boundary
@@ -61,7 +77,15 @@ class ReportRevenueKpis(BaseModel):
 
 
 class ReportBarRevenue(BaseModel):
-    """One row in the per-bar revenue breakdown. Sorted by rank ascending."""
+    """One row in the per-bar revenue breakdown. Sorted by rank ascending.
+
+    revenue_pct is of total_revenue (which includes unmapped orders), so
+    rows can legitimately sum to less than 100% — the remainder is
+    ReportRevenueKpis.unmapped_revenue, never silently redistributed.
+    transactions_count counts confirmed ORDERS since the Day 14
+    migration (event_orders rows); on older reports it counted
+    stock_transactions lines.
+    """
     bar_id: UUID
     bar_name: str
     revenue: Decimal
@@ -154,6 +178,10 @@ class ReportForecastAccuracy(BaseModel):
 class ReportComparisonMetric(BaseModel):
     """One row in Section C's comparison table — e.g. 'Total Revenue'."""
     label: str
+    # How renderers should format the values: 'eur' → currency, 'count'
+    # → plain integer. None on reports generated before the Day 14
+    # migration — renderers fall back to plain numeric formatting.
+    unit: Literal["eur", "count"] | None = None
     current_value: float | None = None
     previous_event_value: float | None = None
     previous_event_delta_pct: float | None = None
@@ -179,6 +207,13 @@ class ReportComparison(BaseModel):
     season_avg_n_events: int = 0
     metrics: list[ReportComparisonMetric] = Field(default_factory=list)
     guest_metrics_available_from: str | None = None
+    # True when the previous event / season set includes reports whose
+    # revenue was measured with the pre-Day-14 method (stock movements)
+    # — deltas then carry a small definitional component (~2% on
+    # reconciled events, more if the old report was stale). Renderers
+    # show a footnote; the narrative skips its revenue-vs-previous
+    # sentence rather than state a mixed-method delta as fact.
+    mixed_revenue_sources: bool = False
 
 
 class ReportRevenueDecomposition(BaseModel):
@@ -250,6 +285,11 @@ class ReportData(BaseModel):
     version: int
     language: ReportLanguage
     generated_at: datetime
+    # Which method produced the euro figures. 'event_orders' from the
+    # Day 14 migration onward; None on older frozen snapshots (which
+    # were computed from stock_transactions). Never backfilled — old
+    # reports keep their numbers AND their label.
+    revenue_source: Literal["stock_transactions", "event_orders"] | None = None
 
     # Body — matches the content pages in spec §3
     event: ReportEventInfo

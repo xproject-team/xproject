@@ -19,6 +19,8 @@ import { useRef, useState } from "react"
 import { useImportEventPlan } from "@/features/events/hooks"
 import type { WizardState, BarDraft, ProductDraft } from "../types"
 import type { ParsedEventPlan, BarSpec, ProductSpec } from "@/lib/eventPlan"
+import { stepCardCls } from "@/design-system/wizardForm"
+import "@/design-system/components/components.css"
 
 interface Props {
   state: WizardState
@@ -190,7 +192,7 @@ export function WizardStep2Upload({ state, onChange }: Props) {
 
   // ── Render ───────────────────────────────────────────────────────
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+    <div className={stepCardCls}>
       {!parsed ? (
         <>
           {/* Drop zone */}
@@ -200,32 +202,32 @@ export function WizardStep2Upload({ state, onChange }: Props) {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={[
-              "border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors",
-              isDragging
-                ? "border-[#1E5A8D] bg-[#F0F4F8]"
-                : "border-[#CBD5E0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC]",
-              isLoading ? "opacity-60 pointer-events-none" : "",
-            ].join(" ")}
+            className="rounded-[var(--v-radius)] p-12 text-center cursor-pointer transition-colors"
+            style={{
+              border: `2px dashed ${isDragging ? "var(--v-cyan)" : "var(--v-border)"}`,
+              background: isDragging ? "rgba(0, 229, 212, 0.06)" : "transparent",
+              opacity: isLoading ? 0.6 : 1,
+              pointerEvents: isLoading ? "none" : "auto",
+            }}
           >
             {isLoading ? (
               <div className="flex flex-col items-center gap-2">
-                <svg className="w-8 h-8 text-[#1E5A8D] animate-spin" fill="none" viewBox="0 0 24 24">
+                <svg className="w-8 h-8 animate-spin" style={{ color: "var(--v-cyan)" }} fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                <p className="text-sm text-[#4A5568]">Parsing…</p>
+                <p className="text-sm" style={{ color: "var(--v-text-muted)" }}>Parsing…</p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
-                <svg className="w-12 h-12 text-[#A0AEC0]" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <svg className="w-12 h-12" style={{ color: "var(--v-text-dim)" }} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <p className="text-base font-semibold text-[#1A202C]">
+                <p className="text-base font-medium" style={{ color: "var(--v-text)" }}>
                   Drop the Slesh plan .xlsx here
                 </p>
-                <p className="text-sm text-[#718096]">or click to browse</p>
-                <p className="text-xs text-[#A0AEC0] mt-2">Max 2 MB · .xlsx only</p>
+                <p className="text-sm" style={{ color: "var(--v-text-muted)" }}>or click to browse</p>
+                <p className="text-xs mt-2" style={{ color: "var(--v-text-dim)" }}>Max 2 MB · .xlsx only</p>
               </div>
             )}
             <input
@@ -246,7 +248,10 @@ export function WizardStep2Upload({ state, onChange }: Props) {
           <div className="mt-4 text-center">
             <button
               onClick={handleSkip}
-              className="text-sm text-[#718096] hover:text-[#1E5A8D] underline"
+              className="text-sm underline transition-colors"
+              style={{ color: "var(--v-text-muted)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--v-cyan)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--v-text-muted)")}
             >
               Skip and configure manually
             </button>
@@ -254,8 +259,8 @@ export function WizardStep2Upload({ state, onChange }: Props) {
 
           {/* Error display */}
           {displayError && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-[#C53030]">{displayError}</p>
+            <div className="mt-4 p-3 rounded-[var(--v-radius)]" style={{ background: "rgba(255, 61, 113, 0.08)", border: "0.5px solid var(--v-pink)" }}>
+              <p className="text-sm" style={{ color: "var(--v-pink)" }}>{displayError}</p>
             </div>
           )}
         </>
@@ -402,15 +407,15 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <svg className="w-5 h-5 text-[#1ABC9C]" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-5 h-5" style={{ color: "var(--v-green)" }} fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
             </svg>
-            <h3 className="text-lg font-bold text-[#1A202C]">
+            <h3 className="text-lg font-medium" style={{ color: "var(--v-text)" }}>
               {plan.event_name ?? "Untitled event"}
             </h3>
           </div>
           {plan.venue_name && (
-            <p className="text-sm text-[#718096]">
+            <p className="text-sm" style={{ color: "var(--v-text-muted)" }}>
               {plan.venue_name}
               {plan.capacity ? ` · capacity ${plan.capacity}` : ""}
             </p>
@@ -418,7 +423,8 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
         </div>
         <button
           onClick={onReupload}
-          className="text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-3 py-1.5 border border-[#CBD5E0] rounded-lg"
+          className="text-sm font-semibold px-3 py-1.5 rounded-lg"
+          style={{ color: "var(--v-cyan)", border: "0.5px solid var(--v-border)" }}
         >
           Re-upload
         </button>
@@ -426,8 +432,8 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
 
       {/* Date picker */}
       {dateCount > 1 && (
-        <div className="mb-5 p-4 bg-[#F0F4F8] rounded-lg">
-          <p className="text-sm font-semibold text-[#1A202C] mb-2">
+        <div className="mb-5 p-4 rounded-[var(--v-radius)]" style={{ background: "var(--v-surface-raised)", border: "0.5px solid var(--v-border)" }}>
+          <p className="text-sm font-semibold mb-2" style={{ color: "var(--v-text)" }}>
             This plan covers {dateCount} dates. Pick the one this event is for:
           </p>
           <div className="flex flex-wrap gap-2">
@@ -435,27 +441,27 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
               <button
                 key={d}
                 onClick={() => onPickDate(d)}
-                className={[
-                  "px-3 py-1.5 rounded-lg text-sm font-semibold border transition-colors",
+                className="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors"
+                style={
                   pickedDate === d
-                    ? "bg-[#1E5A8D] text-white border-[#1E5A8D]"
-                    : "bg-white text-[#1E5A8D] border-[#CBD5E0] hover:border-[#1E5A8D]",
-                ].join(" ")}
+                    ? { background: "var(--v-cyan)", color: "var(--v-bg-base)", border: "0.5px solid var(--v-cyan)" }
+                    : { background: "var(--v-surface)", color: "var(--v-text)", border: "0.5px solid var(--v-border)" }
+                }
               >
                 {d}
               </button>
             ))}
           </div>
           {!pickedDate && (
-            <p className="text-xs text-[#C53030] mt-2">
-              You’ll need to pick a date before continuing.
+            <p className="text-xs mt-2" style={{ color: "var(--v-pink)" }}>
+              You'll need to pick a date before continuing.
             </p>
           )}
         </div>
       )}
       {dateCount === 1 && pickedDate && (
-        <div className="mb-5 text-sm text-[#4A5568]">
-          Date: <span className="font-semibold text-[#1A202C]">{pickedDate}</span>
+        <div className="mb-5 text-sm" style={{ color: "var(--v-text-muted)" }}>
+          Date: <span className="font-semibold" style={{ color: "var(--v-text)" }}>{pickedDate}</span>
         </div>
       )}
 
@@ -469,14 +475,14 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
 
       {/* Warnings (collapsed by default — click to expand) */}
       {warningCount > 0 && (
-        <details className="mb-5 border border-amber-200 bg-amber-50 rounded-lg">
-          <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-amber-800">
+        <details className="mb-5 rounded-[var(--v-radius)]" style={{ background: "rgba(255, 216, 77, 0.08)", border: "0.5px solid var(--v-amber)" }}>
+          <summary className="cursor-pointer px-4 py-2 text-sm font-semibold" style={{ color: "var(--v-amber)" }}>
             ⚠ {warningCount} warning{warningCount > 1 ? "s" : ""} — click to review
           </summary>
           <ul className="px-4 pb-3 space-y-1.5">
             {plan.warnings.map((w, i) => (
-              <li key={i} className="text-xs text-amber-900">
-                <span className="font-semibold">{w.sheet}</span>
+              <li key={i} className="text-xs" style={{ color: "var(--v-text-muted)" }}>
+                <span className="font-semibold" style={{ color: "var(--v-text)" }}>{w.sheet}</span>
                 {w.where && w.where !== "(missing)" ? ` (${w.where})` : ""}: {w.message}
               </li>
             ))}
@@ -484,7 +490,7 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
         </details>
       )}
 
-      <p className="text-xs text-[#A0AEC0]">
+      <p className="text-xs" style={{ color: "var(--v-text-dim)" }}>
         Steps 3 + 4 are now pre-populated. You can edit anything before finalizing.
       </p>
     </div>
@@ -493,9 +499,9 @@ function ParsedPreview({ plan, pickedDate, onPickDate, onReupload }: ParsedPrevi
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg p-3">
-      <p className="text-2xl font-bold text-[#1A202C] leading-none">{value}</p>
-      <p className="text-xs text-[#718096] mt-1.5">{label}</p>
+    <div className="rounded-[var(--v-radius)] p-3" style={{ background: "var(--v-surface-raised)", border: "0.5px solid var(--v-border)" }}>
+      <p className="text-2xl font-medium leading-none" style={{ color: "var(--v-text)" }}>{value}</p>
+      <p className="text-xs mt-1.5" style={{ color: "var(--v-text-muted)" }}>{label}</p>
     </div>
   )
 }

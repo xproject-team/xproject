@@ -16,17 +16,13 @@
 import { useMemo } from "react"
 
 import type { WizardState, ProductDraft } from "../types"
+import { inputCls, Label, stepCardCls, rowCardCls, warningBannerCls, warningBannerStyle } from "@/design-system/wizardForm"
+import { EmptyState } from "@/design-system/components"
+import "@/design-system/components/components.css"
 
 interface Props {
   state: WizardState
   onChange: (next: Partial<WizardState>) => void
-}
-
-const inputCls =
-  "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]"
-
-function Label({ children }: { children: React.ReactNode }) {
-  return <label className="block text-xs font-semibold text-[#4A5568] mb-1">{children}</label>
 }
 
 function makeClientId(): string {
@@ -134,24 +130,30 @@ export function WizardStep3Products({ state, onChange }: Props) {
   )
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6">
+    <div className={stepCardCls}>
       <div className="mb-4">
-        <h2 className="text-base font-semibold text-[#1A202C]">Products</h2>
-        <p className="text-sm text-[#718096] mt-1">
+        <h2 className="text-base font-medium" style={{ color: "var(--v-text)" }}>Products</h2>
+        <p className="text-sm mt-1" style={{ color: "var(--v-text-muted)" }}>
           What each bar sells. Excel-uploaded products appear here for review. Same
           menu at every drinks/food bar — per-bar pricing comes later.
         </p>
       </div>
 
       {products.length === 0 ? (
-        <div className="text-center py-8 border-2 border-dashed border-[#E2E8F0] rounded-lg">
-          <p className="text-sm text-[#A0AEC0] mb-3">No products yet.</p>
-          <button
-            onClick={addProduct}
-            className="text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-4 py-2 border border-[#CBD5E0] rounded-lg"
-          >
-            + Add first product
-          </button>
+        <div className="text-center py-8 rounded-[var(--v-radius)]" style={{ border: "2px dashed var(--v-border)" }}>
+          <EmptyState
+            headline="No products yet"
+            body="Add your first product to get started."
+            action={
+              <button
+                onClick={addProduct}
+                className="text-sm font-semibold px-4 py-2 rounded-lg"
+                style={{ color: "var(--v-cyan)", border: "0.5px solid var(--v-border)" }}
+              >
+                + Add first product
+              </button>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -165,7 +167,8 @@ export function WizardStep3Products({ state, onChange }: Props) {
           ))}
           <button
             onClick={addProduct}
-            className="w-full text-sm font-semibold text-[#1E5A8D] hover:text-[#1A4F7F] px-4 py-2 border border-dashed border-[#CBD5E0] rounded-lg hover:bg-[#F7FAFC]"
+            className="w-full text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            style={{ color: "var(--v-cyan)", border: "1px dashed var(--v-border)" }}
           >
             + Add Product
           </button>
@@ -173,9 +176,9 @@ export function WizardStep3Products({ state, onChange }: Props) {
       )}
 
       {products.length > 0 && missingCategoryCount > 0 && (
-        <div className="mt-5 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-          <p className="text-xs text-amber-900">
-            <span className="font-semibold">{missingCategoryCount} product{missingCategoryCount > 1 ? "s" : ""}</span>{" "}
+        <div className={`mt-5 ${warningBannerCls}`} style={warningBannerStyle}>
+          <p className="text-xs" style={{ color: "var(--v-text-muted)" }}>
+            <span className="font-semibold" style={{ color: "var(--v-amber)" }}>{missingCategoryCount} product{missingCategoryCount > 1 ? "s" : ""}</span>{" "}
             missing a category.
           </p>
         </div>
@@ -203,7 +206,7 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
   }
 
   return (
-    <div className="border border-[#E2E8F0] rounded-lg p-4 bg-[#F7FAFC]">
+    <div className={rowCardCls}>
       {/* Row 1: name | remove */}
       <div className="grid grid-cols-12 gap-3 mb-3">
         <div className="col-span-10">
@@ -218,7 +221,10 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
         <div className="col-span-2 flex items-end justify-end">
           <button
             onClick={onRemove}
-            className="w-full h-[38px] flex items-center justify-center text-[#E53E3E] hover:bg-red-50 rounded-lg text-lg"
+            className="w-full h-[38px] flex items-center justify-center rounded-lg text-lg transition-colors"
+            style={{ color: "var(--v-pink)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 61, 113, 0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             aria-label={`Remove ${product.name || "this product"}`}
             title="Remove product"
           >
@@ -232,7 +238,7 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
         <div className="col-span-6">
           <Label>Product type</Label>
           <select
-            className={`${inputCls} bg-white`}
+            className={inputCls}
             value={product.product_type}
             onChange={(e) => handleTypeChange(e.target.value as ProductDraft["product_type"])}
           >
@@ -247,7 +253,7 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
           <div className="col-span-6">
             <Label>Category</Label>
             <select
-              className={`${inputCls} bg-white`}
+              className={inputCls}
               value={product.category ?? ""}
               onChange={(e) =>
                 onChange({ category: (e.target.value || null) as ProductDraft["category"] })
@@ -266,7 +272,7 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
           <div className="col-span-6">
             <Label>Food type</Label>
             <select
-              className={`${inputCls} bg-white`}
+              className={inputCls}
               value={product.food_type ?? ""}
               onChange={(e) =>
                 onChange({ food_type: (e.target.value || null) as ProductDraft["food_type"] })
@@ -288,7 +294,7 @@ function ProductRow({ product, onChange, onRemove }: ProductRowProps) {
         <div className="col-span-6">
           <Label>Unit</Label>
           <select
-            className={`${inputCls} bg-white`}
+            className={inputCls}
             value={product.unit}
             onChange={(e) => onChange({ unit: e.target.value as ProductDraft["unit"] })}
           >

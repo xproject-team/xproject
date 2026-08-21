@@ -12,23 +12,30 @@ import {
   UNIT_OPTIONS,
 } from '@/features/products/hooks'
 import type { ProductRow } from '@/lib/mockData'
+import { Button, GlassPanel } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls, Label, HelperText } from '@/design-system/wizardForm'
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { data: product, isLoading, isError, error } = useProduct(id)
 
   if (isLoading) {
-    return <div className="flex items-center justify-center h-full text-sm text-[#718096]">Loading product…</div>
+    return (
+      <div className="flex items-center justify-center h-full text-sm" style={{ color: 'var(--v-text-muted)' }}>
+        Loading product…
+      </div>
+    )
   }
   if (isError) {
     return (
-      <div className="m-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+      <div className="m-6 max-w-2xl mx-auto rounded-lg px-4 py-3 text-sm" style={{ background: 'rgba(255, 61, 113, 0.08)', border: '0.5px solid var(--v-pink)', color: 'var(--v-pink)' }}>
         Failed to load product: {(error as Error)?.message ?? 'unknown error'}
       </div>
     )
   }
   if (!product) {
-    return <div className="m-6 text-sm text-[#718096]">Product not found.</div>
+    return <div className="m-6 text-sm" style={{ color: 'var(--v-text-muted)' }}>Product not found.</div>
   }
 
   return <ProductDetailContent product={product} />
@@ -83,33 +90,33 @@ function ProductDetailContent({ product }: { product: ProductRow }) {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center justify-between border-b border-[#E2E8F0] px-6 py-4">
+    <div className="p-6 max-w-2xl mx-auto">
+      <button
+        onClick={() => navigate('/products')}
+        className="text-xs mb-3 hover:underline"
+        style={{ color: 'var(--v-cyan)' }}
+      >
+        ← Back to Products
+      </button>
+
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <button onClick={() => navigate('/products')} className="text-xs text-[#1E5A8D] hover:underline mb-1">← Back to Products</button>
-          <h1 className="text-xl font-bold text-[#1A202C]">{product.name}</h1>
-          <p className="text-xs text-[#4A5568] mt-0.5">
+          <h1 className="text-2xl font-medium" style={{ color: 'var(--v-text)' }}>{product.name}</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--v-text-muted)' }}>
             Type: {product.product_type} · Tier: {product.tier_rank ?? '—'}
-            {product.is_archived && <span className="ml-2 text-[#718096]">(archived)</span>}
+            {product.is_archived && <span className="ml-2" style={{ color: 'var(--v-text-dim)' }}>(archived)</span>}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={!dirty || updateMutation.isPending}
-            className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
-              dirty && !updateMutation.isPending
-                ? 'text-white bg-[#1E5A8D] hover:bg-[#174870]'
-                : 'text-[#A0AEC0] bg-[#F7FAFC] cursor-not-allowed'
-            }`}
-          >
+        <div className="flex gap-2 shrink-0">
+          <Button variant="primary" onClick={handleSave} disabled={!dirty || updateMutation.isPending}>
             {updateMutation.isPending ? 'Saving…' : 'Save changes'}
-          </button>
+          </Button>
           {!product.is_archived && (
             <button
               onClick={() => setShowArchiveConfirm(true)}
               disabled={archiveMutation.isPending}
-              className="text-sm font-medium text-[#E53E3E] border border-[#E53E3E] px-4 py-2 rounded-lg hover:bg-red-50 transition-colors"
+              className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              style={{ color: 'var(--v-pink)', border: '0.5px solid var(--v-pink)' }}
             >
               Archive
             </button>
@@ -117,76 +124,90 @@ function ProductDetailContent({ product }: { product: ProductRow }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-2xl space-y-5">
-          <Field label="Name">
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" />
-          </Field>
-          {product.product_type === 'drink' && (
-            <Field label="Category" hint="Drives the default tier rank.">
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as ProductCategory | '')}
-                className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
-              >
-                <option value="">— none —</option>
-                {CATEGORY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </Field>
-          )}
-          <Field label="Unit">
+      <div className="space-y-5">
+        <div>
+          <Label>Name</Label>
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        </div>
+        {product.product_type === 'drink' && (
+          <div>
+            <Label>Category</Label>
             <select
-              value={unit}
-              onChange={(e) => setUnit(e.target.value as ProductUnit)}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ProductCategory | '')}
+              className={inputCls}
             >
-              {UNIT_OPTIONS.map((o) => (
+              <option value="">— none —</option>
+              {CATEGORY_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-          </Field>
-          <Field label="Default price (EUR)" hint="Used as fallback when Slesh order doesn't include line price">
-            <input type="number" min="0" step="0.01" value={priceCents} onChange={(e) => setPriceCents(e.target.value)} className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm" placeholder="e.g. 10" />
-          </Field>
-          <Field label="Barcode" hint="Optional. EAN-13 / UPC-A / Code-128. Scanner uses this to identify the product.">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={barcode}
-              onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm font-mono"
-              placeholder="e.g. 7501055309603"
-              maxLength={64}
-            />
-          </Field>
+            <HelperText>Drives the default tier rank.</HelperText>
+          </div>
+        )}
+        <div>
+          <Label>Unit</Label>
+          <select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value as ProductUnit)}
+            className={inputCls}
+          >
+            {UNIT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Default price (EUR)</Label>
+          <input type="number" min="0" step="0.01" value={priceCents} onChange={(e) => setPriceCents(e.target.value)} className={inputCls} placeholder="e.g. 10" />
+          <HelperText>Used as fallback when Slesh order doesn't include line price.</HelperText>
+        </div>
+        <div>
+          <Label>Barcode</Label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={barcode}
+            onChange={(e) => setBarcode(e.target.value.replace(/\s/g, ''))}
+            className={`${inputCls} font-mono`}
+            placeholder="e.g. 7501055309603"
+            maxLength={64}
+          />
+          <HelperText>Optional. EAN-13 / UPC-A / Code-128. Scanner uses this to identify the product.</HelperText>
+        </div>
 
-          <div className="pt-4 border-t border-[#E2E8F0]">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#4A5568] mb-2">Metadata</h2>
-            <div className="grid grid-cols-2 gap-3 text-xs text-[#4A5568]">
-              <div><span className="font-medium">ID:</span> <span className="font-mono">{product.id}</span></div>
-              <div><span className="font-medium">Type:</span> {product.product_type} (immutable)</div>
-            </div>
+        <div className="pt-4" style={{ borderTop: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] font-bold uppercase tracking-[0.06em] mb-2" style={{ color: 'var(--v-text-muted)' }}>Metadata</p>
+          <div className="grid grid-cols-2 gap-3 text-xs" style={{ color: 'var(--v-text-muted)' }}>
+            <div><span className="font-medium" style={{ color: 'var(--v-text)' }}>ID:</span> <span className="font-mono">{product.id}</span></div>
+            <div><span className="font-medium" style={{ color: 'var(--v-text)' }}>Type:</span> {product.product_type} (immutable)</div>
           </div>
         </div>
       </div>
 
       {showArchiveConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-[#1A202C] mb-2">Archive product?</h3>
-            <p className="text-sm text-[#4A5568] mb-4">
-              <span className="font-semibold">{product.name}</span> will be hidden from default lists but kept in the database for historical accuracy.
-              Existing transactions and recipes referencing it remain unchanged. You can unarchive later by editing the product.
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <GlassPanel className="rounded-2xl max-w-md w-[90%] mx-4 p-6">
+            <h3 className="text-lg font-medium mb-2" style={{ color: 'var(--v-text)' }}>Archive product?</h3>
+            <p className="text-sm mb-4 leading-relaxed" style={{ color: 'var(--v-text-muted)' }}>
+              <span className="font-semibold" style={{ color: 'var(--v-text)' }}>{product.name}</span> will be hidden
+              from default lists but kept in the database for historical accuracy. Existing transactions and recipes
+              referencing it remain unchanged. You can unarchive later by editing the product.
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setShowArchiveConfirm(false)} className="text-sm font-medium text-[#4A5568] px-4 py-2 rounded-lg hover:bg-[#F7FAFC]">Cancel</button>
-              <button onClick={handleArchive} disabled={archiveMutation.isPending} className="text-sm font-medium text-white bg-[#E53E3E] px-4 py-2 rounded-lg hover:bg-[#C53030] transition-colors">
+              <Button variant="ghost" onClick={() => setShowArchiveConfirm(false)}>
+                Cancel
+              </Button>
+              <button
+                onClick={handleArchive}
+                disabled={archiveMutation.isPending}
+                className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                style={{ background: 'var(--v-pink)', color: '#1a0508' }}
+              >
                 {archiveMutation.isPending ? 'Archiving…' : 'Archive'}
               </button>
             </div>
-          </div>
+          </GlassPanel>
         </div>
       )}
     </div>
@@ -199,14 +220,4 @@ function parsePriceCents(input: string): number | null {
   const eur = parseFloat(trimmed)
   if (!Number.isFinite(eur) || eur < 0) return null
   return Math.round(eur * 100)
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold uppercase tracking-wider text-[#4A5568] mb-1">{label}</label>
-      {children}
-      {hint && <p className="text-[11px] text-[#A0AEC0] mt-1">{hint}</p>}
-    </div>
-  )
 }

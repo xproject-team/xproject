@@ -50,6 +50,9 @@ export interface ReportRevenueKpis {
   total_revenue: string // Decimal comes over the wire as a string
   revenue_per_hour: string
   revenue_per_bar_avg: string
+  // Confirmed-order revenue not yet attributable to any bar (unmapped POS
+  // shop). Included in total_revenue; "0" on pre-migration reports.
+  unmapped_revenue: string
   top_product_name: string | null
   top_product_units: number | null
   peak_hour_start: string | null
@@ -143,6 +146,9 @@ export interface ReportForecastAccuracy {
 
 export interface ReportComparisonMetric {
   label: string
+  // 'eur' | 'count' drive value formatting; null on pre-migration reports
+  // (renderers fall back to plain numeric formatting).
+  unit: 'eur' | 'count' | null
   current_value: number | null
   previous_event_value: number | null
   previous_event_delta_pct: number | null
@@ -162,6 +168,10 @@ export interface ReportComparison {
   season_avg_n_events: number
   metrics: ReportComparisonMetric[]
   guest_metrics_available_from: string | null
+  // True when compared reports were measured with the pre-migration
+  // revenue method — deltas carry a definitional component; render the
+  // footnote.
+  mixed_revenue_sources: boolean
 }
 
 // Section D — Revenue Decomposition. estimated_attendance is
@@ -203,6 +213,9 @@ export interface ReportData {
   version: number
   language: ReportLanguage
   generated_at: string
+  // Which method produced the euro figures: 'event_orders' from the Day 14
+  // migration onward; null on older frozen snapshots (stock_transactions).
+  revenue_source: 'stock_transactions' | 'event_orders' | null
   event: ReportEventInfo
   revenue_kpis: ReportRevenueKpis
   bar_revenues: ReportBarRevenue[]

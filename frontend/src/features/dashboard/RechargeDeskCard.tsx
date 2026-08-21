@@ -33,6 +33,8 @@
 import type { RechargeStationKpi } from '@/lib/mockData'
 
 import { useRechargeStations } from '@/features/recharge/hooks'
+import { EmptyState } from '@/design-system/components'
+import '@/design-system/components/components.css'
 
 interface RechargeDeskCardProps {
   eventId: string
@@ -55,6 +57,16 @@ function shortCashier(email: string | null): string {
   return m ? `Op·${m[1]}` : email.split('@')[0]
 }
 
+// Shared "card title" convention — matches every other panel on the
+// Dashboard (Event Revenue, Forecast, Customer Intelligence).
+function CardTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: 'var(--v-text-muted)' }}>
+      {children}
+    </span>
+  )
+}
+
 function PaymentSplitRow({
   label,
   amountCents,
@@ -69,12 +81,12 @@ function PaymentSplitRow({
   return (
     <div className="flex items-center justify-between text-xs py-1">
       <span className="flex items-center gap-2">
-        <span className={`w-2 h-2 rounded-sm ${dotColor}`} />
-        <span className="text-[#1A202C]">{label}</span>
+        <span className="w-2 h-2 rounded-sm" style={{ background: dotColor }} />
+        <span style={{ color: 'var(--v-text-muted)' }}>{label}</span>
       </span>
       <span className="tabular-nums">
-        <span className="font-semibold text-[#1A202C]">{formatEur(amountCents)}</span>
-        <span className="text-[#A0AEC0] ml-2">({pctOf(amountCents, totalCents)})</span>
+        <span className="font-semibold" style={{ color: 'var(--v-text)' }}>{formatEur(amountCents)}</span>
+        <span className="ml-2" style={{ color: 'var(--v-text-dim)' }}>({pctOf(amountCents, totalCents)})</span>
       </span>
     </div>
   )
@@ -83,11 +95,11 @@ function PaymentSplitRow({
 function CashierRow({ device }: { device: RechargeStationKpi['devices'][number] }) {
   return (
     <li className="flex items-center justify-between text-xs py-0.5">
-      <span className="text-[#1A202C]">{shortCashier(device.slesh_operator_email)}</span>
+      <span style={{ color: 'var(--v-text-muted)' }}>{shortCashier(device.slesh_operator_email)}</span>
       <span className="tabular-nums">
-        <span className="font-semibold text-[#1A202C]">{formatEur(device.total_amount_cents)}</span>
-        <span className="text-[#A0AEC0]"> · </span>
-        <span className="text-[#4A5568]">{device.total_transactions.toLocaleString()} top-ups</span>
+        <span className="font-semibold" style={{ color: 'var(--v-text)' }}>{formatEur(device.total_amount_cents)}</span>
+        <span style={{ color: 'var(--v-text-dim)' }}> · </span>
+        <span style={{ color: 'var(--v-text-muted)' }}>{device.total_transactions.toLocaleString()} top-ups</span>
       </span>
     </li>
   )
@@ -107,21 +119,23 @@ function RechargeDeskCardInner({ station }: { station: RechargeStationKpi }) {
   )
 
   return (
-    <div className="rounded-xl p-5 shadow-sm border bg-white border-[#E2E8F0]">
+    <div className="v-card p-4">
+      <CardTitle>Recharge Desk</CardTitle>
+
       {/* Header: name + cashier/top-up summary + LOADED total */}
-      <div className="flex items-start justify-between mb-1">
+      <div className="flex items-start justify-between mt-2 mb-1">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#3182CE] shrink-0" />
-          <h3 className="font-bold text-[#1A202C] text-base leading-tight">
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: 'var(--v-cyan)' }} />
+          <h3 className="font-medium text-base leading-tight" style={{ color: 'var(--v-text)' }}>
             {station.name}
           </h3>
         </div>
         <div className="text-right shrink-0 ml-3">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Loaded</p>
-          <p className="text-xl font-bold text-[#1A202C]">{formatEur(totalCents)}</p>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Loaded</p>
+          <p className="text-xl font-medium" style={{ color: 'var(--v-text)' }}>{formatEur(totalCents)}</p>
         </div>
       </div>
-      <p className="text-xs text-[#4A5568] mb-3">
+      <p className="text-xs mb-3" style={{ color: 'var(--v-text-muted)' }}>
         {station.devices_total} {station.devices_total === 1 ? 'cashier' : 'cashiers'}
         {' · '}
         {totalTopUps.toLocaleString()} top-ups
@@ -129,32 +143,30 @@ function RechargeDeskCardInner({ station }: { station: RechargeStationKpi }) {
 
       {/* Payment-method split */}
       <div className="mb-4">
-        <p className="text-[10px] text-[#4A5568] uppercase tracking-wide mb-1.5">
+        <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--v-text-muted)' }}>
           Payment split
         </p>
         <PaymentSplitRow
           label="Stripe TTP"
           amountCents={station.stripe_ttp_amount_cents}
           totalCents={totalCents}
-          dotColor="bg-[#3182CE]"
+          dotColor="var(--v-cyan)"
         />
         <PaymentSplitRow
           label="Contanti (cash)"
           amountCents={station.contanti_amount_cents}
           totalCents={totalCents}
-          dotColor="bg-[#38A169]"
+          dotColor="var(--v-green)"
         />
       </div>
 
       {/* Cashier leaderboard */}
       <div className="mb-4">
-        <p className="text-[10px] text-[#4A5568] uppercase tracking-wide mb-1.5">
+        <p className="text-[10px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--v-text-muted)' }}>
           Cashier performance
         </p>
         {cashiers.length === 0 ? (
-          <p className="text-[11px] text-[#A0AEC0] italic py-3 text-center">
-            No cashier devices configured yet
-          </p>
+          <EmptyState headline="No cashiers yet" body="No cashier devices configured yet." />
         ) : (
           <ul className="space-y-0.5">
             {cashiers.map((d) => (
@@ -166,31 +178,31 @@ function RechargeDeskCardInner({ station }: { station: RechargeStationKpi }) {
 
       {/* Footer tiles: Avg / Desks */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Avg / Top-up</p>
-          <p className="text-sm font-bold mt-0.5 text-[#1A202C]">
+        <div className="rounded-[var(--v-radius-sm)] px-2.5 py-2 text-center" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Avg / Top-up</p>
+          <p className="text-sm font-medium mt-0.5" style={{ color: 'var(--v-text)' }}>
             {formatEur(avgPerTopUpCents)}
           </p>
-          <p className="text-[9px] text-[#4A5568]">
+          <p className="text-[9px]" style={{ color: 'var(--v-text-dim)' }}>
             {totalTopUps.toLocaleString()} top-ups
           </p>
         </div>
 
-        <div className="bg-[#F7FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-2 text-center">
-          <p className="text-[10px] text-[#4A5568] uppercase tracking-wide">Desks</p>
-          <p className="text-sm font-bold mt-0.5 flex items-center justify-center gap-0.5">
-            <svg className="w-3.5 h-3.5 text-[#4A5568]" fill="currentColor" viewBox="0 0 20 20">
+        <div className="rounded-[var(--v-radius-sm)] px-2.5 py-2 text-center" style={{ background: 'var(--v-surface-raised)', border: '0.5px solid var(--v-border)' }}>
+          <p className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--v-text-muted)' }}>Desks</p>
+          <p className="text-sm font-medium mt-0.5 flex items-center justify-center gap-0.5" style={{ color: 'var(--v-text)' }}>
+            <svg className="w-3.5 h-3.5" style={{ color: 'var(--v-text-dim)' }} fill="currentColor" viewBox="0 0 20 20">
               <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
             </svg>
             <span>
-              <span className={station.devices_active > 0 ? 'text-[#38A169]' : 'text-[#A0AEC0]'}>
+              <span style={{ color: station.devices_active > 0 ? 'var(--v-green)' : 'var(--v-text-dim)' }}>
                 {station.devices_active}
               </span>
-              <span className="text-[#A0AEC0]">/</span>
+              <span style={{ color: 'var(--v-text-dim)' }}>/</span>
               {station.devices_total}
             </span>
           </p>
-          <p className="text-[9px] text-[#4A5568]">active</p>
+          <p className="text-[9px]" style={{ color: 'var(--v-text-dim)' }}>active</p>
         </div>
       </div>
     </div>
@@ -203,11 +215,11 @@ export function RechargeDeskCard({ eventId }: RechargeDeskCardProps) {
   // Loading skeleton — match height of real card so layout doesn't shift
   if (isLoading) {
     return (
-      <div className="rounded-xl p-5 shadow-sm border bg-white border-[#E2E8F0] animate-pulse">
-        <div className="h-5 w-40 bg-[#E2E8F0] rounded mb-3" />
-        <div className="h-3 w-32 bg-[#E2E8F0] rounded mb-4" />
-        <div className="h-3 w-full bg-[#F7FAFC] rounded mb-1" />
-        <div className="h-3 w-full bg-[#F7FAFC] rounded" />
+      <div className="v-card p-4 animate-pulse">
+        <div className="h-5 w-40 rounded mb-3" style={{ background: 'var(--v-border)' }} />
+        <div className="h-3 w-32 rounded mb-4" style={{ background: 'var(--v-border)' }} />
+        <div className="h-3 w-full rounded mb-1" style={{ background: 'var(--v-surface-raised)' }} />
+        <div className="h-3 w-full rounded" style={{ background: 'var(--v-surface-raised)' }} />
       </div>
     )
   }

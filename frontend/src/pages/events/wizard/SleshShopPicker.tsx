@@ -30,6 +30,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useSleshShops } from "@/features/events/hooks"
 import type { SleshShop } from "@/lib/eventPlan"
+import { inputCls } from "@/design-system/wizardForm"
+import "@/design-system/components/components.css"
 
 interface Props {
   value: string | null
@@ -40,9 +42,6 @@ interface Props {
   /** Optional placeholder for the search input. */
   placeholder?: string
 }
-
-const inputCls =
-  "w-full rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm text-[#1A202C] focus:outline-none focus:ring-2 focus:ring-[#3182CE]/30 focus:border-[#3182CE]"
 
 export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Props) {
   const query = useSleshShops()
@@ -137,7 +136,7 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
   if (isOffline) {
     return (
       <div className="space-y-1.5">
-        <div className="flex items-center gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg" style={{ color: "var(--v-amber)", background: "rgba(255, 216, 77, 0.08)", border: "0.5px solid var(--v-amber)" }}>
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a1 1 0 011 1v3a1 1 0 11-2 0V7a1 1 0 011-1zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
           </svg>
@@ -151,7 +150,8 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
         />
         <button
           onClick={() => query.refetch()}
-          className="text-xs text-[#3182CE] hover:underline"
+          className="text-xs hover:underline"
+          style={{ color: "var(--v-cyan)" }}
         >
           Try again
         </button>
@@ -184,7 +184,10 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
       {value && !isOpen && (
         <button
           onClick={() => onChange(null)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-[#A0AEC0] hover:text-[#E53E3E] text-sm"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-sm transition-colors"
+          style={{ color: "var(--v-text-dim)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--v-pink)")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--v-text-dim)")}
           aria-label="Clear shop selection"
         >
           ×
@@ -193,9 +196,12 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
 
       {/* Dropdown */}
       {isOpen && !isLoading && (
-        <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-[#E2E8F0] rounded-lg shadow-lg">
+        <div
+          className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-lg"
+          style={{ background: "var(--v-surface-raised)", border: "0.5px solid var(--v-border)", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}
+        >
           {filteredShops.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-[#A0AEC0]">
+            <div className="px-3 py-2 text-sm" style={{ color: "var(--v-text-dim)" }}>
               No shops match "{searchText}".
             </div>
           ) : (
@@ -213,18 +219,19 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
                     setIsOpen(false)
                   }}
                   onMouseEnter={() => setHighlightIdx(idx)}
-                  className={[
-                    "w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors",
-                    isHighlighted ? "bg-[#F0F4F8]" : "",
-                    isSelected ? "font-semibold text-[#1E5A8D]" : "text-[#1A202C]",
-                  ].join(" ")}
+                  className="w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors"
+                  style={{
+                    background: isHighlighted ? "var(--v-surface)" : "transparent",
+                    color: isSelected ? "var(--v-cyan)" : "var(--v-text)",
+                    fontWeight: isSelected ? 600 : 400,
+                  }}
                 >
                   {isSuggested && (
-                    <span className="text-[#1ABC9C] text-xs font-semibold" title="Suggested match from Excel">✓</span>
+                    <span className="text-xs font-semibold" style={{ color: "var(--v-green)" }} title="Suggested match from Excel">✓</span>
                   )}
                   <span className="flex-1 truncate">{shop.name}</span>
                   {!shop.is_active && (
-                    <span className="text-[10px] text-[#A0AEC0]">inactive</span>
+                    <span className="text-[10px]" style={{ color: "var(--v-text-dim)" }}>inactive</span>
                   )}
                 </button>
               )
@@ -235,7 +242,7 @@ export function SleshShopPicker({ value, onChange, excelHint, placeholder }: Pro
 
       {/* Debug read-out: source + count + cache age */}
       {!isLoading && query.data && (
-        <div className="mt-1 text-[10px] text-[#A0AEC0]">
+        <div className="mt-1 text-[10px]" style={{ color: "var(--v-text-dim)" }}>
           {source} · {shops.length} shop{shops.length === 1 ? "" : "s"}
           {query.data.cache_ttl_s > 0 && ` · cache ${Math.round(query.data.cache_ttl_s / 60)}m`}
         </div>

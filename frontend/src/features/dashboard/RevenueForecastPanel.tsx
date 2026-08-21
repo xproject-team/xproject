@@ -12,6 +12,7 @@
  * flaky forecast endpoint never breaks the surrounding layout.
  */
 import type { NowcastConfidenceTier, RevenueForecastResponse } from '@/features/predictions/useRevenueForecast'
+import '@/design-system/components/components.css'
 
 export interface RevenueForecastPanelProps {
   forecast: RevenueForecastResponse | null
@@ -20,15 +21,15 @@ export interface RevenueForecastPanelProps {
 }
 
 const TIER_COLOR: Record<NowcastConfidenceTier, string> = {
-  early:        '#A0AEC0',
-  directional:  '#DD8B3B',
-  trustworthy:  '#38A169',
+  early:        'var(--v-text-dim)',
+  directional:  'var(--v-amber)',
+  trustworthy:  'var(--v-green)',
 }
 
 const TIER_BADGE_BG: Record<NowcastConfidenceTier, string> = {
-  early:        'bg-[#A0AEC0]/15',
-  directional:  'bg-[#DD8B3B]/15',
-  trustworthy:  'bg-[#38A169]/15',
+  early:        'rgba(107, 114, 128, 0.15)',
+  directional:  'rgba(255, 216, 77, 0.12)',
+  trustworthy:  'rgba(61, 255, 163, 0.12)',
 }
 
 const TIER_LABEL: Record<NowcastConfidenceTier, string> = {
@@ -48,8 +49,8 @@ function formatK(value: number): string {
 function ConfidenceBadge({ tier }: { tier: NowcastConfidenceTier }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${TIER_BADGE_BG[tier]}`}
-      style={{ color: TIER_COLOR[tier] }}
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={{ background: TIER_BADGE_BG[tier], color: TIER_COLOR[tier] }}
     >
       {TIER_LABEL[tier]}
     </span>
@@ -57,20 +58,30 @@ function ConfidenceBadge({ tier }: { tier: NowcastConfidenceTier }) {
 }
 
 function Divider() {
-  return <div className="h-px bg-[#E2E8F0] my-3" />
+  return <div className="h-px my-3" style={{ background: 'var(--v-border)' }} />
+}
+
+// Shared "card title" convention — matches every other panel on the
+// Dashboard (Event Revenue, Recharge Desk, Customer Intelligence).
+function CardTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="text-[11px] font-semibold tracking-wide uppercase"
+      style={{ color: 'var(--v-text-muted)' }}
+    >
+      {children}
+    </span>
+  )
 }
 
 export function RevenueForecastPanel({ forecast, loading, error }: RevenueForecastPanelProps) {
-  const containerClass =
-    'border border-[#E2E8F0] rounded-lg bg-white p-4 shadow-sm h-full flex flex-col'
+  const containerClass = 'v-card h-full flex flex-col p-4'
 
   if (loading && !forecast) {
     return (
       <div className={containerClass}>
-        <span className="text-[11px] font-semibold tracking-wide text-[#A0AEC0] uppercase">
-          Forecast
-        </span>
-        <div className="flex-1 flex items-center justify-center text-xs text-[#A0AEC0] italic">
+        <CardTitle>Forecast</CardTitle>
+        <div className="flex-1 flex items-center justify-center text-xs italic" style={{ color: 'var(--v-text-muted)' }}>
           Loading forecast…
         </div>
       </div>
@@ -80,10 +91,8 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
   if (error || !forecast) {
     return (
       <div className={containerClass}>
-        <span className="text-[11px] font-semibold tracking-wide text-[#A0AEC0] uppercase">
-          Forecast
-        </span>
-        <div className="flex-1 flex items-center justify-center text-xs text-[#A0AEC0] italic">
+        <CardTitle>Forecast</CardTitle>
+        <div className="flex-1 flex items-center justify-center text-xs italic" style={{ color: 'var(--v-text-muted)' }}>
           Forecast unavailable
         </div>
       </div>
@@ -105,30 +114,23 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
     historicalMean !== 0 && Math.abs(vs_historical_avg_eur) <= 0.05 * Math.abs(historicalMean)
 
   const deltaColor = withinFivePercent
-    ? '#A0AEC0'
-    : vs_historical_avg_eur >= 0 ? '#38A169' : '#E53E3E'
+    ? 'var(--v-text-dim)'
+    : vs_historical_avg_eur >= 0 ? 'var(--v-green)' : 'var(--v-pink)'
   const deltaSign = vs_historical_avg_eur >= 0 ? '+' : '−'
 
   const confidencePct = Math.round(confidence * 100)
 
   return (
     <div className={containerClass}>
-      <span className="text-[11px] font-semibold tracking-wide text-[#A0AEC0] uppercase">
-        Forecast
-      </span>
+      <CardTitle>Forecast</CardTitle>
 
-      {/* Est. final */}
+      {/* Est. final — plain --v-text per design-system numeric convention;
+          accent color lives on the confidence badge, not the number. */}
       <div className="mt-3">
-        <div className="text-[11px] text-[#A0AEC0]">Est. final</div>
-        {isBallpark ? (
-          <div className="text-xl font-bold text-[#A0AEC0]">
-            ~ €{formatEur(predicted_final_revenue_eur)} ballpark
-          </div>
-        ) : (
-          <div className="text-xl font-bold text-[#1E5A8D]">
-            €{formatEur(predicted_final_revenue_eur)}
-          </div>
-        )}
+        <div className="text-[11px]" style={{ color: 'var(--v-text-muted)' }}>Est. final</div>
+        <div className="text-xl font-medium" style={{ color: 'var(--v-text)' }}>
+          {isBallpark ? `~ €${formatEur(predicted_final_revenue_eur)} ballpark` : `€${formatEur(predicted_final_revenue_eur)}`}
+        </div>
         <div className="mt-1">
           <ConfidenceBadge tier={confidence_tier} />
         </div>
@@ -138,8 +140,8 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
 
       {/* vs historical mean */}
       <div>
-        <div className="text-[11px] text-[#A0AEC0]">vs historical avg</div>
-        <div className="text-base font-semibold" style={{ color: deltaColor }}>
+        <div className="text-[11px]" style={{ color: 'var(--v-text-muted)' }}>vs historical avg</div>
+        <div className="text-base font-medium" style={{ color: deltaColor }}>
           {deltaSign}€{formatEur(Math.abs(vs_historical_avg_eur))}
         </div>
       </div>
@@ -148,11 +150,11 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
 
       {/* Historical range */}
       <div>
-        <div className="text-[11px] text-[#A0AEC0]">Historical</div>
-        <div className="text-base font-semibold text-[#2E4B7A]">
+        <div className="text-[11px]" style={{ color: 'var(--v-text-muted)' }}>Historical</div>
+        <div className="text-base font-medium" style={{ color: 'var(--v-text)' }}>
           €{formatK(historical_range_eur.min)} – €{formatK(historical_range_eur.max)}
         </div>
-        <div className="text-[11px] text-[#A0AEC0]">
+        <div className="text-[11px]" style={{ color: 'var(--v-text-dim)' }}>
           n={historical_n} events (2024–25)
         </div>
       </div>
@@ -161,9 +163,9 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
 
       {/* Confidence bar */}
       <div>
-        <div className="text-[11px] text-[#A0AEC0] mb-1">Confidence</div>
+        <div className="text-[11px] mb-1" style={{ color: 'var(--v-text-muted)' }}>Confidence</div>
         <div className="flex items-center gap-2">
-          <div className="flex-1 h-1.5 rounded-full bg-[#E2E8F0] overflow-hidden">
+          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--v-border)' }}>
             <div
               className="h-full rounded-full"
               style={{
@@ -172,7 +174,7 @@ export function RevenueForecastPanel({ forecast, loading, error }: RevenueForeca
               }}
             />
           </div>
-          <span className="text-[11px] text-[#A0AEC0] tabular-nums w-9 text-right">
+          <span className="text-[11px] tabular-nums w-9 text-right" style={{ color: 'var(--v-text-muted)' }}>
             {confidencePct}%
           </span>
         </div>

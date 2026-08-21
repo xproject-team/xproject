@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { useCreateBar, type BarCreatePayload } from '@/features/bars/hooks'
 import { useEvents } from '@/features/events/hooks'
 import type { BarType } from '@/lib/mockData'
+import { Button } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls, Label, HelperText } from '@/design-system/wizardForm'
 
 const TYPE_OPTIONS: { value: BarType; label: string }[] = [
   { value: 'drinks',  label: 'Drinks'  },
@@ -60,126 +63,101 @@ export default function BarCreatePage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#E2E8F0] px-6 py-4">
+    <div className="p-6 max-w-2xl mx-auto">
+      <button
+        onClick={() => navigate('/bars')}
+        className="text-xs mb-3 hover:underline"
+        style={{ color: 'var(--v-cyan)' }}
+      >
+        ← Back to Bars
+      </button>
+
+      <h1 className="text-2xl font-medium mb-6" style={{ color: 'var(--v-text)' }}>Create Bar</h1>
+
+      <div className="space-y-5">
         <div>
-          <button
-            onClick={() => navigate('/bars')}
-            className="text-xs text-[#1E5A8D] hover:underline mb-1"
+          <Label>Event *</Label>
+          <select
+            value={eventId}
+            onChange={(e) => setEventId(e.target.value)}
+            disabled={eventsLoading}
+            className={inputCls}
           >
-            ← Back to Bars
-          </button>
-          <h1 className="text-xl font-bold text-[#1A202C]">Create Bar</h1>
+            <option value="">— pick an event —</option>
+            {events.map((ev) => (
+              <option key={ev.id} value={ev.id}>{ev.name}</option>
+            ))}
+          </select>
+          {errors.event_id && (
+            <p className="text-[12px] mt-1" style={{ color: 'var(--v-pink)' }}>{errors.event_id}</p>
+          )}
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate('/bars')}
-            className="text-sm font-medium text-[#4A5568] px-4 py-2 rounded-lg hover:bg-[#F7FAFC]"
+
+        <div>
+          <Label>Name *</Label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={inputCls}
+            placeholder="e.g. Cocktail Bar"
+            autoFocus
+          />
+          {errors.name && (
+            <p className="text-[12px] mt-1" style={{ color: 'var(--v-pink)' }}>{errors.name}</p>
+          )}
+        </div>
+
+        <div>
+          <Label>Type</Label>
+          <select
+            value={barType}
+            onChange={(e) => setBarType(e.target.value as BarType)}
+            className={inputCls}
           >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={createMutation.isPending}
-            className="text-sm font-medium text-white bg-[#1E5A8D] px-4 py-2 rounded-lg hover:bg-[#174870] transition-colors disabled:bg-[#A0AEC0]"
-          >
+            {TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <Label>Slesh shop ID</Label>
+          <input
+            type="text"
+            value={sleshNegozioId}
+            onChange={(e) => setSleshNegozioId(e.target.value)}
+            className={`${inputCls} font-mono`}
+            placeholder="e.g. 687f4dfb2bedfeed66a5f33f"
+          />
+          <HelperText>
+            Optional. If you have the Slesh shop ID, paste it here so live POS orders sync to this
+            bar. You can also leave it blank now and add it later from the bar detail page.
+          </HelperText>
+        </div>
+
+        <div>
+          <Label>Status</Label>
+          <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--v-text)' }}>
+            <input
+              type="checkbox"
+              checked={isActive}
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Active
+          </label>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <Button variant="primary" onClick={handleSubmit} disabled={createMutation.isPending}>
             {createMutation.isPending ? 'Creating…' : 'Create bar'}
-          </button>
+          </Button>
+          <Button variant="ghost" onClick={() => navigate('/bars')}>
+            Cancel
+          </Button>
         </div>
       </div>
-
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-2xl space-y-5">
-          <Field label="Event" error={errors.event_id} required>
-            <select
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value)}
-              disabled={eventsLoading}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
-            >
-              <option value="">— pick an event —</option>
-              {events.map((ev) => (
-                <option key={ev.id} value={ev.id}>{ev.name}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Name" error={errors.name} required>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm"
-              placeholder="e.g. Cocktail Bar"
-              autoFocus
-            />
-          </Field>
-
-          <Field label="Type">
-            <select
-              value={barType}
-              onChange={(e) => setBarType(e.target.value as BarType)}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm bg-white"
-            >
-              {TYPE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field
-            label="Slesh shop ID"
-            hint="Optional. If you have the Slesh shop ID, paste it here so live POS orders sync to this bar. You can also leave it blank now and add it later from the bar detail page."
-          >
-            <input
-              type="text"
-              value={sleshNegozioId}
-              onChange={(e) => setSleshNegozioId(e.target.value)}
-              className="w-full border border-[#E2E8F0] rounded px-3 py-2 text-sm font-mono"
-              placeholder="e.g. 687f4dfb2bedfeed66a5f33f"
-            />
-          </Field>
-
-          <Field label="Status">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isActive}
-                onChange={(e) => setIsActive(e.target.checked)}
-                className="h-4 w-4"
-              />
-              Active
-            </label>
-          </Field>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function Field({
-  label,
-  hint,
-  error,
-  required,
-  children,
-}: {
-  label:    string
-  hint?:    string
-  error?:   string
-  required?: boolean
-  children:  React.ReactNode
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-semibold uppercase tracking-wider text-[#4A5568] mb-1">
-        {label}{required && <span className="text-[#E53E3E] ml-0.5">*</span>}
-      </label>
-      {children}
-      {error && <p className="text-[11px] text-[#E53E3E] mt-1">{error}</p>}
-      {hint  && !error && <p className="text-[11px] text-[#A0AEC0] mt-1">{hint}</p>}
     </div>
   )
 }
