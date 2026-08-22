@@ -297,15 +297,24 @@ class ReportService:
             raise ReportNotFoundError(f"Report {report_id} not found")
 
         target_language = language or old.language
-        # Version off the LATEST row for (event, language), not off `old`:
-        # after a failed regenerate the failed v+1 row still exists, and
-        # old.version + 1 would collide with it on the unique
-        # (tenant, event, version, language) index. Regenerating from any
-        # version always appends past the highest existing one.
-        latest = await self.repo.get_latest_for_event(
-            tenant_id, old.event_id, target_language
+        # Version off the highest existing row for the EVENT — across all
+        # languages and statuses — never off `old`:
+        #   - a failed regenerate leaves its v+1 row holding the slot on
+        #     the unique (tenant, event, version, language) index, so
+        #     old.version + 1 would collide with it;
+        #   - language version sequences can diverge (observed on
+        #     production: latest IT at v1 while EN is at v2), and a
+        #     per-language allocation then puts the regenerated report on
+        #     a version whose sibling slot in the other language is
+        #     already occupied by an OLDER snapshot — the sibling lookup
+        #     pairs on (version, language), so the language toggle would
+        #     serve those older numbers next to the new ones.
+        # Event-scoped allocation makes the new version's sibling slot
+        # free in every language by construction.
+        max_version = await self.repo.get_max_version_for_event(
+            tenant_id, old.event_id
         )
-        new_version = (latest.version if latest is not None else old.version) + 1
+        new_version = max_version + 1
 
         new = await self.repo.create(
             tenant_id=tenant_id,

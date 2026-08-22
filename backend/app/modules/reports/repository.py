@@ -80,6 +80,33 @@ class ReportRepository:
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_max_version_for_event(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+    ) -> int:
+        """Highest version number used by ANY report row for this event —
+        every language, every status (failed rows hold their slot on the
+        unique (tenant, event, version, language) index too).
+
+        Used by regenerate() to allocate event-scoped version numbers:
+        language version sequences can diverge (observed in production —
+        e.g. latest IT at v1 while EN is at v2), and a per-language
+        allocation then lands a regenerated report on a version whose
+        sibling slot in the OTHER language is already occupied by an
+        older snapshot. The language-sibling pairing is by (version,
+        language), so a regenerated version must be free in every
+        language. Returns 0 if the event has no reports.
+        """
+        stmt = (
+            select(func.coalesce(func.max(Report.version), 0))
+            .where(
+                Report.tenant_id == tenant_id,
+                Report.event_id == event_id,
+            )
+        )
+        return int((await self.db.execute(stmt)).scalar_one())
+
     async def list_for_event(
         self,
         tenant_id: UUID,
