@@ -112,11 +112,28 @@ class ReportService:
         if original.language == language:
             return original
 
-        # Look for sibling with same (event, version) in the requested language
+        # Look for a READY sibling with same (event, version) in the
+        # requested language. The status check matters: siblings are only
+        # ever generated inline (no background job), so a non-ready row at
+        # this slot is wreckage from an earlier failed attempt, never work
+        # in progress. It must be re-derived IN PLACE — the unique
+        # (tenant, event, version, language) index means a fresh row
+        # cannot be created at the same slot, and returning it as-is made
+        # a failed sibling permanent: every later toggle got the failed
+        # row back with no retry path.
+        stale_sibling: Report | None = None
         siblings = await self.repo.list_for_event(tenant_id, original.event_id)
         for s in siblings:
             if s.version == original.version and s.language == language:
-                return s
+                if s.status == "ready":
+                    return s
+                stale_sibling = s
+                break
+
+        if stale_sibling is not None:
+            if original.status == "ready" and original.data_json:
+                return await self._populate_sibling(stale_sibling, original)
+            return await self._populate_report(stale_sibling)
 
         # Sibling doesn't exist — derive it from the frozen snapshot.
         sibling = await self.repo.create(

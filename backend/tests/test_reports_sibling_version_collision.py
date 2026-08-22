@@ -112,3 +112,56 @@ async def test_regenerate_with_drifted_language_versions_derives_fresh_sibling()
             ), "language pair must carry identical, new-definition numbers"
         finally:
             await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_failed_sibling_row_is_rederived_not_returned():
+    """Second defect, same lookup: it matched (version, language) with no
+    status check, so a FAILED sibling row from an earlier attempt was
+    returned as-is by every later language toggle — permanently, since
+    nothing ever retried it. A non-ready row at the sibling slot must be
+    re-derived in place from the original's frozen snapshot (in place,
+    because the unique (tenant, event, version, language) index means a
+    fresh row cannot be created at that slot). Siblings are only ever
+    generated inline, so a non-ready row here is never work in progress
+    — it is wreckage."""
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            event = await make_event(session, tenant.id, status=EventStatus.COMPLETED)
+            await _complete_event(session, event)
+            bar = await make_bar(session, tenant.id, event.id)
+            await make_event_order(session, tenant.id, event.id, bar_id=bar.id,
+                                   fiscal_gross_cents=5076000)
+
+            service = ReportService(session)
+            original = await service.generate_on_demand(tenant.id, event.id, "it")
+            assert original.status == "ready"
+
+            failed_sibling = Report(
+                tenant_id=tenant.id, event_id=event.id, language="en",
+                version=original.version, status="failed",
+                failure_reason="ValueError: simulated PDF render crash",
+                generated_at=datetime.now(timezone.utc),
+            )
+            session.add(failed_sibling)
+            await session.flush()
+
+            sibling = await service.get_report_in_language(
+                tenant.id, original.id, "en",
+            )
+
+            assert sibling.status == "ready", (
+                f"language toggle returned a '{sibling.status}' row as the "
+                "sibling — a non-ready row at the slot must be re-derived"
+            )
+            # Re-derived IN PLACE: the slot on the unique index is reused.
+            assert sibling.id == failed_sibling.id
+            assert sibling.language == "en"
+            assert sibling.version == original.version
+            assert (
+                sibling.data_json["revenue_kpis"]["total_revenue"]
+                == original.data_json["revenue_kpis"]["total_revenue"]
+            )
+            assert sibling.pdf_bytes is not None
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
