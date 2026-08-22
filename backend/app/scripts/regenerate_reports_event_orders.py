@@ -43,9 +43,14 @@ What --execute does, in order:
      non-zero.
 
 Idempotent: if the latest ready primary report already carries
-revenue_source='event_orders', steps 2 is skipped and the script only
+revenue_source='event_orders', step 2 is skipped and the script only
 completes whatever a partial earlier run left undone (missing sibling,
-missing supersede pointer). Old versions are NEVER modified beyond their
+missing supersede pointer). --force bypasses EXACTLY that one skip —
+for deliberate re-regeneration, e.g. after an event rename so the
+frozen PDFs carry the clean name — while every other guard stays:
+parked-orders pre-flight, event-scoped version allocation,
+supersede-only-on-success, ready-only sibling lookup, and the three
+inline verifications. Old versions are NEVER modified beyond their
 superseded_by pointer; data_json/pdf_bytes are untouched by design
 (reports/service.py has no code path that rewrites a ready snapshot).
 """
@@ -113,7 +118,10 @@ def _print_rows(rows: list[dict]) -> None:
         )
 
 
-async def run(tenant_id: UUID, event_id: UUID, *, execute: bool, allow_parked: bool) -> int:
+async def run(
+    tenant_id: UUID, event_id: UUID, *,
+    execute: bool, allow_parked: bool, force: bool = False,
+) -> int:
     from app.core.database import AsyncSessionLocal
     from app.modules.reports.repository import ReportRepository
     from app.modules.reports.service import ReportService
@@ -149,6 +157,9 @@ async def run(tenant_id: UUID, event_id: UUID, *, execute: bool, allow_parked: b
             return 1
         latest_primary = max(ready_primary, key=lambda r: r["version"])
         already_migrated = latest_primary["revenue_source"] == "event_orders"
+        # --force bypasses ONLY this idempotency skip; every other guard
+        # (pre-flight, version allocation, verifications) is untouched.
+        skip_regeneration = already_migrated and not force
 
         stored = Decimal(latest_primary["stored_total"] or "0")
         delta = Decimal(facts["eo_cents"]) / 100 - stored
@@ -161,14 +172,25 @@ async def run(tenant_id: UUID, event_id: UUID, *, execute: bool, allow_parked: b
             # Mirror the service's EVENT-scoped allocation: the new pair
             # lands past the highest version in ANY language/status.
             next_version = max(r["version"] for r in before) + 1
-            action = (
-                "nothing (already on event_orders; would only complete sibling/pointers)"
-                if already_migrated else
+            regen_plan = (
                 f"regenerate {PRIMARY_LANGUAGE.upper()} v{latest_primary['version']} → "
                 f"v{next_version}, derive {SIBLING_LANGUAGE.upper()} "
                 f"sibling from its frozen snapshot at v{next_version}, chain "
                 f"supersede pointers in both languages"
             )
+            if skip_regeneration:
+                action = (
+                    "nothing (already on event_orders; would only complete "
+                    "sibling/pointers). Re-run with --force to regenerate anyway."
+                )
+            elif already_migrated:
+                action = (
+                    f"FORCE: latest ready report is already on event_orders — "
+                    f"the idempotency skip is overridden and the script would "
+                    f"{regen_plan}"
+                )
+            else:
+                action = regen_plan
             print(f"\nDRY-RUN — no writes. Would do: {action}")
             print("Re-run with --execute to apply.")
             return 0
@@ -177,10 +199,12 @@ async def run(tenant_id: UUID, event_id: UUID, *, execute: bool, allow_parked: b
         repo = ReportRepository(db)
 
         # ── Step 2: regenerate the primary language ──────────────────────
-        if already_migrated:
+        if skip_regeneration:
             new_primary = await repo.get_by_id(tenant_id, UUID(str(latest_primary["id"])))
             print("\n  primary already on event_orders — completing sibling/pointers only.")
         else:
+            if already_migrated:
+                print("\n  FORCE: already on event_orders — regenerating anyway.")
             print("\n  regenerating primary…")
             new_primary = await service.regenerate(
                 tenant_id, UUID(str(latest_primary["id"])), generated_by=None,
@@ -272,10 +296,15 @@ def main() -> None:
     p.add_argument("--allow-parked", action="store_true",
                    help="proceed even with unresolved parked orders (money in "
                         "neither revenue table) — accept the gap knowingly")
+    p.add_argument("--force", action="store_true",
+                   help="bypass ONLY the revenue_source idempotency skip and "
+                        "regenerate a report that is already on event_orders "
+                        "(e.g. to refresh frozen names after an event rename); "
+                        "all other guards and verifications stay in force")
     args = p.parse_args()
     sys.exit(asyncio.run(run(
         args.tenant_id, args.event,
-        execute=args.execute, allow_parked=args.allow_parked,
+        execute=args.execute, allow_parked=args.allow_parked, force=args.force,
     )))
 
 
