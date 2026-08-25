@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # External services
     anthropic_api_key: str = ""
 
+    # POS adapter selection (env: POS_ADAPTER). "slesh" = the real
+    # provider (default, so production is unchanged with the variable
+    # absent); "fake" = generated provider-shaped data for staging —
+    # never set on production. See pos/adapters/factory.py.
+    pos_adapter: str = "slesh"
+
     # Slesh POS Integration — read-only adapter; production-only (no sandbox)
     slesh_base_url:        str = "https://api.slesh.it/api"
     slesh_api_token:       str = ""    # set via env (.env), 1-year lifetime

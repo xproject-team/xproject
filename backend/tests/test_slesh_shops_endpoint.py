@@ -103,11 +103,13 @@ async def test_slesh_shops_live_success_returns_shops():
             _FakeShop("66503333", "Malandrino", False),
         ]
         with patch(
-            "app.modules.events.router.SleshAdapter"
+            "app.modules.pos.adapters.factory.get_pos_adapter"
         ) as MockAdapter:
-            # SleshAdapter is used via `async with`. The construction
-            # returns the MockAdapter instance; `__aenter__` must return
-            # the adapter we want `list_shops` called on.
+            # The endpoint constructs its adapter through the factory
+            # (the construction seam since POS_ADAPTER landed) and uses
+            # it via `async with`. The call returns the MockAdapter
+            # instance; `__aenter__` must return the adapter we want
+            # `list_shops` called on.
             inst = MockAdapter.return_value
             inst.__aenter__ = AsyncMock(return_value=inst)
             inst.__aexit__  = AsyncMock(return_value=None)
@@ -153,7 +155,7 @@ async def test_slesh_shops_cached_returns_without_calling_adapter():
     client, session, _ = await _client_with_test_tenant()
     try:
         with patch(
-            "app.modules.events.router.SleshAdapter"
+            "app.modules.pos.adapters.factory.get_pos_adapter"
         ) as MockAdapter:
             inst = MockAdapter.return_value
             inst.list_shops = AsyncMock(return_value=[])
@@ -187,7 +189,7 @@ async def test_slesh_shops_offline_when_adapter_raises():
     client, session, _ = await _client_with_test_tenant()
     try:
         with patch(
-            "app.modules.events.router.SleshAdapter"
+            "app.modules.pos.adapters.factory.get_pos_adapter"
         ) as MockAdapter:
             # Async-context-manager protocol; list_shops raises inside
             # the `async with` block. The endpoint\'s try/except must

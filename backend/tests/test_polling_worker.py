@@ -105,13 +105,20 @@ def patched_poller(monkeypatch):
     # is patched, so passing None is fine.
     monkeypatch.setattr(sp, "StockTransactionService", lambda db: None)
 
-    # Patch SleshAdapter to return our adapter (which is an async ctx mgr)
-    class _AdapterFactory:
-        def __init__(self, *args, **kwargs): pass
+    # Patch the factory (the construction seam since POS_ADAPTER landed)
+    # to return our adapter (which is an async ctx mgr). slesh_poller
+    # imports get_pos_adapter from the factory module inside the
+    # function, so the factory module attribute is the patch point.
+    import app.modules.pos.adapters.factory as adapter_factory
+
+    class _CtxAdapter:
         async def __aenter__(self): return await config["adapter"].__aenter__()
         async def __aexit__(self, *a): return await config["adapter"].__aexit__(*a)
 
-    monkeypatch.setattr(sp, "SleshAdapter", _AdapterFactory)
+    monkeypatch.setattr(
+        adapter_factory, "get_pos_adapter",
+        lambda *, brand_id=None: _CtxAdapter(),
+    )
 
     # Patch ingest_order to return queued FakeIngestResult instances
     async def _fake_ingest_order(**kwargs):

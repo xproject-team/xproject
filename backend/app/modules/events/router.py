@@ -34,7 +34,7 @@ from app.modules.events.event_plan_excel import (
     parse_event_plan as _parse_event_plan,
     ParsedEventPlan as _ParsedEventPlan,
 )
-from app.modules.pos.adapters.slesh import SleshAdapter
+
 from app.core.redis_client import get_redis
 from app.core.config import settings as slesh_settings
 from app.modules.events.reconciliation_schemas import ReconciliationReport
@@ -328,22 +328,15 @@ async def _fetch_slesh_shops_cached(brand_id: str) -> _SleshShopsResponse:
     except Exception as exc:  # noqa: BLE001
         _slesh_router_logger.warning("Slesh shops cache read failed: %s", exc)
 
-    # Cache miss / read failed — try Slesh.
-    # SleshAdapter is an async context manager (closes its httpx client
-    # on exit). Constructing it directly without `async with` would leak
-    # the client. Kwarg names must match the adapter signature exactly:
-    # `token` (not api_token), `request_timeout` (not timeout). Tests
-    # mocked SleshAdapter so the live-call signature mismatch slipped
-    # through — now caught + fixed.
+    # Cache miss / read failed — ask the configured POS adapter.
+    # The adapter is an async context manager (the real one closes its
+    # httpx client on exit; constructing it without `async with` would
+    # leak the client). Construction goes through the factory so staging
+    # (POS_ADAPTER=fake) serves generated shops through this same path.
     try:
-        async with SleshAdapter(
-            token              = slesh_settings.slesh_api_token,
-            brand_id           = brand_id,
-            base_url           = slesh_settings.slesh_base_url,
-            request_timeout    = slesh_settings.slesh_request_timeout,
-            rate_limit_rps     = slesh_settings.slesh_rate_limit_rps,
-            max_retries        = slesh_settings.slesh_max_retries,
-        ) as adapter:
+        from app.modules.pos.adapters.factory import get_pos_adapter
+
+        async with get_pos_adapter(brand_id=brand_id) as adapter:
             shops_raw = await adapter.list_shops(experience_id=None)
         shops = [
             _SleshShopOut(

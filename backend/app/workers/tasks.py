@@ -727,8 +727,8 @@ async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
         return {"status": "skipped", "reason": "no_token"}
 
     # Import inside function to keep module import-time cheap and
-    # avoid any module-load-order surprises with the Slesh adapter.
-    from app.modules.pos.adapters.slesh import SleshAdapter
+    # avoid any module-load-order surprises with the POS adapter.
+    from app.modules.pos.adapters.factory import get_pos_adapter
     from app.modules.pos.sync_service import sync_shops
 
     totals = {"created": 0, "updated": 0, "skipped": 0, "deactivated": 0, "errors": 0}
@@ -746,14 +746,7 @@ async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
             )
             return {"status": "error", "events_processed": 0}
 
-        async with SleshAdapter(
-            token=settings.slesh_api_token,
-            brand_id=settings.slesh_brand_id,
-            base_url=settings.slesh_base_url,
-            request_timeout=settings.slesh_request_timeout,
-            rate_limit_rps=settings.slesh_rate_limit_rps,
-            max_retries=settings.slesh_max_retries,
-        ) as adapter:
+        async with get_pos_adapter() as adapter:
             for event_id, tenant_id in rows:
                 try:
                     result = await sync_shops(

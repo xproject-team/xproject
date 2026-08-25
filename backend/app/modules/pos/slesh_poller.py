@@ -46,7 +46,6 @@ from app.core.config              import settings
 from app.core.database            import AsyncSessionLocal
 from app.modules.stock_transactions.service import StockTransactionService
 
-from app.modules.pos.adapters.slesh import SleshAdapter
 from app.modules.pos.order_ingester import IngestResult, ingest_order, _LookupCache
 from app.modules.pos.poll_state     import (
     PollWindow, get_or_init_state, compute_window, explicit_window,
@@ -116,7 +115,9 @@ async def poll_slesh_orders(
     Returns:
         PollResult with status + per-order details.
     """
-    brand_id = brand_id or settings.slesh_brand_id
+    from app.modules.pos.adapters.factory import default_brand_id
+
+    brand_id = brand_id or default_brand_id()
     if not brand_id:
         return PollResult(
             status="error",
@@ -228,14 +229,9 @@ async def _stream_and_ingest(
     # repeat product/bar lookups into one lookup per distinct id.
     cache = _LookupCache()
 
-    async with SleshAdapter(
-        token              = settings.slesh_api_token,
-        brand_id           = brand_id,
-        base_url           = settings.slesh_base_url,
-        request_timeout    = settings.slesh_request_timeout,
-        rate_limit_rps     = settings.slesh_rate_limit_rps,
-        max_retries        = settings.slesh_max_retries,
-    ) as adapter:
+    from app.modules.pos.adapters.factory import get_pos_adapter
+
+    async with get_pos_adapter(brand_id=brand_id) as adapter:
 
         async for order in adapter.list_orders(
             since_ts      = window.since_ts,
