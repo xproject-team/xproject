@@ -645,9 +645,18 @@ async def cron_poll_slesh_for_all_live_events(ctx: dict) -> dict:
     Mirrors cron_evaluate_all_live_events structurally so the pattern
     stays consistent across all our crons.
     """
-    # Short-circuit if Slesh isn't configured (developer envs, CI, etc.)
-    if not settings.slesh_api_token:
-        logger.debug("cron_poll_slesh: skipped (SLESH_API_TOKEN not configured)")
+    # Short-circuit if no POS adapter is configured and usable (developer
+    # envs, CI). The check is adapter-aware, not token-aware: staging with
+    # POS_ADAPTER=fake and no token MUST poll — the ingestion path is what
+    # staging exists to rehearse. The skip payload is byte-identical to
+    # the pre-factory behavior (production regression contract).
+    from app.modules.pos.adapters.factory import pos_adapter_configured
+
+    if not pos_adapter_configured():
+        logger.debug(
+            "cron_poll_slesh: skipped (no POS adapter configured — "
+            "SLESH_API_TOKEN absent and POS_ADAPTER is not 'fake')"
+        )
         return {"status": "skipped", "reason": "no_token", "enqueued": 0}
 
     enqueued = 0
@@ -722,8 +731,13 @@ async def cron_sync_bars_from_slesh(ctx: dict) -> dict:
     enumeration, but does its work inline instead of enqueueing
     per-event jobs.
     """
-    if not settings.slesh_api_token:
-        logger.debug("cron_sync_bars_from_slesh: skipped (no SLESH_API_TOKEN)")
+    from app.modules.pos.adapters.factory import pos_adapter_configured
+
+    if not pos_adapter_configured():
+        logger.debug(
+            "cron_sync_bars_from_slesh: skipped (no POS adapter configured — "
+            "SLESH_API_TOKEN absent and POS_ADAPTER is not 'fake')"
+        )
         return {"status": "skipped", "reason": "no_token"}
 
     # Import inside function to keep module import-time cheap and

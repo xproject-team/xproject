@@ -67,3 +67,151 @@ def test_dead_posservice_is_gone():
     behind."""
     with pytest.raises(ModuleNotFoundError):
         import app.modules.pos.service  # noqa: F401
+
+
+# ─── Cron guards: "is a POS adapter configured and usable?" ──────────────────
+#
+# The old guards checked settings.slesh_api_token directly — correct for
+# production, but it made a token-less staging (POS_ADAPTER=fake) skip
+# the entire ingestion path, which is the one thing staging exists to
+# rehearse. The guard becomes pos_adapter_configured().
+
+
+def test_configured_truth_table(monkeypatch):
+    from app.modules.pos.adapters.factory import pos_adapter_configured
+
+    # Production regression guard: default selection, no token → NOT usable.
+    monkeypatch.setattr(settings, "pos_adapter", "slesh")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+    assert pos_adapter_configured() is False
+
+    # Production happy path: default selection, token present → usable.
+    monkeypatch.setattr(settings, "slesh_api_token", "tok")
+    assert pos_adapter_configured() is True
+
+    # Staging: fake needs no credentials.
+    monkeypatch.setattr(settings, "pos_adapter", "fake")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+    assert pos_adapter_configured() is True
+
+    # A typo'd selection must not report usable (crons skip; explicit
+    # construction raises the loud ValueError).
+    monkeypatch.setattr(settings, "pos_adapter", "sandbox")
+    assert pos_adapter_configured() is False
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.asyncio
+async def test_poll_cron_skips_exactly_as_today_without_adapter(monkeypatch):
+    """POS_ADAPTER unset + no token → the cron returns the exact skip
+    payload staging logs show every minute today. This is the production
+    regression guard: nothing about the no-adapter path may change."""
+    from app.workers.tasks import cron_poll_slesh_for_all_live_events
+
+    monkeypatch.setattr(settings, "pos_adapter", "slesh")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+    # ctx is never touched on the skip path — an empty dict proves it.
+    result = await cron_poll_slesh_for_all_live_events({})
+    assert result == {"status": "skipped", "reason": "no_token", "enqueued": 0}
+
+
+@_pytest.mark.asyncio
+async def test_bars_cron_skips_exactly_as_today_without_adapter(monkeypatch):
+    from app.workers.tasks import cron_sync_bars_from_slesh
+
+    monkeypatch.setattr(settings, "pos_adapter", "slesh")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+    result = await cron_sync_bars_from_slesh({})
+    assert result == {"status": "skipped", "reason": "no_token"}
+
+
+@_pytest.mark.asyncio
+async def test_poll_cron_runs_with_fake_adapter_and_no_token(monkeypatch):
+    """POS_ADAPTER=fake, no token → polling MUST run: live events are
+    enumerated and enqueued. Uses a stub arq pool so nothing reaches a
+    real queue, and its own live event so the assertion does not depend
+    on ambient DB state."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import update
+
+    from app.modules.events.models import Event, EventStatus
+    from app.workers.tasks import cron_poll_slesh_for_all_live_events
+    from tests.fixtures.alerts.factories import delete_tenant_cascade, make_event, make_tenant
+    from tests.fixtures.alerts.session import TestSessionLocal
+
+    monkeypatch.setattr(settings, "pos_adapter", "fake")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+
+    class StubRedis:
+        def __init__(self): self.enqueued = []
+        async def enqueue_job(self, name, *args, _job_id=None, **kw):
+            self.enqueued.append((name, args, _job_id))
+            return object()
+
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            event = await make_event(session, tenant.id, status=EventStatus.LIVE)
+            await session.execute(update(Event).where(Event.id == event.id).values(
+                started_at=datetime.now(timezone.utc)))
+            await session.commit()
+
+            stub = StubRedis()
+            result = await cron_poll_slesh_for_all_live_events({"redis": stub})
+
+            assert result["status"] == "ok"
+            assert any(str(event.id) in (jid or "") for _n, _a, jid in stub.enqueued), (
+                "the live event must be enqueued for polling when the fake "
+                "adapter is configured, token or no token"
+            )
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
+
+
+@_pytest.mark.asyncio
+async def test_bars_cron_runs_with_fake_adapter_and_no_token(monkeypatch):
+    """POS_ADAPTER=fake, no token → shop sync MUST run, and the adapter
+    handed to sync_shops must be the fake."""
+    from datetime import datetime, timezone
+
+    from sqlalchemy import update
+
+    import app.modules.pos.sync_service as sync_service
+    from app.modules.events.models import Event, EventStatus
+    from app.modules.pos.adapters.fake import FakePOSAdapter
+    from app.workers.tasks import cron_sync_bars_from_slesh
+    from tests.fixtures.alerts.factories import delete_tenant_cascade, make_event, make_tenant
+    from tests.fixtures.alerts.session import TestSessionLocal
+
+    monkeypatch.setattr(settings, "pos_adapter", "fake")
+    monkeypatch.setattr(settings, "slesh_api_token", "")
+
+    seen = []
+
+    from types import SimpleNamespace
+
+    async def _recording_sync_shops(*, db, tenant_id, event_id, adapter, **kw):
+        seen.append((event_id, adapter))
+        return SimpleNamespace(created=0, updated=0, skipped=0, deactivated=0)
+
+    monkeypatch.setattr(sync_service, "sync_shops", _recording_sync_shops)
+
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        try:
+            event = await make_event(session, tenant.id, status=EventStatus.LIVE)
+            await session.execute(update(Event).where(Event.id == event.id).values(
+                started_at=datetime.now(timezone.utc)))
+            await session.commit()
+
+            result = await cron_sync_bars_from_slesh({})
+
+            assert result["status"] != "skipped"
+            ours = [a for eid, a in seen if eid == event.id]
+            assert ours, "our live event must be shop-synced under the fake adapter"
+            assert isinstance(ours[0], FakePOSAdapter)
+        finally:
+            await delete_tenant_cascade(session, tenant.id)
