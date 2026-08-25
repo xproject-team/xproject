@@ -224,8 +224,12 @@ def _make_order_raw(minute_start_ms: int, index: int, rng: random.Random) -> dic
 class FakePOSAdapter(BasePOSAdapter):
     """Read-only fake fulfilling the BasePOSAdapter contract.
 
-    Constructor takes no configuration on purpose.
+    Constructor takes no configuration on purpose — passing anything is
+    a TypeError, so no credential or URL can arrive by any parameter.
     """
+
+    def __init__(self) -> None:
+        pass
 
     async def __aenter__(self) -> "FakePOSAdapter":
         return self
