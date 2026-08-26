@@ -142,19 +142,36 @@ async def test_build_structure_and_real_login(monkeypatch):
             )).scalars())
             assert mapped_ids == fake_ids
 
-            # Bars: both types; mappings come from the fake shop list;
-            # EXACTLY ONE bar is deliberately unmapped (parking rehearsal).
+            # Bars: both types. Shop mappings must be held by the LIVE
+            # event ONLY — the ingester resolves bars by (tenant, shop
+            # id) with no event filter, so a shop id mapped on several
+            # events at once resolves arbitrarily (the staging Day-4
+            # BarNotInEventError storm). On the live event, exactly one
+            # bar (Food Truck) is deliberately unmapped so parking is
+            # rehearsed with a mapping an operator can actually resolve.
             bars = (await s.execute(
                 select(Bar).where(Bar.tenant_id == alpha.id)
             )).scalars().all()
             assert {b.bar_type for b in bars} >= {"drinks", "food"}
             shop_ids = {sh["_id"] for sh in FAKE_SHOPS_RAW}
+            live_event = next(
+                e for e in (await s.execute(
+                    select(Event).where(Event.tenant_id == alpha.id)
+                )).scalars() if e.status == EventStatus.LIVE
+            )
             mapped = [b for b in bars if b.slesh_negozio_id is not None]
-            unmapped = [b for b in bars if b.slesh_negozio_id is None]
+            assert mapped, "the live event must carry shop mappings"
+            assert all(b.event_id == live_event.id for b in mapped), (
+                "shop ids may be mapped on the LIVE event only — a "
+                "mapping on any other event makes bar resolution ambiguous"
+            )
             assert all(b.slesh_negozio_id in shop_ids for b in mapped)
-            assert len(unmapped) == 1, (
-                "exactly one deliberately-unmapped bar must exist "
-                f"(got {[(b.name, b.slesh_negozio_id) for b in unmapped]})"
+            live_unmapped = [
+                b for b in bars
+                if b.event_id == live_event.id and b.slesh_negozio_id is None
+            ]
+            assert len(live_unmapped) == 1 and live_unmapped[0].name == "Food Truck", (
+                f"got {[(b.name, b.slesh_negozio_id) for b in live_unmapped]}"
             )
 
             # Both role columns written — users.role AND user_roles.
@@ -351,4 +368,102 @@ async def test_entry_point_runs_standalone_like_the_container(monkeypatch):
     finally:
         _arm_staging_markers(monkeypatch)
         from app.scripts.build_staging_data import wipe
+        await wipe()
+
+
+async def test_live_event_ingests_end_to_end_and_history_has_no_line_errors(monkeypatch):
+    """Staging Day-4 live failure: every live-event order raised
+    BarNotInEventError because bar resolution is tenant-scoped
+    (order_ingester._find_bar_by_slesh_id has no event filter, LIMIT 1),
+    and the generator had mapped the SAME shop ids on four events at
+    once — resolution was arbitrary. This test demands what the staging
+    worker needs: a generated live event that actually ingests orders,
+    and a history built with ZERO per-line errors on every event — not
+    merely rows existing somewhere."""
+    from datetime import datetime, timedelta
+
+    from app.modules.events.models import Event, EventOrder, EventStatus
+    from app.modules.pos.adapters.fake import LOCAL_TZ, FakePOSAdapter
+    from app.modules.pos.order_ingester import _LookupCache, ingest_order
+    from app.modules.stock_transactions.models import StockTransaction
+    from app.modules.stock_transactions.service import StockTransactionService
+    from app.scripts.build_staging_data import build, wipe
+
+    _arm_staging_markers(monkeypatch)
+    try:
+        summary = await build(fast=True)
+        # The generator's own history must be clean: a single per-line
+        # error means some event's bars resolved to another event.
+        assert summary["lines_errors"] == 0, summary
+        assert summary["lines_ingested"] > 0
+
+        async with TestSessionLocal() as s:
+            from app.modules.auth.models import Tenant
+
+            alpha = (await s.execute(
+                select(Tenant).where(Tenant.slug == "staging-alpha")
+            )).scalar_one()
+            completed = (await s.execute(
+                select(Event).where(
+                    Event.tenant_id == alpha.id,
+                    Event.status == EventStatus.COMPLETED,
+                )
+            )).scalars().all()
+            # EVERY completed event has stock lines — not just whichever
+            # event happened to win the ambiguous bar lookup.
+            for e in completed:
+                st_count = (await s.execute(
+                    select(func.count()).select_from(StockTransaction).where(
+                        StockTransaction.event_id == e.id,
+                    )
+                )).scalar_one()
+                assert st_count > 0, f"{e.name}: no stock lines ingested"
+
+            live = (await s.execute(
+                select(Event).where(
+                    Event.tenant_id == alpha.id,
+                    Event.status == EventStatus.LIVE,
+                )
+            )).scalar_one()
+
+            # Ingest a fresh window into the LIVE event through the real
+            # pipeline — the exact thing the staging worker does per minute.
+            window_start = (datetime.now(LOCAL_TZ) - timedelta(days=1)).replace(
+                hour=18, minute=0, second=0, microsecond=0,
+            )
+            service = StockTransactionService(s)
+            cache = _LookupCache()
+            ingested = errors = 0
+            async with FakePOSAdapter() as adapter:
+                async for order in adapter.list_orders(
+                    window_start, window_start + timedelta(minutes=5),
+                    order_type=None,
+                ):
+                    r = await ingest_order(
+                        db=s, order=order, event_id=live.id,
+                        tenant_id=alpha.id, service=service, cache=cache,
+                    )
+                    ingested += r.lines_ingested
+                    errors += r.lines_errors
+            await s.commit()
+
+            assert errors == 0, "live-event ingestion must not raise per line"
+            assert ingested > 0, "at least one live-event line must ingest"
+            live_eo = (await s.execute(
+                select(func.count()).select_from(EventOrder).where(
+                    EventOrder.event_id == live.id,
+                )
+            )).scalar_one()
+            assert live_eo > 0
+            live_st = (await s.execute(
+                select(StockTransaction).where(
+                    StockTransaction.event_id == live.id,
+                    StockTransaction.bar_stock_id.is_not(None),
+                ).limit(1)
+            )).scalars().first()
+            assert live_st is not None, (
+                "live-event stock lines must decrement bar_stock so the "
+                "depletion evaluator has burn rates"
+            )
+    finally:
         await wipe()

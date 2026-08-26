@@ -192,11 +192,18 @@ async def _create_catalog(db, tenant_id: UUID) -> dict[str, Any]:
     return products
 
 
-async def _create_bars(db, tenant_id: UUID, event_id: UUID, *, unmap_food: bool) -> dict[str, Any]:
-    """One bar per fake shop. When unmap_food is True the Food Truck bar
-    is created WITHOUT its slesh_negozio_id — orders for that shop park
-    in pending_shop_mappings, and an operator can resolve them to this
-    very bar through the UI (the Jul-19 rehearsal)."""
+async def _create_bars(db, tenant_id: UUID, event_id: UUID) -> dict[str, Any]:
+    """One bar per fake shop, created UNMAPPED.
+
+    Shop mappings are set per event, only while that event needs them
+    (_set_shop_mappings): the ingester resolves bars by
+    (tenant, slesh_negozio_id) with NO event filter and LIMIT 1
+    (order_ingester._find_bar_by_slesh_id), so the same shop id mapped
+    on several events at once resolves ARBITRARILY — the exact
+    BarNotInEventError storm the first staging live poll produced.
+    History maps → ingests → unmaps each completed event in turn; the
+    LIVE event is mapped last (minus Food Truck) and keeps the tenant's
+    only live mappings."""
     from app.modules.bars.models import Bar
     from app.modules.pos.adapters.fake import FAKE_SHOPS_RAW
 
@@ -208,20 +215,40 @@ async def _create_bars(db, tenant_id: UUID, event_id: UUID, *, unmap_food: bool)
     }
     bars: dict[str, Bar] = {}
     for raw in FAKE_SHOPS_RAW:
-        name = raw["name"]
-        mapped = not (unmap_food and name == "Food Truck")
         bar = Bar(
             tenant_id=tenant_id,
             event_id=event_id,
-            name=name,
-            bar_type=bar_types[name],
+            name=raw["name"],
+            bar_type=bar_types[raw["name"]],
             is_active=True,
-            slesh_negozio_id=raw["_id"] if mapped else None,
+            slesh_negozio_id=None,
         )
         db.add(bar)
         bars[raw["_id"]] = bar
     await db.flush()
     return bars
+
+
+async def _set_shop_mappings(db, event_id: UUID, *, include_food: bool = True,
+                             clear: bool = False) -> None:
+    """Map (or clear) this event's bars to the fake shop ids, by name.
+
+    When include_food is False the Food Truck bar stays unmapped — its
+    orders park in pending_shop_mappings and an operator can resolve
+    them to this very bar through the UI (the Jul-19 rehearsal)."""
+    from app.modules.bars.models import Bar
+    from app.modules.pos.adapters.fake import FAKE_SHOPS_RAW
+
+    by_name = {raw["name"]: raw["_id"] for raw in FAKE_SHOPS_RAW}
+    bars = (await db.execute(
+        select(Bar).where(Bar.event_id == event_id)
+    )).scalars().all()
+    for bar in bars:
+        if clear:
+            bar.slesh_negozio_id = None
+        elif bar.name in by_name and (include_food or bar.name != "Food Truck"):
+            bar.slesh_negozio_id = by_name[bar.name]
+    await db.flush()
 
 
 async def _create_event(
@@ -282,7 +309,7 @@ async def _build_structure(db, *, fast: bool) -> dict[str, Any]:
             scheduled_at=start, scheduled_end_at=end,
             started_at=start, ended_at=end,
         )
-        e.bars = await _create_bars(db, alpha.id, e.id, unmap_food=False)  # type: ignore[attr-defined]
+        e.bars = await _create_bars(db, alpha.id, e.id)  # type: ignore[attr-defined]
         completed.append(e)
 
     live = await _create_event(
@@ -292,7 +319,7 @@ async def _build_structure(db, *, fast: bool) -> dict[str, Any]:
         scheduled_end_at=now + timedelta(days=7),
         started_at=now - timedelta(hours=1),
     )
-    live.bars = await _create_bars(db, alpha.id, live.id, unmap_food=True)  # type: ignore[attr-defined]
+    live.bars = await _create_bars(db, alpha.id, live.id)  # type: ignore[attr-defined]
 
     await _create_event(
         db, alpha.id, venues[alpha.id].id,
@@ -439,31 +466,39 @@ async def _allocate_and_configure_stock(db, tenant_id: UUID, events, products) -
     await db.flush()
 
 
-async def _ingest_history(tenant_id: UUID, completed_events) -> int:
+async def _ingest_history(tenant_id: UUID, completed_events) -> dict[str, int]:
     """Run the fake adapter's order stream for each completed event's
     window through the REAL ingestion pipeline — same code path staging's
-    worker runs live."""
+    worker runs live.
+
+    Shop mappings are held by exactly ONE event at a time (map → ingest
+    → unmap): the ingester's bar lookup is tenant-scoped, so concurrent
+    mappings resolve arbitrarily across events."""
     from app.core.database import AsyncSessionLocal
     from app.modules.pos.adapters.fake import FakePOSAdapter
     from app.modules.pos.order_ingester import _LookupCache, ingest_order
     from app.modules.stock_transactions.service import StockTransactionService
 
-    total = 0
+    totals = {"orders": 0, "lines_ingested": 0, "lines_errors": 0}
     for event in completed_events:
         async with AsyncSessionLocal() as db:
+            await _set_shop_mappings(db, event.id, include_food=True)
             service = StockTransactionService(db)
             cache = _LookupCache()
             async with FakePOSAdapter() as adapter:
                 async for order in adapter.list_orders(
                     event.scheduled_at, event.scheduled_end_at, order_type=None,
                 ):
-                    await ingest_order(
+                    r = await ingest_order(
                         db=db, order=order, event_id=event.id,
                         tenant_id=tenant_id, service=service, cache=cache,
                     )
-                    total += 1
+                    totals["orders"] += 1
+                    totals["lines_ingested"] += r.lines_ingested
+                    totals["lines_errors"] += r.lines_errors
+            await _set_shop_mappings(db, event.id, clear=True)
             await db.commit()
-    return total
+    return totals
 
 
 async def _generate_reports(tenant_id: UUID, completed_events) -> int:
@@ -550,7 +585,15 @@ async def build(*, fast: bool = False) -> dict[str, Any]:
         alpha_id = alpha.id
         completed = state["completed_events"]
 
-    orders = await _ingest_history(alpha_id, completed)
+    ingest_totals = await _ingest_history(alpha_id, completed)
+
+    # History done — the LIVE event takes the tenant's only mappings
+    # (minus Food Truck: its orders park, resolvable via the UI).
+    async with AsyncSessionLocal() as db:
+        live_id = state["live_event"].id
+        await _set_shop_mappings(db, live_id, include_food=False)
+        await db.commit()
+
     reports = await _generate_reports(alpha_id, completed)
     forecasts = await _fit_forecasts(alpha_id)
 
@@ -558,7 +601,9 @@ async def build(*, fast: bool = False) -> dict[str, Any]:
         "tenants": len(TENANTS),
         "accounts": len(ACCOUNTS),
         "completed_events": len(completed),
-        "orders_ingested": orders,
+        "orders_ingested": ingest_totals["orders"],
+        "lines_ingested": ingest_totals["lines_ingested"],
+        "lines_errors": ingest_totals["lines_errors"],
         "reports": reports,
         "forecasts": forecasts,
     }
