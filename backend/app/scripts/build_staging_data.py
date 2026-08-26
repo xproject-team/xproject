@@ -319,9 +319,217 @@ async def _build_structure(db, *, fast: bool) -> dict[str, Any]:
     return out
 
 
+# ─── History & rehearsal shapes ──────────────────────────────────────────────
+
+async def _allocate_and_configure_stock(db, tenant_id: UUID, events, products) -> None:
+    """bar_stock allocations (the depletion evaluator only counts stock
+    lines that decremented a bar_stock row — allocations must exist
+    BEFORE ingestion), plus recipes and the event_storage layer the
+    read-time depletion view and inventory page consume."""
+    from decimal import Decimal
+
+    from app.modules.bar_stock.models import BarStock
+    from app.modules.bars.models import Bar
+    from app.modules.event_storage.models import (
+        EventCategoryIngredient,
+        EventStockBarAllocation,
+        SupplierProduct,
+    )
+    from app.modules.products.models import Product, ProductType, ProductUnit
+    from app.modules.recipes.models import Recipe, RecipeItem
+    from app.modules.recipes.template_models import RecipeTemplate  # noqa: F401 — prime mapper
+
+    # Recipe ingredients (bottle-level inputs the cascade decrements).
+    ingredients: dict[str, Product] = {}
+    for name in ("Prosecco 0.75", "Gin London Dry"):
+        ing = Product(
+            tenant_id=tenant_id, name=name,
+            product_type=ProductType.INGREDIENT, category=None,
+            unit=ProductUnit.BOTTLE, default_price_cents=0, is_archived=False,
+        )
+        db.add(ing)
+        ingredients[name] = ing
+    await db.flush()
+
+    by_name = {p.name: p for p in products.values()}
+    recipes = [
+        ("Spritz", "Prosecco 0.75", Decimal("100")),
+        ("Gin Tonic", "Gin London Dry", Decimal("50")),
+    ]
+    for drink_name, ing_name, ml in recipes:
+        r = Recipe(
+            tenant_id=tenant_id,
+            drink_product_id=by_name[drink_name].id,
+            yield_qty=Decimal("1"), yield_unit=ProductUnit.GLASS,
+            display_name=f"{drink_name} (staging)",
+        )
+        db.add(r)
+        await db.flush()
+        db.add(RecipeItem(
+            tenant_id=tenant_id, recipe_id=r.id,
+            ingredient_product_id=ingredients[ing_name].id,
+            qty=ml, unit=ProductUnit.ML,
+        ))
+
+    # bar_stock: every drink (deposits included) + ingredients at drinks
+    # bars; food products at food bars. For every generated event.
+    drink_rows = [p for p in products.values() if p.product_type == ProductType.DRINK]
+    food_rows = [p for p in products.values() if p.product_type == ProductType.FOOD]
+    for event in events:
+        bars = (await db.execute(
+            select(Bar).where(Bar.event_id == event.id)
+        )).scalars().all()
+        for bar in bars:
+            pool: list[Product] = []
+            if bar.bar_type == "drinks":
+                pool = drink_rows + list(ingredients.values())
+            elif bar.bar_type == "food":
+                pool = food_rows
+            for p in pool:
+                db.add(BarStock(
+                    tenant_id=tenant_id, event_id=event.id, bar_id=bar.id,
+                    product_id=p.id, allocated_qty=Decimal("500"),
+                    current_qty=Decimal("500"), returned_qty=Decimal("0"),
+                ))
+    await db.flush()
+
+    # event_storage layer for the LIVE event (the last entry in events):
+    # supplier products, dispatches, and per-product depletion rules.
+    live = events[-1]
+    suppliers = {}
+    for sku, item, category, vol in (
+        ("STG-PROS", "Prosecco 0.75L", "sparkling", 750),
+        ("STG-GIN", "Gin London Dry 0.7L", "spirits", 700),
+    ):
+        sp = SupplierProduct(
+            tenant_id=tenant_id, supplier_name="Staging Beverages Srl",
+            supplier_sku=sku, item_name=item, category=category,
+            default_unit="bottle", units_per_pack=6, volume_per_unit_ml=vol,
+        )
+        db.add(sp)
+        suppliers[sku] = sp
+    await db.flush()
+
+    live_bars = (await db.execute(
+        select(Bar).where(Bar.event_id == live.id, Bar.bar_type == "drinks")
+    )).scalars().all()
+    for bar in live_bars:
+        for sp in suppliers.values():
+            db.add(EventStockBarAllocation(
+                tenant_id=tenant_id, event_id=live.id,
+                supplier_product_id=sp.id, bar_id=bar.id,
+                qty_allocated=Decimal("24"),
+            ))
+    rule_map = [
+        ("Spritz", "STG-PROS", Decimal("100")),
+        ("Gin Tonic", "STG-GIN", Decimal("50")),
+        ("Cocktail Premium", "STG-GIN", Decimal("60")),
+        ("Vino Bianco", "STG-PROS", Decimal("120")),
+    ]
+    for drink_name, sku, ml in rule_map:
+        db.add(EventCategoryIngredient(
+            tenant_id=tenant_id, event_id=live.id,
+            slesh_category=drink_name.lower().replace(" ", "_"),
+            product_id=by_name[drink_name].id,
+            supplier_product_id=suppliers[sku].id,
+            ml_per_sale=ml, bar_id=None,
+            threshold_pct_warn=Decimal("70"), threshold_pct_empty=Decimal("90"),
+        ))
+    await db.flush()
+
+
+async def _ingest_history(tenant_id: UUID, completed_events) -> int:
+    """Run the fake adapter's order stream for each completed event's
+    window through the REAL ingestion pipeline — same code path staging's
+    worker runs live."""
+    from app.core.database import AsyncSessionLocal
+    from app.modules.pos.adapters.fake import FakePOSAdapter
+    from app.modules.pos.order_ingester import _LookupCache, ingest_order
+    from app.modules.stock_transactions.service import StockTransactionService
+
+    total = 0
+    for event in completed_events:
+        async with AsyncSessionLocal() as db:
+            service = StockTransactionService(db)
+            cache = _LookupCache()
+            async with FakePOSAdapter() as adapter:
+                async for order in adapter.list_orders(
+                    event.scheduled_at, event.scheduled_end_at, order_type=None,
+                ):
+                    await ingest_order(
+                        db=db, order=order, event_id=event.id,
+                        tenant_id=tenant_id, service=service, cache=cache,
+                    )
+                    total += 1
+            await db.commit()
+    return total
+
+
+async def _generate_reports(tenant_id: UUID, completed_events) -> int:
+    """Reports for every completed event, both languages — then the two
+    rehearsal shapes: DIVERGED language versions on event 2 (IT v1 with
+    EN regenerated to v2; the asymmetry that surfaces the 22-Aug
+    sibling-collision defect), and a FAILED regeneration row on event 3
+    (ready v1 untouched + failed v2, the post-C5 shape)."""
+    from app.core.database import AsyncSessionLocal
+    from app.modules.reports.models import Report
+    from app.modules.reports.service import ReportService
+
+    count = 0
+    async with AsyncSessionLocal() as db:
+        service = ReportService(db)
+        for event in completed_events:
+            results = await service.generate_for_event_batch(tenant_id, event.id)
+            count += len(results)
+
+        # Diverged versions on the second completed event.
+        target = completed_events[1]
+        en_v1 = await service.repo.get_latest_for_event(tenant_id, target.id, "en")
+        if en_v1 is not None and en_v1.status == "ready":
+            await service.regenerate(tenant_id, en_v1.id, generated_by=None)
+            count += 1
+
+        # Failed regeneration shape on the third completed event.
+        db.add(Report(
+            tenant_id=tenant_id, event_id=completed_events[2].id,
+            language="it", version=2, status="failed",
+            failure_reason="staging fixture: simulated generation crash",
+            generated_at=_now(),
+        ))
+        await db.commit()
+    return count
+
+
+async def _fit_forecasts(tenant_id: UUID) -> dict[str, str]:
+    """Fit alpha's forecast models from its ingested completed events.
+    Beta gets nothing — its insufficient-history path must stay live."""
+    from app.core.database import AsyncSessionLocal
+    from app.modules.predictions.demand.retrain import retrain_demand_model
+    from app.modules.predictions.nowcast.retrain import retrain_from_completed_events
+
+    out: dict[str, str] = {}
+    async with AsyncSessionLocal() as db:
+        try:
+            r = await retrain_from_completed_events(
+                db, tenant_id, triggered_by="staging_generator",
+            )
+            out["nowcast"] = str(r.get("status", r))
+        except Exception as e:  # noqa: BLE001 — best-effort, surfaced in summary
+            out["nowcast"] = f"error: {type(e).__name__}: {e}"
+    async with AsyncSessionLocal() as db:
+        try:
+            r = await retrain_demand_model(
+                db, tenant_id, triggered_by="staging_generator",
+            )
+            out["demand"] = str(r.get("status", r))
+        except Exception as e:  # noqa: BLE001
+            out["demand"] = f"error: {type(e).__name__}: {e}"
+    return out
+
+
 # ─── Entry points ────────────────────────────────────────────────────────────
 
-async def build(*, fast: bool = False) -> dict[str, int]:
+async def build(*, fast: bool = False) -> dict[str, Any]:
     """Wipe the generator's tenants, rebuild everything. Returns summary
     counts. `fast` shrinks the ingestion windows for test runs."""
     assert_staging()
@@ -331,12 +539,27 @@ async def build(*, fast: bool = False) -> dict[str, int]:
 
     async with AsyncSessionLocal() as db:
         state = await _build_structure(db, fast=fast)
+        alpha = state["tenants"]["staging-alpha"]
+        await _allocate_and_configure_stock(
+            db, alpha.id,
+            [*state["completed_events"], state["live_event"]],
+            state["products"],
+        )
         await db.commit()
+        alpha_id = alpha.id
+        completed = state["completed_events"]
+
+    orders = await _ingest_history(alpha_id, completed)
+    reports = await _generate_reports(alpha_id, completed)
+    forecasts = await _fit_forecasts(alpha_id)
 
     return {
         "tenants": len(TENANTS),
         "accounts": len(ACCOUNTS),
-        "completed_events": len(state["completed_events"]),
+        "completed_events": len(completed),
+        "orders_ingested": orders,
+        "reports": reports,
+        "forecasts": forecasts,
     }
 
 

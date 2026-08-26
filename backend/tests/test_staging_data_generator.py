@@ -186,3 +186,133 @@ async def test_build_structure_and_real_login(monkeypatch):
     finally:
         await wipe()
         assert await _tenant_count() == 0
+
+
+async def test_build_history_reports_and_rehearsal_shapes(monkeypatch):
+    """The layer every real failure this engagement lived in: ingested
+    POS history through the real pipeline, reports with DIVERGED language
+    versions (the only shape that surfaces the 22-Aug sibling-collision
+    defect), a failed report row, unresolved parking, depletion inputs,
+    and forecast artifacts for alpha but NOT beta."""
+    from app.modules.auth.models import Tenant
+    from app.modules.bar_stock.models import BarStock
+    from app.modules.event_storage.models import (
+        EventCategoryIngredient,
+        EventStockBarAllocation,
+        SupplierProduct,
+    )
+    from app.modules.events.models import Event, EventOrder, EventStatus
+    from app.modules.pos.models import PendingShopMapping
+    from app.modules.predictions.models import ModelArtifact
+    from app.modules.recipes.models import Recipe, RecipeItem
+    from app.modules.reports.models import Report
+    from app.modules.stock_transactions.models import StockTransaction
+    from app.scripts.build_staging_data import build, wipe
+
+    _arm_staging_markers(monkeypatch)
+    try:
+        await build(fast=True)
+
+        async with TestSessionLocal() as s:
+            alpha = (await s.execute(
+                select(Tenant).where(Tenant.slug == "staging-alpha")
+            )).scalar_one()
+            beta = (await s.execute(
+                select(Tenant).where(Tenant.slug == "staging-beta")
+            )).scalar_one()
+
+            completed = (await s.execute(
+                select(Event).where(
+                    Event.tenant_id == alpha.id,
+                    Event.status == EventStatus.COMPLETED,
+                ).order_by(Event.scheduled_at)
+            )).scalars().all()
+            assert len(completed) >= 3
+
+            # Real ingested history: event_orders + stock lines, with the
+            # verified fiscal identity intact on every stored row, and
+            # bar_stock_id stamped so burn-rate depletion can compute.
+            eo = (await s.execute(
+                select(EventOrder).where(EventOrder.tenant_id == alpha.id)
+            )).scalars().all()
+            assert len(eo) > 100
+            for row in eo:
+                assert row.subtotal_cents == row.fiscal_gross_cents + row.deposit_cents
+            st = (await s.execute(
+                select(StockTransaction).where(StockTransaction.tenant_id == alpha.id)
+            )).scalars().all()
+            assert st
+            assert any(r.bar_stock_id is not None for r in st), (
+                "stock lines must decrement bar_stock or the depletion "
+                "evaluator has nothing to compute burn rates from"
+            )
+
+            # Unresolved parking exists (ghost-shop orders and/or the
+            # deliberately-unmapped bar).
+            parked = (await s.execute(
+                select(PendingShopMapping).where(
+                    PendingShopMapping.tenant_id == alpha.id,
+                    PendingShopMapping.resolved_at.is_(None),
+                )
+            )).scalars().all()
+            assert parked
+
+            # Depletion inputs: allocations, recipes, storage layer.
+            for model in (BarStock, Recipe, RecipeItem, SupplierProduct,
+                          EventStockBarAllocation, EventCategoryIngredient):
+                rows = (await s.execute(
+                    select(func.count()).select_from(model).where(
+                        model.tenant_id == alpha.id
+                    )
+                )).scalar_one()
+                assert rows > 0, f"{model.__name__} not seeded"
+
+            # Reports: both languages; one event carries the DIVERGED
+            # shape (IT latest v1, EN latest v2, EN v1 superseded); at
+            # least one failed row exists.
+            reports = (await s.execute(
+                select(Report).where(Report.tenant_id == alpha.id)
+            )).scalars().all()
+            assert {r.language for r in reports} == {"it", "en"}
+            assert any(r.status == "failed" for r in reports)
+
+            def _max_version(event_id, language):
+                versions = [
+                    r.version for r in reports
+                    if r.event_id == event_id and r.language == language
+                    and r.status == "ready"
+                ]
+                return max(versions) if versions else 0
+
+            diverged = [
+                e for e in completed
+                if _max_version(e.id, "it") == 1 and _max_version(e.id, "en") == 2
+            ]
+            assert diverged, (
+                "one event must carry IT v1 / EN v2 — the asymmetric shape "
+                "that surfaces the sibling-collision defect fixed 22 Aug"
+            )
+            en_v1 = next(
+                r for r in reports
+                if r.event_id == diverged[0].id and r.language == "en" and r.version == 1
+            )
+            assert en_v1.superseded_by is not None
+
+            # Forecast artifacts: alpha fitted, beta must have NONE (the
+            # cross-tenant leak found this engagement makes this the
+            # isolation assertion, and beta is the insufficient-history
+            # rehearsal).
+            alpha_models = (await s.execute(
+                select(func.count()).select_from(ModelArtifact).where(
+                    ModelArtifact.tenant_id == alpha.id
+                )
+            )).scalar_one()
+            beta_models = (await s.execute(
+                select(func.count()).select_from(ModelArtifact).where(
+                    ModelArtifact.tenant_id == beta.id
+                )
+            )).scalar_one()
+            assert alpha_models >= 1
+            assert beta_models == 0
+    finally:
+        await wipe()
