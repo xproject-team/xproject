@@ -15,9 +15,10 @@ from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.tenancy import TenantScopedModel
-# Import Tenant so SQLAlchemy can resolve the tenant_id FK on SleshPollState.
-# Mirrors the pattern in app/scripts/seed.py: model registration happens at
-# import time, so any module that USES SleshPollState pulls Tenant in too.
+# Import Tenant so SQLAlchemy can resolve the tenant_id FK on SleshPollState:
+# model registration happens at import time, so any module that USES
+# SleshPollState pulls Tenant in too. (Standalone scripts should import
+# app.models_registry instead of relying on per-module side effects.)
 from app.modules.auth.models import Tenant  # noqa: F401 — imported for FK side effect
 
 
