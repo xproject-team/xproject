@@ -51,6 +51,7 @@ from uuid import UUID
 
 from sqlalchemy import delete, select
 
+import app.models_registry  # noqa: F401 — complete the FK graph for standalone runs
 from app.core.config import settings
 
 # ─── Identities (also imported by tests) ─────────────────────────────────────

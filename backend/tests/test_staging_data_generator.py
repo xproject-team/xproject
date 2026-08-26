@@ -316,3 +316,39 @@ async def test_build_history_reports_and_rehearsal_shapes(monkeypatch):
             assert beta_models == 0
     finally:
         await wipe()
+
+
+async def test_entry_point_runs_standalone_like_the_container(monkeypatch):
+    """Regression for the first real staging run: `python -m
+    app.scripts.build_staging_data` crashed with NoReferencedTableError
+    (users.bar_id → bars) because the script's lazy model imports left
+    SQLAlchemy's registry incomplete at flush time. The in-process tests
+    could never catch it — pytest's collection imports the full model
+    registry before build() runs. This test exercises the ACTUAL entry
+    point in a fresh interpreter, exactly as the container invokes it."""
+    import os as _os
+    import subprocess
+    import sys
+
+    env = dict(_os.environ)
+    env.update({
+        "ENVIRONMENT": "staging",
+        "POS_ADAPTER": "fake",
+        "SLESH_API_TOKEN": "",   # env beats .env for pydantic-settings
+        "SLESH_BRAND_ID": "",
+    })
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.scripts.build_staging_data", "--fast"],
+        capture_output=True, text=True, env=env, timeout=600,
+    )
+    try:
+        assert proc.returncode == 0, (
+            f"entry point failed standalone (exit {proc.returncode}):\n"
+            f"stderr tail:\n{proc.stderr[-2000:]}"
+        )
+        assert "staging data built" in proc.stdout
+        assert await _tenant_count() == 2
+    finally:
+        _arm_staging_markers(monkeypatch)
+        from app.scripts.build_staging_data import wipe
+        await wipe()
