@@ -582,3 +582,69 @@ async def test_purge_run_exits_clean_and_leaves_zero_orphans_by_query(monkeypatc
     finally:
         _arm_staging_markers(monkeypatch)
         await wipe()
+
+
+async def test_purge_verifies_itself_from_a_new_connection(monkeypatch):
+    """Third round of the orphan cleanup. The staging report was that
+    deletes 'executed in that session' but were gone twenty minutes
+    later from a different container — a shape the repo code cannot
+    reproduce (its purge commits in its own session; persistence was
+    re-verified here via psql after process exit). To make the question
+    unanswerable by anything but the database itself, the purge must now
+    (a) sweep EVERY table carrying event_id/tenant_id, and (b) verify
+    its own result AFTER COMMIT from a brand-new engine/connection,
+    print that verified number, and exit non-zero if any orphan
+    survived. This test asserts the verified line exists and
+    independently re-checks with its own fresh engine — created inside
+    the test, NullPool, discarded after — so no session, engine, or
+    process is shared with the script."""
+    import os as _os
+    import subprocess
+    import sys
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from app.scripts.build_staging_data import wipe
+
+    env = dict(_os.environ)
+    env.update({
+        "ENVIRONMENT": "staging", "POS_ADAPTER": "fake",
+        "SLESH_API_TOKEN": "", "SLESH_BRAND_ID": "",
+    })
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.scripts.build_staging_data",
+         "--purge-orphans", "--fast"],
+        capture_output=True, text=True, env=env, timeout=600,
+    )
+    try:
+        assert proc.returncode == 0, proc.stderr[-1500:]
+        assert "verified from a new connection: 0 orphaned rows remain" in proc.stdout, (
+            "the purge must verify its own result post-commit from a fresh "
+            f"connection and say so; stdout was:\n{proc.stdout[-800:]}"
+        )
+
+        # Independent re-check: a brand-new engine created HERE, after
+        # the subprocess exited — nothing shared with the script.
+        engine = create_async_engine(settings.database_url, poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                remaining = (await conn.execute(text("""
+                    SELECT
+                      (SELECT count(*) FROM event_orders o
+                        LEFT JOIN events e ON e.id = o.event_id WHERE e.id IS NULL)
+                    + (SELECT count(*) FROM event_orders o
+                        LEFT JOIN tenants t ON t.id = o.tenant_id WHERE t.id IS NULL)
+                    + (SELECT count(*) FROM stock_transactions o
+                        LEFT JOIN events e ON e.id = o.event_id WHERE e.id IS NULL)
+                    + (SELECT count(*) FROM alerts o
+                        LEFT JOIN events e ON e.id = o.event_id
+                        WHERE o.event_id IS NOT NULL AND e.id IS NULL)
+                """))).scalar_one()
+        finally:
+            await engine.dispose()
+        assert remaining == 0, f"{remaining} orphans visible from a fresh engine"
+    finally:
+        _arm_staging_markers(monkeypatch)
+        await wipe()

@@ -123,33 +123,102 @@ async def wipe() -> None:
         await db.commit()
 
 
-async def purge_orphaned_event_orders() -> int:
-    """One-time cleanup for orphans left by earlier generator versions:
-    delete event_orders rows whose EVENT or TENANT no longer exists.
+async def purge_orphans() -> dict[str, int]:
+    """Cleanup for orphans left by earlier generator versions — and the
+    proof that they are gone.
 
-    Both criteria, deliberately: event_orders has no foreign keys in the
-    real schema, so rows can be orphaned at either level independently —
-    staging held 23,245 event-orphans whose tenant rows still existed,
-    invisible to a tenant-only criterion (Day-5 finding: the purge
-    reported a removal count while those survived). Either kind is
-    unreachable garbage by definition (every read path joins through
-    events). Still runs only behind the staging guard and only via the
-    explicit --purge-orphans flag — it is the one operation that touches
-    rows outside the generator's own tenants. Returns the number of rows
-    the DELETE actually removed (its rowcount, committed here)."""
+    Sweeps EVERY public table carrying an event_id and/or tenant_id
+    column (discovered from information_schema at runtime, so a new
+    table can never be silently missed), deleting rows whose event or
+    tenant no longer exists. Both criteria, on every table: event_orders
+    has no foreign keys in the real schema, and rows can be orphaned at
+    either level independently — staging held event-orphans whose tenant
+    rows still existed, invisible to a tenant-only criterion. Tables
+    whose FKs genuinely cascade simply contribute zero rows; sweeping
+    them anyway costs nothing and closes the question.
+
+    THE HARD PART, learned three rounds in: a printed number must be a
+    POST-COMMIT FACT, not a statement's rowcount. rowcount reports what
+    a statement affected inside its transaction, not what survived it.
+    So after committing, this function opens a BRAND-NEW engine (its own
+    connection pool, nothing shared with the session that deleted) and
+    re-counts every orphan. It prints that verified number, and the
+    caller exits non-zero if it is not zero. Whatever else can go wrong,
+    the script can no longer report a cleanup the database disagrees
+    with.
+
+    Still behind the staging guard, still only via --purge-orphans.
+    Returns {"removed": ..., "verified_remaining": ...}.
+    """
     assert_staging()
     from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
 
+    from app.core.config import settings as _settings
     from app.core.database import AsyncSessionLocal
 
+    discover_sql = text("""
+        SELECT c.table_name,
+               bool_or(c.column_name = 'event_id')  AS has_event,
+               bool_or(c.column_name = 'tenant_id') AS has_tenant
+        FROM information_schema.columns c
+        JOIN information_schema.tables t
+          ON t.table_name = c.table_name AND t.table_schema = 'public'
+        WHERE c.table_schema = 'public'
+          AND t.table_type = 'BASE TABLE'
+          AND c.column_name IN ('event_id', 'tenant_id')
+          AND c.table_name NOT IN ('events', 'tenants')
+        GROUP BY c.table_name
+        ORDER BY c.table_name
+    """)
+
+    def _orphan_predicates(has_event: bool, has_tenant: bool) -> str:
+        parts = []
+        if has_event:
+            # event_id can be nullable (e.g. system alerts) — NULL is
+            # not an orphan.
+            parts.append("(event_id IS NOT NULL AND NOT EXISTS "
+                         "(SELECT 1 FROM events e WHERE e.id = x.event_id))")
+        if has_tenant:
+            parts.append("(NOT EXISTS "
+                         "(SELECT 1 FROM tenants t WHERE t.id = x.tenant_id))")
+        return " OR ".join(parts)
+
     async with AsyncSessionLocal() as db:
-        result = await db.execute(text(
-            "DELETE FROM event_orders eo WHERE "
-            "NOT EXISTS (SELECT 1 FROM events e WHERE e.id = eo.event_id) "
-            "OR NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = eo.tenant_id)"
-        ))
+        tables = [(r.table_name, r.has_event, r.has_tenant)
+                  for r in (await db.execute(discover_sql)).all()]
+        removed_per_table: dict[str, int] = {}
+        for name, has_event, has_tenant in tables:
+            pred = _orphan_predicates(has_event, has_tenant)
+            result = await db.execute(text(
+                f'DELETE FROM "{name}" x WHERE {pred}'
+            ))
+            if result.rowcount:
+                removed_per_table[name] = result.rowcount
         await db.commit()
-        return result.rowcount or 0
+
+    # Verification: a brand-new engine, NullPool, disposed after — a
+    # connection that cannot be inside, or confused with, the deleting
+    # session's transaction.
+    verify_engine = create_async_engine(_settings.database_url, poolclass=NullPool)
+    try:
+        async with verify_engine.connect() as conn:
+            remaining = 0
+            for name, has_event, has_tenant in tables:
+                pred = _orphan_predicates(has_event, has_tenant)
+                remaining += (await conn.execute(text(
+                    f'SELECT count(*) FROM "{name}" x WHERE {pred}'
+                ))).scalar_one()
+    finally:
+        await verify_engine.dispose()
+
+    removed = sum(removed_per_table.values())
+    for name, count in sorted(removed_per_table.items()):
+        print(f"  {name}: {count} removed")
+    print(f"purged {removed} orphaned rows; "
+          f"verified from a new connection: {remaining} orphaned rows remain")
+    return {"removed": removed, "verified_remaining": remaining}
 
 
 # ─── Builders ────────────────────────────────────────────────────────────────
@@ -698,8 +767,13 @@ def main() -> None:
         # the run printed its purge count and then died before
         # rebuilding anything (Day-5 finding).
         if args.purge_orphans:
-            purged = await purge_orphaned_event_orders()
-            print(f"purged {purged} orphaned event_orders rows")
+            purge_result = await purge_orphans()
+            if purge_result["verified_remaining"] > 0:
+                raise SystemExit(
+                    f"PURGE FAILED VERIFICATION: {purge_result['verified_remaining']} "
+                    "orphaned rows still present when re-counted from a new "
+                    "connection after commit. Not proceeding to build."
+                )
         return await build(fast=args.fast)
 
     summary = asyncio.run(_main())
