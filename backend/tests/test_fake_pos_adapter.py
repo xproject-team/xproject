@@ -399,3 +399,22 @@ async def test_ingested_identity_satisfies_the_feature_builders_expression():
             assert report.distinct_customers == report.sessions_created
         finally:
             await delete_tenant_cascade(session, tenant_id)
+
+
+async def test_supply_is_continuous_at_any_hour():
+    """Staging Day-5: a freshly regenerated live event received ZERO
+    orders all day — the fake's supply was time-of-day windowed
+    (16:00–02:00 local, rate 0 elsewhere), so outside serving hours a
+    rehearsal silently starves. A live staging event must receive orders
+    continuously after any regenerate, without manual intervention: any
+    30-minute window at any hour must yield at least one order. The
+    16:00–02:00 shape (peak 18:00, event-scale totals) is asserted by
+    the earlier tests and must survive."""
+    for hour in (4, 11, 13, 19):
+        start = datetime(2026, 9, 7, hour, 0, tzinfo=LOCAL_TZ)
+        async with FakePOSAdapter() as adapter:
+            orders = await _collect(
+                adapter, since_ts=start, until_ts=start + timedelta(minutes=30),
+                order_type=None,
+            )
+        assert orders, f"no orders generated in the 30-min window at {hour:02d}:00 local"

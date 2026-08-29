@@ -115,8 +115,15 @@ _SHOP_NAMES = {s["_id"]: s["name"] for s in FAKE_SHOPS_RAW}
 _SHOP_NAMES[GHOST_SHOP_ID] = "Chiringuito"  # came online mid-event, never mapped
 
 # Orders per minute by LOCAL hour — sums to ~3,780 over a 16:00–02:00
-# event (within the 3,000–4,500 production band); peak at 18:00.
+# event (within the 3,000–4,500 production band); peak at 18:00. Hours
+# outside the serving window produce a small OFF-PEAK TRICKLE instead of
+# zero: a freshly regenerated live event polled at, say, 13:00 local
+# must receive orders continuously without waiting for 16:00 — a staging
+# rehearsal that silently starves for 14 hours a day looks exactly like
+# a broken pipeline (Day-5 finding). Event-window tests (scale, peak)
+# use explicit 16:00–02:00 windows and are unaffected by the trickle.
 _HOUR_RATES = {16: 4, 17: 7, 18: 11, 19: 9, 20: 8, 21: 7, 22: 6, 23: 5, 0: 4, 1: 2}
+_OFF_PEAK_RATE = 2
 
 # ~1,500 distinct wristband customers per event, like production's
 # identified-guest pool.
@@ -283,7 +290,7 @@ class FakePOSAdapter(BasePOSAdapter):
         minute = (since_ms // 60_000) * 60_000
         while minute < until_ms:
             local_hour = datetime.fromtimestamp(minute / 1000, tz=LOCAL_TZ).hour
-            rate = _HOUR_RATES.get(local_hour, 0)
+            rate = _HOUR_RATES.get(local_hour, _OFF_PEAK_RATE)
             if rate:
                 rng = random.Random(f"fakepos:{FAKE_BRAND_ID}:{minute}")
                 count = max(0, rate + rng.choice((-1, 0, 0, 1)))
