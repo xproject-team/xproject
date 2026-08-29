@@ -204,12 +204,20 @@ async def purge_orphans() -> dict[str, int]:
     verify_engine = create_async_engine(_settings.database_url, poolclass=NullPool)
     try:
         async with verify_engine.connect() as conn:
+            db_identity = (await conn.execute(text(
+                "SELECT current_database() || ' @ ' || "
+                "coalesce(inet_server_addr()::text, 'local-socket')"
+            ))).scalar_one()
             remaining = 0
+            remaining_per_table: dict[str, int] = {}
             for name, has_event, has_tenant in tables:
                 pred = _orphan_predicates(has_event, has_tenant)
-                remaining += (await conn.execute(text(
+                n = (await conn.execute(text(
                     f'SELECT count(*) FROM "{name}" x WHERE {pred}'
                 ))).scalar_one()
+                remaining += n
+                if n:
+                    remaining_per_table[name] = n
     finally:
         await verify_engine.dispose()
 
@@ -217,7 +225,12 @@ async def purge_orphans() -> dict[str, int]:
     for name, count in sorted(removed_per_table.items()):
         print(f"  {name}: {count} removed")
     print(f"purged {removed} orphaned rows; "
-          f"verified from a new connection: {remaining} orphaned rows remain")
+          f"verified from a new connection: {remaining} orphaned rows remain "
+          f"(database={db_identity})")
+    # On a failed verification, name WHERE the residue is — the per-table
+    # breakdown turns 'it did not work' into 'this table, this count'.
+    for name, count in sorted(remaining_per_table.items()):
+        print(f"  VERIFICATION RESIDUE — {name}: {count} orphaned rows remain")
     return {"removed": removed, "verified_remaining": remaining}
 
 
@@ -774,6 +787,12 @@ def main() -> None:
                     "orphaned rows still present when re-counted from a new "
                     "connection after commit. Not proceeding to build."
                 )
+        else:
+            # Say so explicitly: a build-without-purge run must never be
+            # mistakable for a purge run in anyone's transcript — a build
+            # that persists ALONGSIDE surviving orphans is exactly what a
+            # flag-less invocation produces (Day-5, round four).
+            print("purge: NOT requested (--purge-orphans absent)")
         return await build(fast=args.fast)
 
     summary = asyncio.run(_main())

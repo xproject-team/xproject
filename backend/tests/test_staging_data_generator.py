@@ -648,3 +648,49 @@ async def test_purge_verifies_itself_from_a_new_connection(monkeypatch):
     finally:
         _arm_staging_markers(monkeypatch)
         await wipe()
+
+
+async def test_purge_output_is_unambiguous_about_flag_and_database(monkeypatch):
+    """Round-four discriminators. Staging showed a build that persisted
+    alongside orphans a purge should have removed — a state the current
+    script cannot produce WITH the flag (verification gates the build),
+    but produces trivially WITHOUT it. The output must make the two
+    invocations impossible to confuse, and must name the database it
+    verified against, so a wrong-DATABASE_URL situation is visible in
+    the transcript rather than debatable afterwards."""
+    import os as _os
+    import subprocess
+    import sys
+
+    from app.scripts.build_staging_data import wipe
+
+    env = dict(_os.environ)
+    env.update({
+        "ENVIRONMENT": "staging", "POS_ADAPTER": "fake",
+        "SLESH_API_TOKEN": "", "SLESH_BRAND_ID": "",
+    })
+    try:
+        # Without the flag: the script must SAY the purge did not run.
+        proc = subprocess.run(
+            [sys.executable, "-m", "app.scripts.build_staging_data", "--fast"],
+            capture_output=True, text=True, env=env, timeout=600,
+        )
+        assert proc.returncode == 0, proc.stderr[-1200:]
+        assert "purge: NOT requested (--purge-orphans absent)" in proc.stdout, (
+            f"a no-purge run must be labeled as one; stdout:\n{proc.stdout[-600:]}"
+        )
+
+        # With the flag: the verified line must name the database.
+        proc = subprocess.run(
+            [sys.executable, "-m", "app.scripts.build_staging_data",
+             "--purge-orphans", "--fast"],
+            capture_output=True, text=True, env=env, timeout=600,
+        )
+        assert proc.returncode == 0, proc.stderr[-1200:]
+        assert "verified from a new connection: 0 orphaned rows remain" in proc.stdout
+        assert "database=" in proc.stdout, (
+            "the verified line must name the database it counted against"
+        )
+    finally:
+        _arm_staging_markers(monkeypatch)
+        await wipe()
