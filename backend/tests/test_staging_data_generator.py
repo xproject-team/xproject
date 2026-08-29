@@ -525,3 +525,60 @@ async def test_wipe_removes_event_orders_and_rerun_is_consistent(monkeypatch):
             assert after == 0
     finally:
         await wipe()
+
+
+async def test_purge_run_exits_clean_and_leaves_zero_orphans_by_query(monkeypatch):
+    """Day-5 cleanup finding: the --purge-orphans run printed a removal
+    count and then CRASHED in build() — main() ran purge and build in
+    two separate asyncio.run() loops sharing one engine pool ('attached
+    to a different loop'), so the operator saw a success number from a
+    run that never rebuilt. Independently, the purge criterion was
+    tenant-orphans only, while verification (and reality) counts
+    EVENT-orphans — rows whose event is gone but whose tenant survives
+    are unreachable garbage the purge never touched.
+
+    This test trusts nothing the script prints: it runs the REAL entry
+    point with --purge-orphans in a subprocess, requires exit 0, and
+    then QUERIES the orphan counts, demanding zero of BOTH kinds."""
+    import os as _os
+    import subprocess
+    import sys
+
+    from sqlalchemy import text
+
+    from app.scripts.build_staging_data import wipe
+
+    env = dict(_os.environ)
+    env.update({
+        "ENVIRONMENT": "staging", "POS_ADAPTER": "fake",
+        "SLESH_API_TOKEN": "", "SLESH_BRAND_ID": "",
+    })
+    proc = subprocess.run(
+        [sys.executable, "-m", "app.scripts.build_staging_data",
+         "--purge-orphans", "--fast"],
+        capture_output=True, text=True, env=env, timeout=600,
+    )
+    try:
+        assert proc.returncode == 0, (
+            f"purge+build run failed (exit {proc.returncode}):\n"
+            f"{proc.stderr[-1500:]}"
+        )
+        assert "staging data built" in proc.stdout, "build must complete after purge"
+
+        async with TestSessionLocal() as s:
+            event_orphans = (await s.execute(text(
+                "SELECT count(*) FROM event_orders o "
+                "LEFT JOIN events e ON e.id = o.event_id WHERE e.id IS NULL"
+            ))).scalar_one()
+            tenant_orphans = (await s.execute(text(
+                "SELECT count(*) FROM event_orders o "
+                "LEFT JOIN tenants t ON t.id = o.tenant_id WHERE t.id IS NULL"
+            ))).scalar_one()
+        assert event_orphans == 0, (
+            f"{event_orphans} event-orphaned rows survived the purge — the "
+            "criterion-mismatch defect (tenant-orphans only)"
+        )
+        assert tenant_orphans == 0
+    finally:
+        _arm_staging_markers(monkeypatch)
+        await wipe()

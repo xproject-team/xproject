@@ -125,12 +125,18 @@ async def wipe() -> None:
 
 async def purge_orphaned_event_orders() -> int:
     """One-time cleanup for orphans left by earlier generator versions:
-    delete event_orders rows whose tenant no longer exists. Such rows are
+    delete event_orders rows whose EVENT or TENANT no longer exists.
+
+    Both criteria, deliberately: event_orders has no foreign keys in the
+    real schema, so rows can be orphaned at either level independently —
+    staging held 23,245 event-orphans whose tenant rows still existed,
+    invisible to a tenant-only criterion (Day-5 finding: the purge
+    reported a removal count while those survived). Either kind is
     unreachable garbage by definition (every read path joins through
-    tenants/events), but this still runs only behind the staging guard
-    and only via the explicit --purge-orphans flag — it is the one
-    operation that touches rows outside the generator's own tenants.
-    Returns the number of rows removed."""
+    events). Still runs only behind the staging guard and only via the
+    explicit --purge-orphans flag — it is the one operation that touches
+    rows outside the generator's own tenants. Returns the number of rows
+    the DELETE actually removed (its rowcount, committed here)."""
     assert_staging()
     from sqlalchemy import text
 
@@ -138,8 +144,9 @@ async def purge_orphaned_event_orders() -> int:
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(text(
-            "DELETE FROM event_orders eo WHERE NOT EXISTS "
-            "(SELECT 1 FROM tenants t WHERE t.id = eo.tenant_id)"
+            "DELETE FROM event_orders eo WHERE "
+            "NOT EXISTS (SELECT 1 FROM events e WHERE e.id = eo.event_id) "
+            "OR NOT EXISTS (SELECT 1 FROM tenants t WHERE t.id = eo.tenant_id)"
         ))
         await db.commit()
         return result.rowcount or 0
@@ -621,6 +628,7 @@ async def build(*, fast: bool = False) -> dict[str, Any]:
         completed = state["completed_events"]
 
     ingest_totals = await _ingest_history(alpha_id, completed)
+    generator_tenant_ids = [t.id for t in state["tenants"].values()]
 
     # History done — the LIVE event takes the tenant's only mappings
     # (minus Food Truck: its orders park, resolvable via the UI).
@@ -629,17 +637,45 @@ async def build(*, fast: bool = False) -> dict[str, Any]:
         await _set_shop_mappings(db, live_id, include_food=False)
         await db.commit()
 
-    reports = await _generate_reports(alpha_id, completed)
+    await _generate_reports(alpha_id, completed)
     forecasts = await _fit_forecasts(alpha_id)
 
+    # Summary counts are QUERIED, not claimed: every number below is
+    # what actually landed in the database, so the printed summary can
+    # never announce work that did not happen (the reported-vs-achieved
+    # pattern this codebase keeps producing — docs/job-status-semantics.md).
+    # orders/lines come from the ingester's own per-order results, which
+    # are actuals already.
+    from sqlalchemy import func
+
+    from app.modules.auth.models import Tenant, User
+    from app.modules.reports.models import Report
+
+    async with AsyncSessionLocal() as db:
+        tenants_in_db = (await db.execute(
+            select(func.count()).select_from(Tenant).where(
+                Tenant.slug.in_([slug for _n, slug in TENANTS])
+            )
+        )).scalar_one()
+        accounts_in_db = (await db.execute(
+            select(func.count()).select_from(User).where(
+                User.email.in_([email for email, _p, _r, _s in ACCOUNTS])
+            )
+        )).scalar_one()
+        reports_in_db = (await db.execute(
+            select(func.count()).select_from(Report).where(
+                Report.tenant_id.in_(generator_tenant_ids)
+            )
+        )).scalar_one()
+
     return {
-        "tenants": len(TENANTS),
-        "accounts": len(ACCOUNTS),
+        "tenants": tenants_in_db,
+        "accounts": accounts_in_db,
         "completed_events": len(completed),
         "orders_ingested": ingest_totals["orders"],
         "lines_ingested": ingest_totals["lines_ingested"],
         "lines_errors": ingest_totals["lines_errors"],
-        "reports": reports,
+        "reports": reports_in_db,
         "forecasts": forecasts,
     }
 
@@ -654,10 +690,19 @@ def main() -> None:
                         "generator versions (event_orders has no FKs in the "
                         "real schema; see wipe()'s docstring)")
     args = p.parse_args()
-    if args.purge_orphans:
-        purged = asyncio.run(purge_orphaned_event_orders())
-        print(f"purged {purged} orphaned event_orders rows")
-    summary = asyncio.run(build(fast=args.fast))
+
+    async def _main() -> dict:
+        # Purge and build MUST share one event loop: two asyncio.run()
+        # calls share the async engine's connection pool across loops,
+        # and the second crashes with "attached to a different loop" —
+        # the run printed its purge count and then died before
+        # rebuilding anything (Day-5 finding).
+        if args.purge_orphans:
+            purged = await purge_orphaned_event_orders()
+            print(f"purged {purged} orphaned event_orders rows")
+        return await build(fast=args.fast)
+
+    summary = asyncio.run(_main())
     print("staging data built:", summary)
     print("accounts (email / password / role / tenant):")
     for email, password, role, slug in ACCOUNTS:
