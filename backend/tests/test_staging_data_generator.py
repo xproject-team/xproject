@@ -467,3 +467,61 @@ async def test_live_event_ingests_end_to_end_and_history_has_no_line_errors(monk
             )
     finally:
         await wipe()
+
+
+async def test_wipe_removes_event_orders_and_rerun_is_consistent(monkeypatch):
+    """Day-5 finding: 28,178 orphaned event_orders accumulated across
+    three days of regenerates (30,201 in local dev from test runs). The
+    wipe relied on tenant-FK cascade — but event_orders is the ONE
+    tenant-scoped table whose migration (eo1) created NO foreign keys at
+    all (model/migration drift: the ORM declares CASCADE FKs the
+    database does not have). Every regenerate therefore left the
+    previous generation's orders behind, which is also what produced the
+    mixed user.id/user._id state across close-together runs.
+
+    wipe() must delete the generator tenants' event_orders explicitly,
+    and a rerun must leave exactly one generation's rows."""
+    from sqlalchemy import text
+
+    from app.modules.auth.models import Tenant
+    from app.scripts.build_staging_data import build, wipe
+
+    _arm_staging_markers(monkeypatch)
+    try:
+        await build(fast=True)
+        async with TestSessionLocal() as s:
+            gen1_tenant_ids = [str(t) for t in (await s.execute(
+                select(Tenant.id).where(Tenant.slug.in_(GENERATOR_SLUGS))
+            )).scalars()]
+            gen1_orders = (await s.execute(text(
+                "SELECT count(*) FROM event_orders WHERE tenant_id::text = ANY(:tids)"
+            ), {"tids": gen1_tenant_ids})).scalar_one()
+            assert gen1_orders > 100, "generation 1 must have ingested orders"
+
+        # Rebuild (build() wipes first). Generation 1's rows must be GONE.
+        await build(fast=True)
+        async with TestSessionLocal() as s:
+            leftover = (await s.execute(text(
+                "SELECT count(*) FROM event_orders WHERE tenant_id::text = ANY(:tids)"
+            ), {"tids": gen1_tenant_ids})).scalar_one()
+            assert leftover == 0, (
+                f"{leftover} event_orders rows from the previous generation "
+                "survived the wipe — the exact orphan-accumulation bug"
+            )
+            gen2_tenant_ids = [str(t) for t in (await s.execute(
+                select(Tenant.id).where(Tenant.slug.in_(GENERATOR_SLUGS))
+            )).scalars()]
+            gen2_orders = (await s.execute(text(
+                "SELECT count(*) FROM event_orders WHERE tenant_id::text = ANY(:tids)"
+            ), {"tids": gen2_tenant_ids})).scalar_one()
+            assert gen2_orders > 100, "generation 2 must have its own orders"
+
+        # And a bare wipe leaves zero generator-owned orders behind.
+        await wipe()
+        async with TestSessionLocal() as s:
+            after = (await s.execute(text(
+                "SELECT count(*) FROM event_orders WHERE tenant_id::text = ANY(:tids)"
+            ), {"tids": gen2_tenant_ids})).scalar_one()
+            assert after == 0
+    finally:
+        await wipe()

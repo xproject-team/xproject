@@ -97,17 +97,52 @@ def assert_staging() -> None:
 
 
 async def wipe() -> None:
-    """Delete the generator's two tenants (and, via FK cascade, every row
-    they own). Never touches any other tenant. Guarded like build()."""
+    """Delete the generator's two tenants and every row they own.
+
+    event_orders is deleted EXPLICITLY, first: it is the one
+    tenant-scoped table whose migration (eo1) created no foreign keys at
+    all — the ORM model declares CASCADE FKs the database does not have
+    (model/migration drift, Day-5 finding) — so relying on tenant-FK
+    cascade left every prior generation's orders orphaned (28,178
+    accumulated on staging over three days of regenerates). Every other
+    generator-owned table cascades from the tenant delete (verified
+    against information_schema on the real schema).
+
+    Never touches any other tenant. Guarded like build().
+    """
     assert_staging()
     from app.core.database import AsyncSessionLocal
     from app.modules.auth.models import Tenant
+    from app.modules.events.models import EventOrder
+
+    slugs = [slug for _n, slug in TENANTS]
+    async with AsyncSessionLocal() as db:
+        tenant_ids = select(Tenant.id).where(Tenant.slug.in_(slugs)).scalar_subquery()
+        await db.execute(delete(EventOrder).where(EventOrder.tenant_id.in_(tenant_ids)))
+        await db.execute(delete(Tenant).where(Tenant.slug.in_(slugs)))
+        await db.commit()
+
+
+async def purge_orphaned_event_orders() -> int:
+    """One-time cleanup for orphans left by earlier generator versions:
+    delete event_orders rows whose tenant no longer exists. Such rows are
+    unreachable garbage by definition (every read path joins through
+    tenants/events), but this still runs only behind the staging guard
+    and only via the explicit --purge-orphans flag — it is the one
+    operation that touches rows outside the generator's own tenants.
+    Returns the number of rows removed."""
+    assert_staging()
+    from sqlalchemy import text
+
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as db:
-        await db.execute(
-            delete(Tenant).where(Tenant.slug.in_([slug for _n, slug in TENANTS]))
-        )
+        result = await db.execute(text(
+            "DELETE FROM event_orders eo WHERE NOT EXISTS "
+            "(SELECT 1 FROM tenants t WHERE t.id = eo.tenant_id)"
+        ))
         await db.commit()
+        return result.rowcount or 0
 
 
 # ─── Builders ────────────────────────────────────────────────────────────────
@@ -613,7 +648,15 @@ def main() -> None:
     p = argparse.ArgumentParser(prog="build_staging_data")
     p.add_argument("--fast", action="store_true",
                    help="short ingestion windows (used by the test suite)")
+    p.add_argument("--purge-orphans", action="store_true",
+                   help="also delete event_orders rows whose tenant no longer "
+                        "exists — one-time cleanup for orphans left by earlier "
+                        "generator versions (event_orders has no FKs in the "
+                        "real schema; see wipe()'s docstring)")
     args = p.parse_args()
+    if args.purge_orphans:
+        purged = asyncio.run(purge_orphaned_event_orders())
+        print(f"purged {purged} orphaned event_orders rows")
     summary = asyncio.run(build(fast=args.fast))
     print("staging data built:", summary)
     print("accounts (email / password / role / tenant):")
