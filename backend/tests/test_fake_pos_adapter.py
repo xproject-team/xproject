@@ -196,9 +196,14 @@ async def test_identity_fields_and_idempotency_inputs():
         (ln.id, ln.status, ln.gross_amount) for o in second for ln in o.cart
     ]
 
-    with_user = [o for o in first if o.user is not None and not isinstance(o.user, str)]
-    assert len(with_user) > len(first) * 0.5
-    assert any(o.user.id for o in with_user)
+    # user arrives as a BARE string id — the provider's unpopulated wire
+    # shape (no populatedField param on the real adapter's list_orders),
+    # which is what makes the ingester store it as {'_id': ...} in
+    # raw_extras. A populated object here would be dumped by field name
+    # ('id') and silently break the customer-features builder.
+    with_user = [o for o in first if o.user is not None]
+    assert len(with_user) > len(first) * 0.4
+    assert all(isinstance(o.user, str) and o.user for o in with_user)
 
     # Overlapping windows re-serve identical orders — the 60s poll
     # overlap replays through the real idempotency path.
@@ -301,3 +306,96 @@ async def test_orders_flow_through_the_real_ingestion_pipeline():
                 assert parked and parked[0].slesh_shop_id == GHOST_SHOP_ID
         finally:
             await delete_tenant_cascade(session, tenant.id)
+
+
+async def test_ingested_identity_satisfies_the_feature_builders_expression():
+    """Regression for the Day-5 staging close: 8,084 orders processed,
+    ZERO sessions created. The fake emitted user/operator as POPULATED
+    objects; the ingester's _as_extras_blob dumps parsed models by FIELD
+    NAME ('id'), while the provider actually sends bare Mongo id strings
+    — the string branch — which land as {'_id': ...}. The feature
+    builder consumes raw_extras->'user'->>'_id' (verified against
+    production 22 Aug). This test asserts the CONSUMER'S OWN EXPRESSION
+    over rows the REAL ingester stored, then runs the real build_event
+    and demands sessions and purchases actually materialize."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import text
+
+    from app.modules.events.models import EventStatus
+    from app.modules.pos.order_ingester import _LookupCache, ingest_order
+    from app.modules.products.models import ProductType
+    from app.modules.stock_transactions.service import StockTransactionService
+    from app.scripts.build_customer_features import build_event
+    from tests.fixtures.alerts.factories import (
+        delete_tenant_cascade, make_bar, make_event, make_product, make_tenant,
+    )
+    from tests.fixtures.alerts.session import TestSessionLocal
+
+    window_start = datetime(2026, 9, 5, 18, 0, tzinfo=LOCAL_TZ)
+
+    async with TestSessionLocal() as session:
+        tenant = await make_tenant(session)
+        tenant_id = tenant.id
+        try:
+            event = await make_event(session, tenant_id, status=EventStatus.COMPLETED)
+            event_id = event.id
+            async with FakePOSAdapter() as adapter:
+                shops = await adapter.list_shops()
+                products = await adapter.list_products()
+                for shop in shops:
+                    bar = await make_bar(session, tenant_id, event_id)
+                    bar.slesh_negozio_id = shop.id
+                for p in products:
+                    row = await make_product(
+                        session, tenant_id, name=p.name["it"],
+                        product_type=(
+                            ProductType.FOOD if p.name["it"] in ("Panino", "Arancina")
+                            else ProductType.DRINK
+                        ),
+                    )
+                    row.external_pos_id = p.id
+                await session.flush()
+
+                service = StockTransactionService(session)
+                cache = _LookupCache()
+                async for order in adapter.list_orders(
+                    window_start, window_start + timedelta(minutes=10),
+                    order_type=None,
+                ):
+                    await ingest_order(
+                        db=session, order=order, event_id=event_id,
+                        tenant_id=tenant_id, service=service, cache=cache,
+                    )
+            await session.commit()
+
+            # THE consumer's expression, verbatim — not a shape we assert
+            # is correct, the exact SQL build_customer_features runs.
+            identified = (await session.execute(text("""
+                SELECT count(*) FROM event_orders
+                WHERE tenant_id = :tid AND event_id = :eid
+                  AND confirmed_line_count > 0
+                  AND raw_extras->'user'->>'_id' IS NOT NULL
+            """), {"tid": str(tenant_id), "eid": str(event_id)})).scalar_one()
+            total = (await session.execute(text("""
+                SELECT count(*) FROM event_orders
+                WHERE tenant_id = :tid AND event_id = :eid
+                  AND confirmed_line_count > 0
+            """), {"tid": str(tenant_id), "eid": str(event_id)})).scalar_one()
+            assert total > 20
+            assert identified > total * 0.5, (
+                f"only {identified}/{total} orders satisfy "
+                "raw_extras->'user'->>'_id' — the identity key the feature "
+                "builder reads is not what the ingester stored"
+            )
+
+            # And the real consumer must actually build from it.
+            report = await build_event(tenant_id=tenant_id, event_id=event_id)
+            assert report.sessions_created > 0, (
+                "populate_customer_features' core created zero sessions "
+                "from ingested fake orders — the Day-5 silent failure"
+            )
+            assert report.purchases_created > 0
+            assert report.distinct_customers == report.sessions_created
+        finally:
+            await delete_tenant_cascade(session, tenant_id)

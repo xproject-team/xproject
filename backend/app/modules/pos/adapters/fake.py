@@ -209,14 +209,20 @@ def _make_order_raw(minute_start_ms: int, index: int, rng: random.Random) -> dic
         customer_n = rng.randrange(_CUSTOMER_POOL)
         band = _hex24("band", customer_n)
         raw["payment"] = {"_type": "token", "_paymentToken": band}
+        # user/operator are BARE MONGO ID STRINGS, not populated objects:
+        # the real adapter's list_orders sends no populatedField param,
+        # so that is what the provider returns on the path production
+        # runs — and it is load-bearing. The ingester's _as_extras_blob
+        # wraps a string as {'_id': value} but dumps a populated model
+        # BY FIELD NAME ({'id': ...}), and the customer-features builder
+        # consumes raw_extras->'user'->>'_id' (verified on production,
+        # 22 Aug). Emitting populated objects here made staging's
+        # post-event close create 0 sessions from 8,084 orders.
         if rng.random() < 0.80:
-            user: dict = {"_id": _hex24("cust", customer_n), "_type": "user", "tag": band}
+            raw["user"] = _hex24("cust", customer_n)
             if rng.random() < 0.60:
-                email = f"guest{customer_n}@staging.local"
-                user["info"] = {"email": email}
-                raw["_customerEmail"] = email
-            raw["user"] = user
-        raw["operator"] = {"_id": _hex24("operator", shop_id), "_type": "operator"}
+                raw["_customerEmail"] = f"guest{customer_n}@staging.example"
+        raw["operator"] = _hex24("operator", shop_id)
 
     return raw
 
