@@ -110,6 +110,7 @@ async def _enqueue_nowcast_retrain(tenant_id: UUID) -> None:
     completion is a low-frequency admin action, not a hot path, so the
     extra connection-setup latency is an acceptable, isolated cost.
     """
+    outcome = {"job": "retrain_predictor", "enqueued": False}
     try:
         from arq.connections import RedisSettings, create_pool
 
@@ -117,17 +118,23 @@ async def _enqueue_nowcast_retrain(tenant_id: UUID) -> None:
 
         redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         try:
-            await redis.enqueue_job(
+            job = await redis.enqueue_job(
                 "retrain_predictor",
                 str(tenant_id),
                 _job_id=f"nowcast-retrain:{tenant_id}",
             )
         finally:
             await redis.close()
+        if job is None:
+            outcome["reason"] = "deduplicated — identical job already queued or recent"
+        else:
+            outcome["enqueued"] = True
     except Exception as e:  # noqa: BLE001
+        outcome["reason"] = f"{type(e).__name__}: {e}"
         logger.warning(
             "Failed to enqueue nowcast retrain for tenant=%s: %s", tenant_id, e,
         )
+    return outcome
 
 
 async def _enqueue_demand_retrain(tenant_id: UUID, event_id: UUID) -> None:
@@ -138,6 +145,7 @@ async def _enqueue_demand_retrain(tenant_id: UUID, event_id: UUID) -> None:
     a second, independent enqueue for a different model, not a
     replacement for the nowcast one.
     """
+    outcome = {"job": "retrain_demand_predictor", "enqueued": False}
     try:
         from arq.connections import RedisSettings, create_pool
 
@@ -145,17 +153,23 @@ async def _enqueue_demand_retrain(tenant_id: UUID, event_id: UUID) -> None:
 
         redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         try:
-            await redis.enqueue_job(
+            job = await redis.enqueue_job(
                 "retrain_demand_predictor",
                 str(tenant_id), str(event_id),
                 _job_id=f"demand-retrain:{tenant_id}",
             )
         finally:
             await redis.close()
+        if job is None:
+            outcome["reason"] = "deduplicated — identical job already queued or recent"
+        else:
+            outcome["enqueued"] = True
     except Exception as e:  # noqa: BLE001
+        outcome["reason"] = f"{type(e).__name__}: {e}"
         logger.warning(
             "Failed to enqueue demand retrain for tenant=%s: %s", tenant_id, e,
         )
+    return outcome
 
 
 async def _enqueue_customer_features_population(tenant_id: UUID, event_id: UUID) -> None:
@@ -177,6 +191,7 @@ async def _enqueue_customer_features_population(tenant_id: UUID, event_id: UUID)
     gracefully and generates anyway past a hard cutoff if this is ever
     slow or fails, so a failure here is never fatal to reporting.
     """
+    outcome = {"job": "populate_customer_features", "enqueued": False}
     try:
         from arq.connections import RedisSettings, create_pool
 
@@ -184,18 +199,24 @@ async def _enqueue_customer_features_population(tenant_id: UUID, event_id: UUID)
 
         redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
         try:
-            await redis.enqueue_job(
+            job = await redis.enqueue_job(
                 "populate_customer_features",
                 str(tenant_id), str(event_id),
                 _job_id=f"customer-features:{tenant_id}:{event_id}",
             )
         finally:
             await redis.close()
+        if job is None:
+            outcome["reason"] = "deduplicated — identical job already queued or recent"
+        else:
+            outcome["enqueued"] = True
     except Exception as e:  # noqa: BLE001
+        outcome["reason"] = f"{type(e).__name__}: {e}"
         logger.warning(
             "Failed to enqueue customer-features population for tenant=%s event=%s: %s",
             tenant_id, event_id, e,
         )
+    return outcome
 
 
 def _normalize_bar_name(name: str) -> str:
@@ -896,16 +917,33 @@ class EventService:
         # worse than no job at all. Best-effort: see
         # _enqueue_nowcast_retrain's docstring for why a Redis hiccup
         # here must never surface to this method's caller.
-        await _enqueue_nowcast_retrain(tenant_id)
+        dispatch = [await _enqueue_nowcast_retrain(tenant_id)]
         # Day 3: same trigger, second independent model (drinks demand
         # per bar/hour/category — see predictions/demand/retrain.py).
-        await _enqueue_demand_retrain(tenant_id, event_id)
+        dispatch.append(await _enqueue_demand_retrain(tenant_id, event_id))
         # Reports feature improvement: third independent consumer of this
         # trigger — populate customer_sessions/customer_purchases so the
         # post-event report's Guests/Comparison/Decomposition sections
         # have data by the time the report cron fires (see
         # reports/repository.py::list_events_needing_reports).
-        await _enqueue_customer_features_population(tenant_id, event_id)
+        dispatch.append(
+            await _enqueue_customer_features_population(tenant_id, event_id)
+        )
+        # Stage-one observability (docs/job-status-semantics.md): the
+        # three enqueues used to succeed or fail in silence. One
+        # structured line per completion now names each job's dispatch
+        # outcome. Behaviour is unchanged — failures stay non-fatal and
+        # the return contract stays the Event (router and auto-end cron
+        # both depend on it).
+        logger.info(
+            "end_event post-event dispatch: event=%s %s",
+            event_id,
+            "; ".join(
+                f"{d['job']}=enqueued" if d["enqueued"]
+                else f"{d['job']}=NOT-enqueued({d.get('reason', 'unknown')})"
+                for d in dispatch
+            ),
+        )
         return event
 
     # ─── Response building ────────────────────────────────────────────────────
