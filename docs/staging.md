@@ -91,9 +91,20 @@ python -m app.scripts.build_staging_data
   languages including the diverged-version and failed-row rehearsal
   shapes; fitted forecast models for alpha and deliberately none for
   beta.
-- **Passwords print once**, at the end of the run. Copy them then.
-- `--purge-orphans` additionally removes `event_orders` rows whose
-  tenant no longer exists (backlog left by earlier generator versions).
+- **Account passwords print at the end of the run.** (Currently fixed
+  strings committed to the repo — a recorded decision under review; see
+  the credentials discussion in the engagement log.)
+- **Orphan cleanup requires the `--purge-orphans` flag — it does not
+  run by default, by design, permanently.** The default invocation
+  touches only the generator's own two tenants; the purge is the one
+  operation that deletes rows outside them (orphans whose event or
+  tenant no longer exists, across every event/tenant-scoped table), so
+  it stays an explicit choice. A run without the flag prints
+  `purge: NOT requested (--purge-orphans absent)` so a no-purge
+  transcript can never be mistaken for a purge; a run with it prints a
+  per-table removal list and a post-commit verification line naming the
+  database it counted against (`verified from a new connection: N
+  orphaned rows remain (database=…)`), and refuses to build if N > 0.
 
 The live event is fed at any hour: full order curve 16:00–02:00 local
 (peak 18:00), a small deterministic trickle otherwise.

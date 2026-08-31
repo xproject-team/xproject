@@ -552,6 +552,14 @@ async def test_purge_run_exits_clean_and_leaves_zero_orphans_by_query(monkeypatc
     env.update({
         "ENVIRONMENT": "staging", "POS_ADAPTER": "fake",
         "SLESH_API_TOKEN": "", "SLESH_BRAND_ID": "",
+        # Staging's URL SHAPE, deliberately: Railway provides a plain
+        # postgresql:// URL and the app normalizes it via
+        # database._to_async_url. A test inheriting the local
+        # +asyncpg-prefixed URL exercised the code in a configuration
+        # staging never has — the purge crashed on its first line there
+        # (ModuleNotFoundError: psycopg2) while this suite stayed green.
+        "DATABASE_URL": settings.database_url.replace(
+            "postgresql+asyncpg://", "postgresql://"),
     })
     proc = subprocess.run(
         [sys.executable, "-m", "app.scripts.build_staging_data",
@@ -612,6 +620,14 @@ async def test_purge_verifies_itself_from_a_new_connection(monkeypatch):
     env.update({
         "ENVIRONMENT": "staging", "POS_ADAPTER": "fake",
         "SLESH_API_TOKEN": "", "SLESH_BRAND_ID": "",
+        # Staging's URL SHAPE, deliberately: Railway provides a plain
+        # postgresql:// URL and the app normalizes it via
+        # database._to_async_url. A test inheriting the local
+        # +asyncpg-prefixed URL exercised the code in a configuration
+        # staging never has — the purge crashed on its first line there
+        # (ModuleNotFoundError: psycopg2) while this suite stayed green.
+        "DATABASE_URL": settings.database_url.replace(
+            "postgresql+asyncpg://", "postgresql://"),
     })
     proc = subprocess.run(
         [sys.executable, "-m", "app.scripts.build_staging_data",

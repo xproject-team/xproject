@@ -156,7 +156,7 @@ async def purge_orphans() -> dict[str, int]:
     from sqlalchemy.pool import NullPool
 
     from app.core.config import settings as _settings
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal, _to_async_url
 
     discover_sql = text("""
         SELECT c.table_name,
@@ -201,7 +201,15 @@ async def purge_orphans() -> dict[str, int]:
     # Verification: a brand-new engine, NullPool, disposed after — a
     # connection that cannot be inside, or confused with, the deleting
     # session's transaction.
-    verify_engine = create_async_engine(_settings.database_url, poolclass=NullPool)
+    # _to_async_url is the codebase's canonical URL normalizer (also used
+    # by alembic/env.py): Railway hands out plain postgresql:// URLs, and
+    # building an engine from the RAW setting resolves the sync psycopg2
+    # driver, which is not installed — the purge crashed on this exact
+    # line in staging while local runs (whose URL already carries
+    # +asyncpg) sailed through.
+    verify_engine = create_async_engine(
+        _to_async_url(_settings.database_url), poolclass=NullPool,
+    )
     try:
         async with verify_engine.connect() as conn:
             db_identity = (await conn.execute(text(
