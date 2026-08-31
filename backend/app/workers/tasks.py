@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -139,7 +139,16 @@ async def run_predictions(ctx: dict, event_id: str) -> dict:
 
     Stub: real implementation ships with the predictions module.
     """
-    return {"event_id": event_id, "status": "ok", "predictions_generated": 0}
+    # Stage-one observability: this has always been a stub returning a
+    # fixed ok — say so in the payload rather than letting the zero look
+    # like a measured outcome (docs/job-status-semantics.md).
+    return {
+        "event_id": event_id,
+        "status": "ok",
+        "predictions_generated": 0,
+        "stub": True,
+        "note": "not implemented — fixed response; no prediction work was performed",
+    }
 
 
 # ─── Nowcast auto-retrain (Phase F) ────────────────────────────────────────────
@@ -256,11 +265,38 @@ async def populate_customer_features(ctx: dict, tenant_id: str, event_id: str) -
 
     try:
         report = await build_event(tenant_id=tenant_uuid, event_id=event_uuid)
+        # Stage-one observability: the facts a human needs to judge
+        # whether this run did anything — what the event held
+        # (confirmed orders), what carried an identity (the exact
+        # expression the builder consumes), and what came out. Queried,
+        # not claimed. No verdict here: stage two decides what counts
+        # as failure after these numbers have been watched.
+        from sqlalchemy import text as _text
+
+        from app.modules.events.models import EventOrder as _EventOrder
+
+        async with async_session_factory() as facts_session:
+            confirmed_orders = (await facts_session.execute(
+                select(func.count()).select_from(_EventOrder).where(
+                    _EventOrder.tenant_id == tenant_uuid,
+                    _EventOrder.event_id == event_uuid,
+                    _EventOrder.confirmed_line_count > 0,
+                )
+            )).scalar_one()
+            identified_orders = (await facts_session.execute(_text(
+                "SELECT count(*) FROM event_orders "
+                "WHERE tenant_id = :tid AND event_id = :eid "
+                "  AND confirmed_line_count > 0 "
+                "  AND raw_extras->'user'->>'_id' IS NOT NULL"
+            ), {"tid": str(tenant_uuid), "eid": str(event_uuid)})).scalar_one()
         return {
             "status": "ok" if report.sanity_passed else "error",
             "sessions_created": report.sessions_created,
             "purchases_created": report.purchases_created,
             "distinct_customers": report.distinct_customers,
+            "confirmed_orders_seen": int(confirmed_orders),
+            "identified_orders_seen": int(identified_orders),
+            "zero_line_orders": report.zero_line_orders,
         }
     except Exception as e:  # noqa: BLE001
         logger.exception(
@@ -405,10 +441,28 @@ async def generate_report(ctx: dict, event_id: str) -> dict:
                 tenant_id=event_row,
                 event_id=event_uuid,
             )
+            # Stage-one observability: generate_for_event_batch swallows
+            # per-language failures, so reports_generated alone cannot
+            # distinguish "both generated" from "both failed". Report
+            # per-language DB truth — the latest report row's status per
+            # language, queried after the fact (query, don't claim).
+            from app.modules.reports.models import Report as _Report
+
+            lang_rows = (await session.execute(
+                select(_Report.language, _Report.version, _Report.status)
+                .where(_Report.event_id == event_uuid)
+                .order_by(_Report.language, _Report.version)
+            )).all()
+            languages: dict[str, str] = {}
+            for lang, _version, report_status in lang_rows:
+                languages[str(lang)] = str(report_status)  # last = latest version
+            for expected in ("it", "en"):
+                languages.setdefault(expected, "missing")
             return {
                 "status": "ok",
                 "event_id": event_id,
                 "reports_generated": len(reports),
+                "languages": languages,
             }
         except Exception as e:  # noqa: BLE001
             logger.exception(
@@ -609,6 +663,25 @@ async def poll_slesh_for_event(
             tenant_id=UUID(tenant_id),
             event_id=UUID(event_id),
         )
+        # Stage-one observability: the counters alone cannot tell a
+        # healthy quiet minute from a cycle that saw work and dropped
+        # all of it. Add the window actually polled and a skip-reason
+        # histogram — the inputs to a verdict, not a verdict; 'ok'
+        # still means what it meant (transport completed).
+        skip_reasons: dict[str, int] = {}
+        for order_result in result.per_order_results:
+            for reason in getattr(order_result, "skip_reasons", []):
+                if "parked" in reason:
+                    key = "parked_unmapped_shop"
+                elif "no product matched" in reason:
+                    key = "no_product_match"
+                elif "refunded" in reason:
+                    key = "refunded_line"
+                elif "no shop reference" in reason:
+                    key = "no_shop_reference"
+                else:
+                    key = "other"
+                skip_reasons[key] = skip_reasons.get(key, 0) + 1
         return {
             "status":           result.status,
             "orders_seen":      result.orders_seen,
@@ -618,6 +691,11 @@ async def poll_slesh_for_event(
             "lines_skipped":    result.lines_skipped,
             "lines_errors":     result.lines_errors,
             "error_msg":        result.error_msg or "",
+            "window_since":     (result.window.since_ts.isoformat()
+                                 if result.window else None),
+            "window_until":     (result.window.until_ts.isoformat()
+                                 if result.window else None),
+            "lines_skipped_reasons": skip_reasons,
         }
     except Exception as e:  # noqa: BLE001 — arq must never see a raise
         logger.exception(
