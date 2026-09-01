@@ -5,6 +5,7 @@
 import { useRef } from 'react'
 
 import {
+  ATTACHMENTS_ENABLED,
   formatBytes,
   isImageType,
   type AttachmentPreview,
@@ -78,13 +79,28 @@ export function AttachmentPicker({
         <p className="text-xs text-[var(--v-pink)] px-1">⚠ {error}</p>
       )}
 
-      {/* Paperclip button */}
+      {/* Paperclip button. With attachments disabled (no object storage
+          — see useAttachments' gate) the button stays CLICKABLE: the
+          click routes through onPick → upload(), whose gate sets the
+          honest unavailable message rendered in the error slot above.
+          A disabled button would be a silent no-op; this one answers. */}
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
+        onClick={() => {
+          if (ATTACHMENTS_ENABLED) inputRef.current?.click()
+          else onPick(new File([], 'unavailable'))
+        }}
         disabled={uploading}
-        title="Attach file (max 25MB)"
-        className="self-start p-2 text-[var(--v-text-dim)] hover:text-[var(--v-cyan)] disabled:opacity-40 transition-colors"
+        title={
+          ATTACHMENTS_ENABLED
+            ? 'Attach file (max 25MB)'
+            : 'Attachments are unavailable.'
+        }
+        className={
+          ATTACHMENTS_ENABLED
+            ? 'self-start p-2 text-[var(--v-text-dim)] hover:text-[var(--v-cyan)] disabled:opacity-40 transition-colors'
+            : 'self-start p-2 text-[var(--v-text-dim)] opacity-40 transition-colors'
+        }
       >
         {uploading ? (
           <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

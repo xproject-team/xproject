@@ -28,6 +28,33 @@ interface PresignResponse {
 }
 
 
+/**
+ * Attachments are DISABLED until object storage exists.
+ *
+ * No environment configures S3_* variables, so presigned URLs point at
+ * a default endpoint nothing serves: every upload failed at the browser
+ * PUT — after the presign had already written an orphaned
+ * chat_attachments row. Chat receives no further investment (client
+ * ruling), so the control is disabled visibly instead: the gate blocks
+ * BEFORE any network call, with a message the user actually sees.
+ * Revival: configure object storage (see docs/post-sundance-backlog.md)
+ * and flip this flag.
+ */
+export const ATTACHMENTS_ENABLED = false
+
+// Wording approved 2026-09-01 for a non-technical audience: state the
+// fact plainly, no jargon, nothing that sounds broken. (UI is
+// English-only today; the Italian variant 'Gli allegati non sono
+// disponibili.' is recorded for whenever localization exists.)
+export const ATTACHMENTS_DISABLED_MESSAGE = 'Attachments are unavailable.'
+
+/** The pre-flight gate `upload()` consults FIRST. Returns the honest,
+ *  user-readable reason uploads are blocked, or null when allowed. */
+export function attachmentUploadBlockedReason(): string | null {
+  return ATTACHMENTS_ENABLED ? null : ATTACHMENTS_DISABLED_MESSAGE
+}
+
+
 /** Use inside a component that needs to upload files attached to a message. */
 export function useAttachmentUpload(channelId: string) {
   const [pending,   setPending]   = useState<AttachmentPreview[]>([])
@@ -36,6 +63,13 @@ export function useAttachmentUpload(channelId: string) {
 
   /** Upload a file: presign → PUT → return preview to track. */
   async function upload(file: File): Promise<AttachmentPreview | null> {
+    // Gate before ANY network call: no presign request, so no orphaned
+    // attachment row — and an honest message instead of a dead control.
+    const blocked = attachmentUploadBlockedReason()
+    if (blocked) {
+      setError(blocked)
+      return null
+    }
     setError(null)
     setUploading(true)
     try {

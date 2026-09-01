@@ -141,3 +141,40 @@ staff member.
 - Other venues using XProject get the same self-serve flow
 
 **Do NOT implement before Sundance 2026-06-19.** This is post-event work.
+
+---
+
+## Chat attachment storage — disabled 2026-09-01, revival checklist
+
+No environment has ever configured object storage (no `S3_*` variables
+anywhere; `core/storage.py` defaults to `localhost:9000`, which nothing
+serves). Every attachment upload failed at the browser PUT — after the
+presign had already written an orphaned `chat_attachments` row. With
+chat receiving no further investment (client ruling), the attachment
+control was disabled VISIBLY: the upload gate in
+`frontend/src/features/chat/useAttachments.ts` blocks before any network
+call and shows "Attachments are unavailable." (wording approved for a
+non-technical audience; the UI is English-only today — the Italian
+variant "Gli allegati non sono disponibili." is recorded for whenever
+localization exists). The backend endpoints are intact.
+
+**Status of `core/storage.py`** (recorded so the module's situation is
+known; deliberately not deleted): after this change **no user-reachable
+flow can write to object storage**. It is not literally unreferenced —
+three callers remain: the intact-but-unreachable chat attachment
+endpoints; the best-effort object delete on message deletion (a no-op —
+no objects have ever existed); and `/api/v1/health/deep`'s `minio`
+probe, which still calls `list_buckets()` and therefore reports a
+permanently red `minio: error` component in every environment. That red
+component trains operators to ignore red and should be switched to a
+`not_configured` state whenever someone next touches `main.py`.
+
+**Revival checklist** (if chat is ever re-invested):
+1. Provision a bucket (Railway MinIO template + volume, or S3) for each
+   environment; set the six `S3_*` variables (all read via raw
+   `os.getenv` in `core/storage.py` — not via Settings).
+2. Flip `ATTACHMENTS_ENABLED` in `useAttachments.ts` (its test pins the
+   disabled state and will fail, deliberately, until updated).
+3. Clean up orphaned `chat_attachments` rows from historical failed
+   attempts.
+4. Restore the deep-health `minio` probe to a meaningful check.

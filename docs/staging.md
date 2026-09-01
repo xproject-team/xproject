@@ -177,8 +177,11 @@ about.
   production migration adds the FKs (production needs an orphan audit
   first). Until then, anything else that deletes events or tenants
   outside the generator will orphan orders silently.
-- **Chat attachments are broken** exactly as in production (no S3
-  configured anywhere); a faithful limitation, not a staging defect.
+- **Chat attachments are disabled** (2026-09-01), visibly: the picker
+  shows "Attachments are unavailable." No environment has object
+  storage; the backend
+  endpoints remain intact. Revival checklist:
+  docs/post-sundance-backlog.md.
 - **Historical events' reports show Guests as unavailable** — the
   generator does not build customer features for pre-completed events;
   only a real `end_event()` close does. This is a faithful

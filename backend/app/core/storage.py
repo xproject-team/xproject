@@ -1,5 +1,14 @@
 """S3-compatible object storage client (MinIO in dev, S3 in prod).
 
+STATUS (2026-09-01): no environment configures S3_* variables, so this
+module has never had working storage behind it. Chat attachments — its
+only write path — are disabled in the UI (see useAttachments.ts's gate
+and docs/post-sundance-backlog.md's revival checklist). Remaining live
+callers: the intact-but-unreachable chat endpoints, the best-effort
+delete on message deletion (no-op — no objects exist), and
+/health/deep's minio probe (permanently red where unconfigured). Kept,
+not deleted, per the recorded backlog decision.
+
 Wraps boto3 with project-specific defaults:
 - Bucket name from settings (default: xproject-attachments)
 - Endpoint URL (MinIO local OR AWS in prod)
