@@ -27,6 +27,8 @@ Spec: docs/slesh-integration-roadmap.md §B7
 """
 from __future__ import annotations
 
+import app.models_registry  # noqa: F401 — complete the FK graph for standalone runs
+
 import argparse
 import asyncio
 import logging

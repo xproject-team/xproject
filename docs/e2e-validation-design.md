@@ -105,6 +105,11 @@ Slesh shop:
 
 ### S5 — Simulator (~1 day)
 
+> **Superseded (2026-09-01):** `app/scripts/simulate_event.py` was
+> removed. Event rehearsal now runs on the staging environment's fake
+> POS adapter and data generator — see docs/staging.md. The design
+> below is kept as the historical record of the S5 plan.
+
 Python CLI that replays a 2025 event into XProject:
 
   python -m app.scripts.simulate_event \\

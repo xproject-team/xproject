@@ -33,6 +33,8 @@ one-off scripts automatically):
 """
 from __future__ import annotations
 
+import app.models_registry  # noqa: F401 — complete the FK graph for standalone runs
+
 import asyncio
 import sys
 from pathlib import Path

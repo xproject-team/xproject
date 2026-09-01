@@ -102,6 +102,8 @@ Spec: identity audit follow-up (customer_email / payment_token task).
 """
 from __future__ import annotations
 
+import app.models_registry  # noqa: F401 — complete the FK graph for standalone runs
+
 import argparse
 import asyncio
 import logging
