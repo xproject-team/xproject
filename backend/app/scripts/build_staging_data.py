@@ -439,7 +439,17 @@ async def _build_structure(db, *, fast: bool) -> dict[str, Any]:
             db, alpha.id, venues[alpha.id].id,
             name=f"Alpha Notte {i}", status=EventStatus.COMPLETED,
             scheduled_at=start, scheduled_end_at=end,
-            started_at=start, ended_at=end,
+            # ended_at deliberately DEFERRED: the report cron's
+            # eligibility requires ended_at IS NOT NULL, and these
+            # backdated events blow through its 30-minute force-cutoff
+            # on the first tick — with ended_at set at creation, the
+            # cron generated legitimate READY €0 reports for events
+            # whose orders had not been ingested yet, and the
+            # generator's own report step then skipped them (a version
+            # existed), freezing the zeros into the season view (the
+            # 2 Sep defect). _generate_reports publishes ended_at
+            # atomically with each event's first report.
+            started_at=start, ended_at=None,
         )
         e.bars = await _create_bars(db, alpha.id, e.id)  # type: ignore[attr-defined]
         completed.append(e)
@@ -638,8 +648,19 @@ async def _generate_reports(tenant_id: UUID, completed_events) -> int:
     rehearsal shapes: DIVERGED language versions on event 2 (IT v1 with
     EN regenerated to v2; the asymmetry that surfaces the 22-Aug
     sibling-collision defect), and a FAILED regeneration row on event 3
-    (ready v1 untouched + failed v2, the post-C5 shape)."""
+    (ready v1 untouched + failed v2, the post-C5 shape).
+
+    Also publishes each event's ended_at — deferred at creation to keep
+    the event invisible to the worker's report cron during ingestion —
+    ATOMICALLY with the event's first report: the ended_at update is
+    flushed (not committed) into the same session the ReportService
+    commits its first report row from, so no commit boundary ever
+    exposes a report-less completed event for the cron to grab (the
+    2 Sep race, closed structurally rather than by timing)."""
+    from sqlalchemy import update as sa_update
+
     from app.core.database import AsyncSessionLocal
+    from app.modules.events.models import Event as _Event
     from app.modules.reports.models import Report
     from app.modules.reports.service import ReportService
 
@@ -647,6 +668,12 @@ async def _generate_reports(tenant_id: UUID, completed_events) -> int:
     async with AsyncSessionLocal() as db:
         service = ReportService(db)
         for event in completed_events:
+            await db.execute(
+                sa_update(_Event)
+                .where(_Event.id == event.id)
+                .values(ended_at=event.scheduled_end_at)
+            )
+            await db.flush()  # visible to the service's aggregation; committed with report #1
             results = await service.generate_for_event_batch(tenant_id, event.id)
             count += len(results)
 

@@ -710,3 +710,85 @@ async def test_purge_output_is_unambiguous_about_flag_and_database(monkeypatch):
     finally:
         _arm_staging_markers(monkeypatch)
         await wipe()
+
+
+async def test_history_events_invisible_to_report_cron_until_reports_exist(monkeypatch):
+    """The 2 Sep season-view corruption: the generator committed
+    backdated COMPLETED events and then spent minutes ingesting — while
+    the staging worker's report cron, whose 30-minute force-cutoff those
+    ended_at values blow through instantly, generated legitimate READY
+    €0 reports for events whose orders did not exist yet. The
+    generator's own report step then skipped them (a version already
+    existed), freezing the zeros.
+
+    Fix under test: history events are created WITHOUT ended_at (the
+    cron's eligibility requires ended_at IS NOT NULL), and ended_at is
+    published atomically with each event's first report — so at no
+    commit boundary does the cron ever see a report-less completed
+    event. This test builds the structural phase alone and asserts the
+    cron-invisibility invariant, then a full build and asserts the
+    end state is whole (ended_at set, reports present, totals real)."""
+    from sqlalchemy import text
+
+    from app.modules.auth.models import Tenant
+    from app.modules.events.models import Event, EventStatus
+    from app.modules.reports.repository import ReportRepository
+    from app.scripts.build_staging_data import _build_structure, build, wipe
+
+    _arm_staging_markers(monkeypatch)
+    try:
+        # ── Phase view: structure only, no ingestion, no reports ──
+        async with TestSessionLocal() as s:
+            state = await _build_structure(s, fast=True)
+            completed_ids = {e.id for e in state["completed_events"]}
+            assert completed_ids, "structural phase must create history events"
+            for e in state["completed_events"]:
+                assert e.status == EventStatus.COMPLETED
+                assert e.ended_at is None, (
+                    "history events must be cron-invisible during ingestion: "
+                    "ended_at set at creation is what let the report cron "
+                    "freeze premature €0 reports"
+                )
+            due = await ReportRepository(s).list_events_needing_reports()
+            overlap = completed_ids & {e.id for e in due}
+            assert not overlap, (
+                f"report cron would pick up {len(overlap)} generator events "
+                "before their orders exist"
+            )
+            await s.rollback()
+
+        # ── Full build: the end state is whole ──
+        await build(fast=True)
+        async with TestSessionLocal() as s:
+            alpha = (await s.execute(
+                select(Tenant).where(Tenant.slug == "staging-alpha")
+            )).scalar_one()
+            events = (await s.execute(
+                select(Event).where(
+                    Event.tenant_id == alpha.id,
+                    Event.status == EventStatus.COMPLETED,
+                )
+            )).scalars().all()
+            assert len(events) >= 3
+            assert all(e.ended_at is not None for e in events)
+            # Every completed event's latest ready IT report carries its
+            # REAL revenue — query-not-claim, per event.
+            for e in events:
+                row = (await s.execute(text("""
+                    SELECT
+                      (SELECT COALESCE(SUM(fiscal_gross_cents), 0) FROM event_orders o
+                        WHERE o.event_id = :eid AND o.confirmed_line_count > 0),
+                      (SELECT ROUND((r.data_json->'revenue_kpis'->>'total_revenue')::numeric * 100)
+                        FROM reports r
+                        WHERE r.event_id = :eid AND r.language = 'it' AND r.status = 'ready'
+                        ORDER BY r.version DESC LIMIT 1)
+                """), {"eid": str(e.id)})).one()
+                orders_cents, report_cents = row
+                assert report_cents is not None, f"{e.name}: no ready IT report"
+                assert int(report_cents) == int(orders_cents), (
+                    f"{e.name}: report says {report_cents}c but orders hold "
+                    f"{orders_cents}c — the premature-zero freeze"
+                )
+                assert int(orders_cents) > 0
+    finally:
+        await wipe()

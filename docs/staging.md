@@ -109,6 +109,18 @@ python -m app.scripts.build_staging_data
 The live event is fed at any hour: full order curve 16:00–02:00 local
 (peak 18:00), a small deterministic trickle otherwise.
 
+**The awkward shapes are features — do not tidy them away.** The
+generated data deliberately includes uncomfortable asymmetries: diverged
+IT/EN report versions, a failed regeneration row, a deliberately
+unmapped bar, a ghost shop. These have earned their keep twice over:
+the diverged IT/EN versions were added to catch the 22 Aug
+sibling-collision defect, and on 2 Sep the same asymmetry exposed a
+second, unrelated defect (the season view drawing its bars from a
+different report population than its totals — invisible on uniform data,
+where the IT/EN pair agrees by coincidence). Symmetric, convenient
+rehearsal data hides exactly the bug classes staging exists to catch;
+anyone "cleaning up" these shapes is deleting tripwires.
+
 ## Verifying isolation — proof, not assurance
 
 Isolation from the POS provider is **observable in logs**, and was
