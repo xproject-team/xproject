@@ -87,3 +87,48 @@ describe('pickNextEvent', () => {
     expect(pickNextEvent([], NOW)).toBeNull()
   })
 })
+
+describe('seasonEventRevenues — the asymmetric staging shape (2 Sep defect)', () => {
+  it('version asymmetry across events: all three survive, and the bars are drawn from the SAME population the season tiles sum (latest ready IT per event)', () => {
+    // The shape that made the bug visible: e2 carries a higher-version
+    // EN row with a different total than its IT row (staging's
+    // premature-zero + diverged-EN-regeneration state). Uniform data
+    // can never catch this: with IT == EN the two populations agree by
+    // coincidence. The selector must key on (event_id, language) and
+    // follow the endpoint's convention (IT series), so sum(bars) always
+    // equals the season tile — consistent even when the data is wrong.
+    const rows = seasonEventRevenues([
+      report({ id: 'a', event_id: 'e1', event_name: 'Notte 1',
+               language: 'it', version: 1, total_revenue: '18581.00' }),
+      report({ id: 'b', event_id: 'e2', event_name: 'Notte 2',
+               event_started_at: '2026-07-05T16:00:00Z',
+               language: 'it', version: 1, total_revenue: '0.00' }),
+      report({ id: 'c', event_id: 'e2', event_name: 'Notte 2',
+               event_started_at: '2026-07-05T16:00:00Z',
+               language: 'en', version: 2, total_revenue: '18240.00' }),
+      report({ id: 'd', event_id: 'e3', event_name: 'Notte 3',
+               event_started_at: '2026-07-19T16:00:00Z',
+               language: 'it', version: 1, total_revenue: '0.00' }),
+    ] as never)
+    // All three events survive the version asymmetry…
+    expect(rows.map((r) => r.eventId)).toEqual(['e1', 'e2', 'e3'])
+    // …and every value comes from the IT series — e2 must show its IT
+    // figure, NOT the higher-version EN row, so the bars can never
+    // disagree with the endpoint's season total.
+    expect(rows.map((r) => r.revenue)).toEqual([18581, 0, 0])
+  })
+
+  it('within one language, the latest ready version still wins', () => {
+    const rows = seasonEventRevenues([
+      report({ id: 'a', event_id: 'e1', language: 'it', version: 1,
+               total_revenue: '100.00' }),
+      report({ id: 'b', event_id: 'e1', language: 'it', version: 3,
+               total_revenue: '54017.00' }),
+      report({ id: 'c', event_id: 'e1', language: 'it', version: 2,
+               total_revenue: '999.00' }),
+    ] as never)
+    expect(rows).toEqual([
+      { eventId: 'e1', name: 'Night One', date: '2026-06-14T16:00:00Z', revenue: 54017 },
+    ])
+  })
+})

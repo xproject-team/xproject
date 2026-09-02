@@ -30,26 +30,30 @@ export interface SeasonEventRevenue {
 }
 
 /**
- * One revenue row per event from the reports list: the latest READY
- * version wins (a failed regeneration must never eclipse the good
- * number — the C5 rule), one language per event (the IT/EN pair carries
- * identical totals by construction; IT preferred for determinism),
- * ordered by event date.
+ * One revenue row per event from the reports list — drawn from the SAME
+ * population the season tiles sum, so bars and tiles can never disagree.
+ *
+ * /reports/portfolio/kpis sums the latest READY IT report per event.
+ * The bars therefore key on (event_id, language), take the latest ready
+ * version WITHIN each language (a failed regeneration never eclipses
+ * the good number — the C5 rule), and render the IT series. Selecting
+ * "latest ready of any language" instead let a higher-version EN row
+ * show a different figure than the IT row the endpoint summed — the
+ * 2 Sep staging defect, invisible on uniform data where IT == EN by
+ * construction. Ordered by event date.
  */
 export function seasonEventRevenues(reports: ReportSummary[]): SeasonEventRevenue[] {
-  const byEvent = new Map<string, ReportSummary>()
+  const byEventLanguage = new Map<string, ReportSummary>()
   for (const r of reports) {
     if (r.status !== 'ready' || r.total_revenue == null) continue
-    const current = byEvent.get(r.event_id)
-    if (
-      current === undefined ||
-      r.version > current.version ||
-      (r.version === current.version && r.language === 'it' && current.language !== 'it')
-    ) {
-      byEvent.set(r.event_id, r)
+    const key = `${r.event_id}::${r.language}`
+    const current = byEventLanguage.get(key)
+    if (current === undefined || r.version > current.version) {
+      byEventLanguage.set(key, r)
     }
   }
-  return [...byEvent.values()]
+  return [...byEventLanguage.values()]
+    .filter((r) => r.language === 'it')
     .map((r) => ({
       eventId: r.event_id,
       name: r.event_name,
