@@ -24,6 +24,7 @@ import { usePermissions } from '@/features/auth/usePermissions'
 import { BarCard } from '@/features/dashboard/BarCard'
 import { EmptyBarCard } from '@/features/dashboard/EmptyBarCard'
 import { RechargeDeskCard } from '@/features/dashboard/RechargeDeskCard'
+import { SeasonIdleView } from '@/features/dashboard/SeasonIdleView'
 import { useBarAllocations } from '@/features/event_storage/hooks'
 import { useEvent } from '@/features/events/hooks'
 import { EventRevenueChart } from '@/features/dashboard/EventRevenueChart'
@@ -397,18 +398,10 @@ export default function DashboardPage() {
     )
   }
 
-  // ── No event found ──
+  // ── No event live: the season view (real data only — see
+  //    SeasonIdleView). The live-event path below is untouched. ──
   if (!eventId) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
-        <p className="text-sm max-w-md" style={{ color: 'var(--v-text-muted)' }}>
-          No Live event in progress. The dashboard shows real-time metrics
-          for the currently-active event. Start an event from the Events
-          page, or pass <code className="font-mono px-1 py-0.5 rounded" style={{ background: 'var(--v-surface-raised)', color: 'var(--v-text)' }}>?event_id=…</code> in the URL to view a specific event.
-        </p>
-        <Button variant="secondary" onClick={() => navigate('/events')}>Go to Events</Button>
-      </div>
-    )
+    return <SeasonIdleView />
   }
 
   // ── Happy path: we have an eventId, render the live dashboard ──

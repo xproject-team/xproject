@@ -307,12 +307,18 @@ export function usePortfolioKpis(
   })
 }
 
-export function useReports(filters?: {
-  status?: ReportStatus
-  language?: ReportLanguage
-  event_id?: string
-  limit?: number
-}) {
+export function useReports(
+  filters?: {
+    status?: ReportStatus
+    language?: ReportLanguage
+    event_id?: string
+    limit?: number
+  },
+  // Same additive options pattern as usePortfolioKpis — lets owner-only
+  // consumers (e.g. the idle-dashboard season view) gate the fetch on
+  // role instead of firing a guaranteed 403 for managers.
+  options?: Omit<UseQueryOptions<ReportSummary[]>, 'queryKey' | 'queryFn'>,
+) {
   return useQuery<ReportSummary[]>({
     queryKey: reportsKeys.list(filters),
     queryFn: async () => {
@@ -322,6 +328,7 @@ export function useReports(filters?: {
       return data
     },
     staleTime: 30_000,
+    ...options,
   })
 }
 
