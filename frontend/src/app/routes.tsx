@@ -8,6 +8,7 @@ import { usePermissions, type Permissions } from '@/features/auth/usePermissions
 import { getHomeRoute } from '@/lib/mockUsers'
 
 import LoginPage             from '@/pages/auth/LoginPage'
+import LandingPage           from '@/pages/landing/LandingPage'
 import DashboardPage         from '@/pages/dashboard/DashboardPage'
 import EventListPage         from '@/pages/events/EventListPage'
 import EventCreatePage       from '@/pages/events/EventCreatePage'
@@ -47,6 +48,17 @@ type BooleanPermissionFlag = {
 }[keyof Permissions]
 
 // ─── Guards ───────────────────────────────────────────────────────────────────
+
+/** "/" shows the public landing to visitors; signed-in users go to
+ *  their role home (the pre-landing behaviour, preserved). Waits for
+ *  auth hydration so a hard refresh on "/" doesn't flash the landing
+ *  at a signed-in user. */
+function LandingOrHome() {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (user) return <Navigate to={getHomeRoute(user.role ?? 'owner')} replace />
+  return <LandingPage />
+}
 
 /** Redirects unauthenticated visitors to /login. */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -118,6 +130,10 @@ export function AppRoutes() {
     >
       <Routes>
         {/* Public */}
+        {/* The landing at "/" — public evidence page. An authenticated
+            visitor keeps their muscle memory: "/" still lands them on
+            their role home, exactly as before this route existed. */}
+        <Route path="/" element={<LandingOrHome />} />
         <Route path="/login" element={<LoginPage />} />
 
         {/* Design system preview — standalone, no AppShell/auth. Day 1 of UI redesign. */}

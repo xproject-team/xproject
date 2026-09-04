@@ -306,3 +306,24 @@
   color: var(--v-text);
   text-shadow: none;
 }
+
+/* ── Display type — marketing-scale extension of the ramp ─────────────── */
+/* Added for the public landing (Day 3 of the front-door work). The ops
+   scale tops out at .v-value (24px); public surfaces need a display
+   size. Same voice as the rest of the ramp: weight 500, tight tracking,
+   plain --v-text — never glowing, never tinted (the accent discipline
+   holds at every size). */
+
+.v-display {
+  font-size: 38px;
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--v-text);
+}
+
+.v-lead {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--v-text-muted);
+}
