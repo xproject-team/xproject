@@ -48,11 +48,31 @@ export const LANDING_FACTS: LandingFact[] = [
   },
   {
     label: 'Automated tests',
-    value: 726,
+    value: 728,
     source:
-      'Backend pytest suite 690 + frontend vitest 36 as of 2026-09-04 ' +
+      'Backend pytest suite 690 + frontend vitest 38 as of 2026-09-04 ' +
       '(this commit). Verify: pytest -q and npm test locally.',
   },
+  {
+    label: 'Stock movements recorded',
+    value: 23_525,
+    source:
+      'Verified in production by the operator, 2026-09-04 (staging review ' +
+      'of the landing page). Verify: SELECT count(*) FROM stock_transactions.',
+  },
+  // ── Reserved slot — NOT rendered until its number is cleared ────────
+  // Season revenue: the CLIENT'S figure, not cleared for publication.
+  // When (and only when) cleared, add here with its verification query;
+  // the grid takes the extra tile without restructuring.
+]
+
+/**
+ * Facts that are true and governed but belong in technical documents,
+ * not on the public landing — the strip must stay legible to a
+ * non-technical reader (staging review, 4 Sep: '62 database migrations'
+ * was the one tile meaning nothing to that audience). Same rules apply.
+ */
+export const TECHNICAL_FACTS: LandingFact[] = [
   {
     label: 'Database migrations applied',
     value: 62,
@@ -60,11 +80,4 @@ export const LANDING_FACTS: LandingFact[] = [
       'alembic/versions file count, 2026-09-04. Verify: ls ' +
       'alembic/versions/*.py | wc -l (and alembic history for the chain).',
   },
-  // ── Reserved slots — NOT rendered until their numbers are real ──────
-  // Stock movements: the category is cleared but no verified count
-  // exists yet. Fill from production before adding:
-  //   SELECT count(*) FROM stock_transactions;
-  // Season revenue: the CLIENT'S figure, not cleared for publication.
-  // When (and only when) cleared, add here with its verification query;
-  // the grid takes the extra tile without restructuring.
 ]

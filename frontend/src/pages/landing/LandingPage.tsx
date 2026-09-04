@@ -27,12 +27,14 @@ import { LANDING_FACTS } from './landingFacts'
 function Section({
   label,
   children,
+  className = 'py-12',
 }: {
   label?: string
   children: React.ReactNode
+  className?: string
 }) {
   return (
-    <section className="py-14">
+    <section className={className}>
       {label && <p className="v-label mb-6">{label}</p>}
       {children}
     </section>
@@ -122,8 +124,10 @@ export default function LandingPage() {
           </Link>
         </header>
 
-        {/* ── The record, as the headline ── */}
-        <Section>
+        {/* ── The record, as the headline. Tight bottom: the proof strip
+            is the point of the page and must be visible on a laptop
+            without scrolling past emptiness (staging review, 4 Sep). ── */}
+        <Section className="pt-12 pb-6">
           <h1 className="v-display max-w-2xl">A full season in production.</h1>
           <p className="v-lead max-w-2xl mt-5">
             Vera Event is a live operations platform for event venues:
@@ -134,7 +138,7 @@ export default function LandingPage() {
         </Section>
 
         {/* ── Proof strip — real, sourced numbers only ── */}
-        <Section label="The record">
+        <Section label="The record" className="pt-4 pb-12">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             {LANDING_FACTS.map((fact) => (
               <div
