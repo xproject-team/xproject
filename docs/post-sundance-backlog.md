@@ -178,3 +178,30 @@ component trains operators to ignore red and should be switched to a
 3. Clean up orphaned `chat_attachments` rows from historical failed
    attempts.
 4. Restore the deep-health `minio` probe to a meaningful check.
+
+---
+
+## AlertBanner — proposed shared component, decision deferred (2026-09-04)
+
+Raised during the login restyle and deliberately NOT built there: a
+shared error/notice banner would be a design-system addition, and those
+are made as decisions, not as side effects of restyling one page.
+
+**The case for it:** inline error rendering is currently a per-file
+idiom — plain `--v-pink` text in the converted pages and modals
+(CopyRecipesModal, SignOutModal, ReportPage, LoginForm), each written
+by hand, with accessibility attributes (`role="alert"`,
+`aria-live`) present on some (login) and absent on others. A shared
+AlertBanner with tones (critical/warning/info) would unify the visual,
+bake the aria semantics in once, and give warnings a home (today only
+`Badge` and ad-hoc amber text exist for those).
+
+**The case against:** the plain-text idiom is genuinely quiet and has
+served every page so far; a boxed banner is a heavier visual that the
+design language may not want; and one more component is one more
+surface to keep consistent.
+
+**If adopted:** add to `design-system/components` with the standard
+token treatment, migrate the four hand-rolled sites, and keep the aria
+attributes mandatory. Until decided, new pages use the plain
+`--v-pink` text idiom.

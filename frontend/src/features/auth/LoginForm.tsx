@@ -1,32 +1,124 @@
+/**
+ * LoginForm — the three-step sign-in flow: email → role → password.
+ *
+ * Restyled 2026-09-04 to the Vera design system (the last pre-redesign
+ * surface). RULING HONORED: markup and classNames only — every handler,
+ * the login call, the lastPath restore, and the focus management are
+ * behaviourally identical to the pre-restyle version. The error mapping
+ * and back-transition were mechanically EXTRACTED into exported pure
+ * functions (identical output for every input) so the flow's behaviour
+ * is pinned by tests the node-only vitest environment can run.
+ */
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
+import { Badge, Button } from '@/design-system/components'
+import '@/design-system/components/components.css'
+import { inputCls, Label } from '@/design-system/wizardForm'
+
 import { useAuth } from './useAuth'
 import type { UserRole } from './AuthContext'
 
 
-const ROLE_LANDING: Record<UserRole, string> = {
+export const ROLE_LANDING: Record<UserRole, string> = {
   owner:   '/dashboard',
   manager: '/dashboard',
 }
 
-const ROLE_LABEL: Record<UserRole, string> = {
+export const ROLE_LABEL: Record<UserRole, string> = {
   owner:   'Owner',
   manager: 'Manager',
 }
 
-const ROLE_DESCRIPTION: Record<UserRole, string> = {
+export const ROLE_DESCRIPTION: Record<UserRole, string> = {
   owner:   'Full operational control across all bars and events',
   manager: 'Manage one bar during a live event',
 }
 
-const ROLE_COLOR: Record<UserRole, string> = {
-  owner:   '#1E5A8D',
-  manager: '#6B21A8',
+// Role identity follows the app-wide badge convention (Settings, TopBar):
+// owner = cyan/info, manager = violet.
+const ROLE_BADGE: Record<UserRole, 'info' | 'violet'> = {
+  owner:   'info',
+  manager: 'violet',
+}
+
+type Step = 'email' | 'role' | 'password'
+
+/** Backwards through the step machine; email is the floor. Extracted
+ *  from handleBack — the state clearing stays in the component. */
+export function loginStepBack(step: Step): Step {
+  if (step === 'password') return 'role'
+  if (step === 'role') return 'email'
+  return 'email'
+}
+
+/** The status→message mapping, extracted byte-identical from the old
+ *  handlePasswordSubmit catch block. Every sign-in error state. */
+export function loginErrorMessage(err: unknown): string {
+  const errResp = err as {
+    response?: { data?: { detail?: unknown }; status?: number }
+    request?: unknown
+  }
+  const status = errResp?.response?.status
+  const detail = errResp?.response?.data?.detail
+
+  let message = 'Sign in failed. Please try again.'
+  if (status === 401)      message = 'Incorrect email or password.'
+  else if (status === 403) message = 'You are not authorized for this role.'
+  else if (typeof detail === 'string') message = detail
+  else if (errResp?.request) message = "Can't reach the server. Check your connection."
+  return message
+}
+
+// ─── Small presentational pieces ─────────────────────────────────────────
+
+// Errors use the codebase's established idiom — plain --v-pink text, as
+// in every converted page and modal (CopyRecipesModal, SignOutModal,
+// ReportPage). Deliberately NOT a new boxed component: a shared
+// AlertBanner is a design-system decision, recorded on the backlog,
+// not a side effect of restyling one page.
+function ErrorAlert({ message }: { message: string }) {
+  return (
+    <p
+      role="alert"
+      aria-live="assertive"
+      className="text-sm"
+      style={{ color: 'var(--v-pink)' }}
+    >
+      {message}
+    </p>
+  )
+}
+
+function Spinner() {
+  return (
+    <svg
+      className="w-4 h-4 animate-spin"
+      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round" strokeLinejoin="round"
+        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+      />
+    </svg>
+  )
+}
+
+function BackLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block mx-auto text-xs transition-colors hover:text-[var(--v-text)]"
+      style={{ color: 'var(--v-text-muted)' }}
+    >
+      ← Back
+    </button>
+  )
 }
 
 // ─── Component ───────────────────────────────────────────────────────────
-
-type Step = 'email' | 'role' | 'password'
 
 export function LoginForm() {
   const navigate = useNavigate()
@@ -103,20 +195,7 @@ export function LoginForm() {
       } catch { /* storage disabled */ }
       navigate(dest)
     } catch (err: unknown) {
-      const errResp = err as {
-        response?: { data?: { detail?: unknown }; status?: number }
-        request?: unknown
-      }
-      const status = errResp?.response?.status
-      const detail = errResp?.response?.data?.detail
-
-      let message = 'Sign in failed. Please try again.'
-      if (status === 401)      message = 'Incorrect email or password.'
-      else if (status === 403) message = 'You are not authorized for this role.'
-      else if (typeof detail === 'string') message = detail
-      else if (errResp?.request) message = "Can't reach the server. Check your connection."
-
-      setError(message)
+      setError(loginErrorMessage(err))
       setPassword('')
       requestAnimationFrame(() => passwordRef.current?.focus())
     } finally {
@@ -128,13 +207,8 @@ export function LoginForm() {
   function handleBack() {
     setError(null)
     setPassword('')
-    if (step === 'password') {
-      setStep('role')
-      setSelectedRole(null)
-    } else if (step === 'role') {
-      setStep('email')
-      setSelectedRole(null)
-    }
+    setStep(loginStepBack(step))
+    if (step === 'password' || step === 'role') setSelectedRole(null)
   }
 
 
@@ -142,22 +216,26 @@ export function LoginForm() {
   return (
     <div className="space-y-5">
 
-      {/* Step indicator */}
-      <div className="flex items-center justify-center gap-2 text-[11px] text-[#718096]">
-        <span className={step === 'email' ? 'font-bold text-[#1E5A8D]' : ''}>1. Email</span>
-        <span>·</span>
-        <span className={step === 'role' ? 'font-bold text-[#1E5A8D]' : ''}>2. Role</span>
-        <span>·</span>
-        <span className={step === 'password' ? 'font-bold text-[#1E5A8D]' : ''}>3. Password</span>
+      {/* Step indicator — the redesign's label voice, active step in cyan */}
+      <div
+        className="flex items-center justify-center gap-2 text-[11px] font-medium uppercase tracking-[0.06em]"
+        style={{ color: 'var(--v-text-dim)' }}
+      >
+        {(['email', 'role', 'password'] as const).map((s, i) => (
+          <span key={s} className="flex items-center gap-2">
+            {i > 0 && <span>·</span>}
+            <span style={step === s ? { color: 'var(--v-cyan)' } : undefined}>
+              {i + 1}. {s === 'email' ? 'Email' : s === 'role' ? 'Role' : 'Password'}
+            </span>
+          </span>
+        ))}
       </div>
 
       {/* ─── Step 1: Email ─── */}
       {step === 'email' && (
         <form onSubmit={handleEmailSubmit} className="space-y-5" noValidate>
           <div>
-            <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-email">
-              Email
-            </label>
+            <Label>Email</Label>
             <input
               ref={emailRef}
               id="login-email"
@@ -166,24 +244,21 @@ export function LoginForm() {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
-              placeholder="you@nomagroup.it"
+              className={inputCls}
+              placeholder="you@example.com"
             />
           </div>
 
-          {error && (
-            <div role="alert" aria-live="assertive" className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5">
-              {error}
-            </div>
-          )}
+          {error && <ErrorAlert message={error} />}
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={loading || !email}
-            className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
+            className="w-full"
           >
-            {loading ? 'Checking…' : 'Continue'}
-          </button>
+            Continue
+          </Button>
         </form>
       )}
 
@@ -191,8 +266,12 @@ export function LoginForm() {
       {step === 'role' && (
         <div className="space-y-4">
           <div className="text-center">
-            <p className="text-base font-semibold text-[#1A202C]">Sign in as</p>
-            <p className="text-xs text-[#718096] mt-1 truncate">{email}</p>
+            <p className="text-base font-medium" style={{ color: 'var(--v-text)' }}>
+              Sign in as
+            </p>
+            <p className="text-xs mt-1 truncate" style={{ color: 'var(--v-text-muted)' }}>
+              {email}
+            </p>
           </div>
 
           <div className="space-y-2.5">
@@ -201,45 +280,54 @@ export function LoginForm() {
                 key={role}
                 type="button"
                 onClick={() => handleRolePick(role)}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-[#E2E8F0] hover:border-[#1E5A8D] hover:bg-[#F7FAFC] focus:outline-none focus:border-[#1E5A8D] focus:bg-[#F7FAFC] transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-[var(--v-radius)] text-left transition-colors hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-[var(--v-cyan)]/30"
+                style={{
+                  background: 'var(--v-surface)',
+                  border: '0.5px solid var(--v-border)',
+                }}
               >
-                <span
-                  className="w-3 h-3 rounded-full shrink-0"
-                  style={{ backgroundColor: ROLE_COLOR[role] }}
-                />
+                <Badge variant={ROLE_BADGE[role]}>{ROLE_LABEL[role]}</Badge>
                 <span className="flex-1 min-w-0">
-                  <span className="block font-semibold text-sm text-[#1A202C]">{ROLE_LABEL[role]}</span>
-                  <span className="block text-xs text-[#718096] mt-0.5">{ROLE_DESCRIPTION[role]}</span>
+                  <span
+                    className="block text-xs"
+                    style={{ color: 'var(--v-text-muted)' }}
+                  >
+                    {ROLE_DESCRIPTION[role]}
+                  </span>
                 </span>
-                <span className="text-[#A0AEC0] text-lg leading-none shrink-0">›</span>
+                <span
+                  className="text-lg leading-none shrink-0"
+                  style={{ color: 'var(--v-text-dim)' }}
+                >
+                  ›
+                </span>
               </button>
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleBack}
-            className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
-          >
-            ← Back
-          </button>
+          <BackLink onClick={handleBack} />
         </div>
       )}
 
       {/* ─── Step 3: Password ─── */}
       {step === 'password' && selectedRole && (
         <form onSubmit={handlePasswordSubmit} className="space-y-5" noValidate>
-          <div className="text-xs text-[#4A5568] bg-[#F7FAFC] rounded-xl px-3 py-2 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ROLE_COLOR[selectedRole] }} />
-            <span className="font-medium text-[#1A202C]">{email}</span>
-            <span className="text-[#CBD5E0]">·</span>
-            <span>{ROLE_LABEL[selectedRole]}</span>
+          {/* Identity chip: who is signing in, as what */}
+          <div
+            className="flex items-center gap-2 rounded-[var(--v-radius-sm)] px-3 py-2 text-xs"
+            style={{
+              background: 'var(--v-surface)',
+              border: '0.5px solid var(--v-border)',
+            }}
+          >
+            <Badge variant={ROLE_BADGE[selectedRole]}>{ROLE_LABEL[selectedRole]}</Badge>
+            <span className="truncate font-medium" style={{ color: 'var(--v-text)' }}>
+              {email}
+            </span>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[#4A5568] mb-1.5" htmlFor="login-password">
-              Password
-            </label>
+            <Label>Password</Label>
             <input
               ref={passwordRef}
               id="login-password"
@@ -248,40 +336,39 @@ export function LoginForm() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border-2 border-[#E2E8F0] focus:border-[#1E5A8D] focus:outline-none text-sm bg-white"
+              className={inputCls}
               placeholder="••••••••"
             />
           </div>
 
-          {error && (
-            <div role="alert" aria-live="assertive" className="text-sm text-[#E74C3C] bg-[#FDEDEC] border border-[#E74C3C]/30 rounded-xl px-4 py-2.5">
-              {error}
-            </div>
-          )}
+          {error && <ErrorAlert message={error} />}
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
             disabled={loading || !password}
-            className="w-full bg-[#1E5A8D] hover:bg-[#174a78] disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors text-sm shadow-sm"
+            className="w-full"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
+            {loading ? (
+              <>
+                <Spinner />
+                Signing in…
+              </>
+            ) : (
+              'Sign in'
+            )}
+          </Button>
 
-          <button
-            type="button"
-            onClick={handleBack}
-            className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
-          >
-            ← Back
-          </button>
+          <BackLink onClick={handleBack} />
         </form>
       )}
 
-      {/* Forgot password — same as before, available on every step */}
+      {/* Forgot password — same behaviour as before, available on every step */}
       <button
         type="button"
         onClick={() => window.alert('Password reset will be available soon. For now, please contact your tenant admin.')}
-        className="block mx-auto text-xs text-[#1E5A8D] hover:text-[#2C7AA6] underline"
+        className="block mx-auto text-xs transition-colors hover:text-[var(--v-text)]"
+        style={{ color: 'var(--v-text-dim)' }}
       >
         Forgot password?
       </button>
